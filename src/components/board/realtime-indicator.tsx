@@ -9,6 +9,7 @@ const labels: Record<RealtimeStatus, string> = {
   connected: "Realtime",
   offline: "Offline",
   disabled: "Realtime off",
+  error: "Realtime error",
 };
 
 const colors: Record<RealtimeStatus, string> = {
@@ -17,6 +18,7 @@ const colors: Record<RealtimeStatus, string> = {
   connected: "bg-emerald-500",
   offline: "bg-rose-500",
   disabled: "bg-muted-foreground/30",
+  error: "bg-rose-500",
 };
 
 export function RealtimeIndicator({ status }: { status: RealtimeStatus }): React.ReactElement {

@@ -1,6 +1,11 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
+// INNGEST_REQUIRED is an explicit prod-deploy flag so that local `pnpm build`
+// (which runs in NODE_ENV=production) doesn't crash when the keys are absent.
+// Set INNGEST_REQUIRED=true on real production deploys to enforce signing.
+const inngestRequired = process.env.INNGEST_REQUIRED === "true";
+
 export const env = createEnv({
   server: {
     DATABASE_URL: z.string().url(),
@@ -10,15 +15,16 @@ export const env = createEnv({
     EMAIL_SERVER: z.string().min(1),
     EMAIL_FROM: z.string().min(1),
     ABLY_API_KEY: z.string().optional().default(""),
+    INNGEST_REQUIRED: z.string().optional().default(""),
     INNGEST_EVENT_KEY: z
       .string()
       .optional()
       .default("")
       .superRefine((val, ctx) => {
-        if (process.env.NODE_ENV === "production" && (!val || val.length === 0)) {
+        if (inngestRequired && (!val || val.length === 0)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "INNGEST_EVENT_KEY is required in production",
+            message: "INNGEST_EVENT_KEY is required when INNGEST_REQUIRED=true",
           });
         }
       }),
@@ -27,10 +33,10 @@ export const env = createEnv({
       .optional()
       .default("")
       .superRefine((val, ctx) => {
-        if (process.env.NODE_ENV === "production" && (!val || val.length === 0)) {
+        if (inngestRequired && (!val || val.length === 0)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "INNGEST_SIGNING_KEY is required in production",
+            message: "INNGEST_SIGNING_KEY is required when INNGEST_REQUIRED=true",
           });
         }
       }),
@@ -44,6 +50,7 @@ export const env = createEnv({
     EMAIL_SERVER: process.env.EMAIL_SERVER,
     EMAIL_FROM: process.env.EMAIL_FROM,
     ABLY_API_KEY: process.env.ABLY_API_KEY,
+    INNGEST_REQUIRED: process.env.INNGEST_REQUIRED,
     INNGEST_EVENT_KEY: process.env.INNGEST_EVENT_KEY,
     INNGEST_SIGNING_KEY: process.env.INNGEST_SIGNING_KEY,
   },

@@ -37,7 +37,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "database" },
   secret: env.NEXTAUTH_SECRET,
-  trustHost: process.env.AUTH_TRUST_HOST === "true",
+  // Dev (NODE_ENV !== "production") auto-trusts the host so Auth.js endpoints
+  // don't 500 without extra env. In production, AUTH_TRUST_HOST=true must be set
+  // explicitly (typically when running behind a trusted reverse proxy).
+  trustHost: process.env.AUTH_TRUST_HOST === "true" || process.env.NODE_ENV !== "production",
   providers: [
     Nodemailer({
       server: env.EMAIL_SERVER,

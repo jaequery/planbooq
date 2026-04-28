@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { logger } from "@/lib/logger";
 import type { AblyChannelEvent } from "@/lib/types";
 
-export type RealtimeStatus = "idle" | "connecting" | "connected" | "offline" | "disabled";
+export type RealtimeStatus = "idle" | "connecting" | "connected" | "offline" | "disabled" | "error";
 
 type UseBoardChannelResult = {
   status: RealtimeStatus;
@@ -25,78 +25,73 @@ export function useBoardChannel(
     let cancelled = false;
     let realtime: Ably.Realtime | null = null;
     let channel: Ably.RealtimeChannel | null = null;
+    // Set by the authCallback when the server reports Ably is unconfigured.
+    // Read by the connection state handler so we publish "disabled" instead of
+    // the transient "failed" state Ably emits when auth returns null.
+    let disabled = false;
 
     setStatus("connecting");
 
-    const init = async (): Promise<void> => {
-      // Probe the token endpoint once to detect "Ably not configured" without
-      // letting Ably's authCallback machinery spin in the background.
-      const probe = await fetch("/api/ably/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId }),
-      });
+    realtime = new Ably.Realtime({
+      authCallback: (_params, callback) => {
+        fetch("/api/ably/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId }),
+        })
+          .then(async (res) => {
+            if (res.status === 503) {
+              disabled = true;
+              if (!cancelled) setStatus("disabled");
+              // Signal Ably to stop trying. It will move to a failed/closed
+              // state, which we map back to "disabled" via the flag above.
+              callback("ably_not_configured", null);
+              return;
+            }
+            if (!res.ok) {
+              throw new Error(`token_${res.status}`);
+            }
+            const tokenRequest = (await res.json()) as Ably.TokenRequest;
+            callback(null, tokenRequest);
+          })
+          .catch((err: unknown) => {
+            callback(err instanceof Error ? err.message : "token_error", null);
+          });
+      },
+    });
+
+    realtime.connection.on((stateChange) => {
       if (cancelled) return;
-      if (probe.status === 503) {
+      if (disabled) {
         setStatus("disabled");
         return;
       }
-      if (!probe.ok) {
+      const current = stateChange.current;
+      if (current === "connected") {
+        setStatus("connected");
+        setClientId(realtime?.auth.clientId ?? null);
+      } else if (current === "connecting") {
+        setStatus("connecting");
+      } else if (current === "failed") {
+        setStatus("error");
+      } else if (current === "disconnected" || current === "suspended" || current === "closed") {
         setStatus("offline");
+      }
+    });
+
+    channel = realtime.channels.get(`workspace:${workspaceId}`);
+    channel.subscribe((message) => {
+      const data = message.data as AblyChannelEvent | undefined;
+      if (!data || typeof data !== "object" || !("name" in data)) return;
+      if (data.workspaceId !== workspaceId) {
+        logger.warn("realtime.workspace_mismatch", {
+          expected: workspaceId,
+          received: data.workspaceId,
+        });
         return;
       }
-
-      realtime = new Ably.Realtime({
-        authCallback: (_params, callback) => {
-          fetch("/api/ably/token", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ workspaceId }),
-          })
-            .then(async (res) => {
-              if (!res.ok) throw new Error(`token_${res.status}`);
-              const tokenRequest = (await res.json()) as Ably.TokenRequest;
-              callback(null, tokenRequest);
-            })
-            .catch((err: unknown) => {
-              callback(err instanceof Error ? err.message : "token_error", null);
-            });
-        },
-      });
-
-      realtime.connection.on((stateChange) => {
-        if (cancelled) return;
-        if (stateChange.current === "connected") {
-          setStatus("connected");
-          setClientId(realtime?.auth.clientId ?? null);
-        } else if (
-          stateChange.current === "disconnected" ||
-          stateChange.current === "suspended" ||
-          stateChange.current === "failed" ||
-          stateChange.current === "closed"
-        ) {
-          setStatus("offline");
-        } else if (stateChange.current === "connecting") {
-          setStatus("connecting");
-        }
-      });
-
-      channel = realtime.channels.get(`workspace:${workspaceId}`);
-      channel.subscribe((message) => {
-        const data = message.data as AblyChannelEvent | undefined;
-        if (!data || typeof data !== "object" || !("name" in data)) return;
-        if (data.workspaceId !== workspaceId) {
-          logger.warn("realtime.workspace_mismatch", {
-            expected: workspaceId,
-            received: data.workspaceId,
-          });
-          return;
-        }
-        onEventRef.current(data, message.clientId ?? null);
-      });
-    };
-
-    void init();
+      onEventRef.current(data, message.clientId ?? null);
+    });
 
     return () => {
       cancelled = true;

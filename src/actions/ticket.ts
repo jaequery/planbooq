@@ -24,46 +24,87 @@ async function requireMembership(workspaceId: string, userId: string): Promise<v
   if (!member) throw new Error("forbidden");
 }
 
-const MoveSchema = z.object({
-  ticketId: z.string().min(1),
-  toStatusId: z.string().min(1),
-  newPosition: z.number().finite().optional(),
-});
+const MoveSchema = z
+  .object({
+    ticketId: z.string().min(1),
+    toStatusId: z.string().min(1),
+    beforeTicketId: z.string().min(1).nullable().optional(),
+    afterTicketId: z.string().min(1).nullable().optional(),
+  })
+  .strict();
 
 export async function moveTicket(
   input: z.infer<typeof MoveSchema>,
 ): Promise<ServerActionResult<{ ticketId: string; toStatusId: string; position: number }>> {
   try {
-    const { ticketId, toStatusId, newPosition } = MoveSchema.parse(input);
+    const parsed = MoveSchema.parse(input);
+    const { ticketId, toStatusId } = parsed;
+    const beforeTicketId = parsed.beforeTicketId ?? null;
+    const afterTicketId = parsed.afterTicketId ?? null;
     const userId = await requireUserId();
 
     const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
     if (!ticket) return { ok: false, error: "ticket_not_found" };
 
     await requireMembership(ticket.workspaceId, userId);
+    const fromStatusId = ticket.statusId;
 
     const targetStatus = await prisma.status.findUnique({ where: { id: toStatusId } });
     if (!targetStatus || targetStatus.workspaceId !== ticket.workspaceId) {
       return { ok: false, error: "invalid_status" };
     }
 
-    let finalPosition = newPosition;
-    if (typeof finalPosition !== "number") {
-      const last = await prisma.ticket.findFirst({
-        where: { statusId: toStatusId },
-        orderBy: { position: "desc" },
-      });
-      finalPosition = (last?.position ?? 0) + 1;
-    }
+    const finalPosition = await prisma.$transaction(async (tx) => {
+      const [before, after] = await Promise.all([
+        beforeTicketId
+          ? tx.ticket.findUnique({ where: { id: beforeTicketId } })
+          : Promise.resolve(null),
+        afterTicketId
+          ? tx.ticket.findUnique({ where: { id: afterTicketId } })
+          : Promise.resolve(null),
+      ]);
 
-    const fromStatusId = ticket.statusId;
-    const updateResult = await prisma.ticket.updateMany({
-      where: { id: ticketId, workspaceId: ticket.workspaceId },
-      data: { statusId: toStatusId, position: finalPosition },
+      if (beforeTicketId) {
+        if (
+          !before ||
+          before.workspaceId !== ticket.workspaceId ||
+          before.statusId !== toStatusId
+        ) {
+          throw new Error("invalid_anchor_before");
+        }
+      }
+      if (afterTicketId) {
+        if (!after || after.workspaceId !== ticket.workspaceId || after.statusId !== toStatusId) {
+          throw new Error("invalid_anchor_after");
+        }
+      }
+
+      let position: number;
+      if (before && after) {
+        position = (before.position + after.position) / 2;
+      } else if (after && !before) {
+        position = after.position - 1;
+      } else if (before && !after) {
+        position = before.position + 1;
+      } else {
+        const last = await tx.ticket.findFirst({
+          where: { statusId: toStatusId, workspaceId: ticket.workspaceId },
+          orderBy: { position: "desc" },
+          select: { position: true },
+        });
+        position = (last?.position ?? 0) + 1;
+      }
+
+      const updateResult = await tx.ticket.updateMany({
+        where: { id: ticketId, workspaceId: ticket.workspaceId },
+        data: { statusId: toStatusId, position },
+      });
+      if (updateResult.count !== 1) {
+        throw new Error("ticket_update_failed");
+      }
+      return position;
     });
-    if (updateResult.count !== 1) {
-      return { ok: false, error: "ticket_update_failed" };
-    }
+
     const updated = { id: ticketId };
 
     const workspace = await prisma.workspace.findUnique({

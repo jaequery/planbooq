@@ -39,6 +39,7 @@ Copy `.env.example` to `.env.local` and fill values once Backend wires them up.
 7. pnpm dev                             # http://localhost:3636
 ```
 
+- Local prod build: `AUTH_TRUST_HOST` is auto-true in dev; set `INNGEST_REQUIRED=true` on real prod deploys to enforce Inngest signing.
 - Mail in dev: open the Mailpit UI at **http://localhost:8025** to grab magic-link emails sent to the dev SMTP server (port 1025).
 - Inngest dev server: **http://localhost:8288** — the SDK fails-soft when `INNGEST_SIGNING_KEY` is empty as long as `INNGEST_DEV=1` is set (it is, in `.env.example`).
 - Ably: `ABLY_API_KEY` is optional in dev. The token endpoint returns `503 ably_not_configured` and the publish helper no-ops when the key is missing, so the rest of the app keeps working.

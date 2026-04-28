@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { moveTicket } from "@/actions/ticket";
 import { Column } from "@/components/board/column";
@@ -48,12 +48,19 @@ export function Board({ initialData }: Props): React.ReactElement {
     return map;
   }, [statuses]);
 
+  const localClientIdRef = useRef<string | null>(null);
+
   const handleEvent = useCallback(
     (event: Parameters<Parameters<typeof useBoardChannel>[1]>[0], fromClientId: string | null) => {
-      // Ignore echoes from this user (clientId is the userId in our token).
-      // We can't read the session here, but server publishes after the local
-      // optimistic update has already been applied; reconciling here is still
-      // safe because the operations are idempotent.
+      // Skip echoes of our own publishes — we already applied the optimistic
+      // update and reconciled with the server's response.
+      if (
+        fromClientId !== null &&
+        localClientIdRef.current !== null &&
+        fromClientId === localClientIdRef.current
+      ) {
+        return;
+      }
       if (event.name === "ticket.moved") {
         setStatuses((prev) => {
           let moving: Ticket | null = null;
@@ -79,12 +86,18 @@ export function Board({ initialData }: Props): React.ReactElement {
           });
         });
       }
-      void fromClientId;
     },
     [allTickets],
   );
 
-  const { status: rtStatus } = useBoardChannel(initialData.workspace.id, handleEvent);
+  const { status: rtStatus, clientId: rtClientId } = useBoardChannel(
+    initialData.workspace.id,
+    handleEvent,
+  );
+
+  useEffect(() => {
+    localClientIdRef.current = rtClientId;
+  }, [rtClientId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -128,12 +141,12 @@ export function Board({ initialData }: Props): React.ReactElement {
 
     // Determine target status + index.
     let targetStatusId: string | null = null;
-    let beforeTicketId: string | null = null;
+    let dropBeforeId: string | null = null;
 
     const overAsColumn = statuses.find((s) => s.id === overId);
     if (overAsColumn) {
       targetStatusId = overAsColumn.id;
-      beforeTicketId = null; // dropped on column body → end of column
+      dropBeforeId = null; // dropped on column body → end of column
     } else {
       const overStatus = findStatusOf(overId);
       if (!overStatus) return;
@@ -142,7 +155,7 @@ export function Board({ initialData }: Props): React.ReactElement {
       // Insert at the position of the over-target. dnd-kit's sortable snaps
       // before the hovered card; treat it as "place before".
       const beforeCandidate = overStatus.tickets[overIdx];
-      beforeTicketId = beforeCandidate?.id === activeId ? null : (beforeCandidate?.id ?? null);
+      dropBeforeId = beforeCandidate?.id === activeId ? null : (beforeCandidate?.id ?? null);
     }
 
     if (!targetStatusId) return;
@@ -155,15 +168,19 @@ export function Board({ initialData }: Props): React.ReactElement {
     const projected = reorderInsert(
       targetList,
       { ...ticket, statusId: targetStatusId },
-      beforeTicketId,
+      dropBeforeId,
     );
     const insertedIdx = projected.findIndex((t) => t.id === activeId);
     const prev = projected[insertedIdx - 1];
     const next = projected[insertedIdx + 1];
-    const newPosition = computePosition(prev, next);
+    // Optimistic-only float for the local render. The server is the source of
+    // truth for the persisted position and broadcasts the authoritative value.
+    const optimisticPosition = computePosition(prev, next);
+    const beforeTicketId: string | null = prev?.id ?? null;
+    const afterTicketId: string | null = next?.id ?? null;
 
     // No-op guard: same column, same neighbours.
-    if (sourceStatus.id === targetStatusId && ticket.position === newPosition) {
+    if (sourceStatus.id === targetStatusId && ticket.position === optimisticPosition) {
       return;
     }
 
@@ -177,20 +194,38 @@ export function Board({ initialData }: Props): React.ReactElement {
       }));
       return stripped.map((s) => {
         if (s.id !== targetStatusId) return s;
-        const updated: Ticket = { ...ticket, statusId: targetStatusId, position: newPosition };
+        const updated: Ticket = {
+          ...ticket,
+          statusId: targetStatusId,
+          position: optimisticPosition,
+        };
         const merged = [...s.tickets, updated].sort((a, b) => a.position - b.position);
         return { ...s, tickets: merged };
       });
     });
 
-    void moveTicket({ ticketId: activeId, toStatusId: targetStatusId, newPosition }).then(
-      (result) => {
-        if (!result.ok) {
-          toast.error(`Move failed: ${result.error}`);
-          setStatuses(previousStatuses);
-        }
-      },
-    );
+    void moveTicket({
+      ticketId: activeId,
+      toStatusId: targetStatusId,
+      beforeTicketId,
+      afterTicketId,
+    }).then((result) => {
+      if (!result.ok) {
+        toast.error(`Move failed: ${result.error}`);
+        setStatuses(previousStatuses);
+        return;
+      }
+      // Reconcile with server-authoritative position.
+      setStatuses((cur) =>
+        cur.map((s) => {
+          if (s.id !== targetStatusId) return s;
+          const tickets = s.tickets
+            .map((t) => (t.id === activeId ? { ...t, position: result.data.position } : t))
+            .sort((a, b) => a.position - b.position);
+          return { ...s, tickets };
+        }),
+      );
+    });
   };
 
   const activeTicket = activeTicketId ? (allTickets.get(activeTicketId) ?? null) : null;
