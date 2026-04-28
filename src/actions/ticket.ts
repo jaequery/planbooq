@@ -68,13 +68,19 @@ export async function moveTicket(
         if (
           !before ||
           before.workspaceId !== ticket.workspaceId ||
+          before.projectId !== ticket.projectId ||
           before.statusId !== toStatusId
         ) {
           throw new Error("invalid_anchor_before");
         }
       }
       if (afterTicketId) {
-        if (!after || after.workspaceId !== ticket.workspaceId || after.statusId !== toStatusId) {
+        if (
+          !after ||
+          after.workspaceId !== ticket.workspaceId ||
+          after.projectId !== ticket.projectId ||
+          after.statusId !== toStatusId
+        ) {
           throw new Error("invalid_anchor_after");
         }
       }
@@ -88,7 +94,11 @@ export async function moveTicket(
         position = before.position + 1;
       } else {
         const last = await tx.ticket.findFirst({
-          where: { statusId: toStatusId, workspaceId: ticket.workspaceId },
+          where: {
+            statusId: toStatusId,
+            projectId: ticket.projectId,
+            workspaceId: ticket.workspaceId,
+          },
           orderBy: { position: "desc" },
           select: { position: true },
         });
@@ -107,16 +117,17 @@ export async function moveTicket(
 
     const updated = { id: ticketId };
 
-    const workspace = await prisma.workspace.findUnique({
-      where: { id: ticket.workspaceId },
+    const project = await prisma.project.findUnique({
+      where: { id: ticket.projectId },
       select: { slug: true },
     });
-    if (workspace) revalidatePath(`/w/${workspace.slug}`);
+    if (project) revalidatePath(`/p/${project.slug}`);
 
     await publishWorkspaceEvent(ticket.workspaceId, {
       name: "ticket.moved",
       ticketId: updated.id,
       workspaceId: ticket.workspaceId,
+      projectId: ticket.projectId,
       fromStatusId,
       toStatusId,
       position: finalPosition,
@@ -148,7 +159,7 @@ export async function moveTicket(
 }
 
 const CreateSchema = z.object({
-  workspaceId: z.string().min(1),
+  projectId: z.string().min(1),
   statusId: z.string().min(1),
   title: z.string().min(1).max(200),
   description: z.string().max(5000).optional(),
@@ -160,22 +171,31 @@ export async function createTicket(
   try {
     const data = CreateSchema.parse(input);
     const userId = await requireUserId();
-    await requireMembership(data.workspaceId, userId);
+
+    const project = await prisma.project.findUnique({
+      where: { id: data.projectId },
+      select: { id: true, workspaceId: true, slug: true },
+    });
+    if (!project) {
+      return { ok: false, error: "invalid_project" };
+    }
+    await requireMembership(project.workspaceId, userId);
 
     const status = await prisma.status.findUnique({ where: { id: data.statusId } });
-    if (!status || status.workspaceId !== data.workspaceId) {
+    if (!status || status.workspaceId !== project.workspaceId) {
       return { ok: false, error: "invalid_status" };
     }
 
     const last = await prisma.ticket.findFirst({
-      where: { statusId: data.statusId },
+      where: { projectId: project.id, statusId: data.statusId },
       orderBy: { position: "desc" },
     });
     const position = (last?.position ?? 0) + 1;
 
     const ticket = await prisma.ticket.create({
       data: {
-        workspaceId: data.workspaceId,
+        workspaceId: project.workspaceId,
+        projectId: project.id,
         statusId: data.statusId,
         title: data.title,
         description: data.description,
@@ -184,16 +204,13 @@ export async function createTicket(
       },
     });
 
-    const workspace = await prisma.workspace.findUnique({
-      where: { id: data.workspaceId },
-      select: { slug: true },
-    });
-    if (workspace) revalidatePath(`/w/${workspace.slug}`);
+    revalidatePath(`/p/${project.slug}`);
 
-    await publishWorkspaceEvent(data.workspaceId, {
+    await publishWorkspaceEvent(project.workspaceId, {
       name: "ticket.created",
       ticketId: ticket.id,
-      workspaceId: data.workspaceId,
+      workspaceId: project.workspaceId,
+      projectId: project.id,
       ticket,
       by: userId,
     });
@@ -201,7 +218,7 @@ export async function createTicket(
     void inngest
       .send({
         name: "ticket/created",
-        data: { ticketId: ticket.id, workspaceId: data.workspaceId },
+        data: { ticketId: ticket.id, workspaceId: project.workspaceId },
       })
       .catch((error: unknown) => {
         logger.warn("inngest.send.failed", {
