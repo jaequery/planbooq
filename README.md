@@ -2,6 +2,34 @@
 
 > The kanban for vibe coding. Pick winners, don't prompt twice.
 
+## Local dev
+
+Requirements: Node 20+, pnpm 10+.
+
+```bash
+pnpm install
+pnpm dev          # http://localhost:3636
+```
+
+Ports:
+- App: **3636**
+- Postgres: **5656** (provisioned by Backend in Wave 2)
+
+Scripts:
+- `pnpm dev` — Next.js dev server on port 3636
+- `pnpm build` / `pnpm start` — production build & serve
+- `pnpm typecheck` — `tsc --noEmit` against strict config
+- `pnpm lint` / `pnpm lint:fix` — Biome lint + organize imports
+- `pnpm format` — Biome formatter
+- `pnpm db:migrate` / `pnpm db:seed` — placeholders, owned by Backend (Wave 2)
+
+Stack: Next.js 16 (App Router) · React 19 · TypeScript 6 (strict, `noUncheckedIndexedAccess`) · Tailwind v4 · shadcn/ui (radix base) · Biome · next-themes · sonner · lucide-react.
+
+Copy `.env.example` to `.env.local` and fill values once Backend wires them up.
+
+<!-- backend setup steps appended by Backend Architect -->
+
+
 Planbooq is a SaaS kanban platform built for the age of AI-generated code. Every ticket spawns multiple AI variants in parallel — each with a live preview URL and screenshots — so you decide by *picking*, not by re-prompting.
 
 ## The Bottleneck Has Moved
