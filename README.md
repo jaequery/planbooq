@@ -27,7 +27,30 @@ Stack: Next.js 16 (App Router) · React 19 · TypeScript 6 (strict, `noUnchecked
 
 Copy `.env.example` to `.env.local` and fill values once Backend wires them up.
 
-<!-- backend setup steps appended by Backend Architect -->
+## Backend setup (Wave 2A)
+
+```bash
+1. cp .env.example .env
+2. docker compose up -d                # Postgres on :5656, Mailpit on :1025/:8025
+3. pnpm install
+4. pnpm db:migrate
+5. pnpm db:seed
+6. pnpm dlx inngest-cli@latest dev     # in a second terminal — http://localhost:8288
+7. pnpm dev                             # http://localhost:3636
+```
+
+- Mail in dev: open the Mailpit UI at **http://localhost:8025** to grab magic-link emails sent to the dev SMTP server (port 1025).
+- Inngest dev server: **http://localhost:8288** — the SDK fails-soft when `INNGEST_SIGNING_KEY` is empty as long as `INNGEST_DEV=1` is set (it is, in `.env.example`).
+- Ably: `ABLY_API_KEY` is optional in dev. The token endpoint returns `503 ably_not_configured` and the publish helper no-ops when the key is missing, so the rest of the app keeps working.
+
+Backend stack: Postgres 16 · Prisma 7 (with `@prisma/adapter-pg`) · Auth.js v5 (Nodemailer / magic link) · Inngest v4 · Ably · `@t3-oss/env-nextjs` for env validation.
+
+Useful scripts:
+- `pnpm db:migrate` — `prisma migrate dev`
+- `pnpm db:seed` — runs `prisma/seed.ts` (idempotent, seeds demo workspace + tickets)
+- `pnpm db:reset` — wipe and re-migrate (dev only)
+- `pnpm db:generate` — regenerate Prisma client
+
 
 
 Planbooq is a SaaS kanban platform built for the age of AI-generated code. Every ticket spawns multiple AI variants in parallel — each with a live preview URL and screenshots — so you decide by *picking*, not by re-prompting.
