@@ -52,6 +52,9 @@ Useful scripts:
 - `pnpm db:reset` — wipe and re-migrate (dev only)
 - `pnpm db:generate` — regenerate Prisma client
 
+### Projects
+
+Each user has one (hidden) workspace that's auto-provisioned on first sign-in. Inside that workspace, work is organized into **projects** — each with its own kanban board at `/p/<project-slug>`. The first sign-in creates a default `Untitled` project; spin up new projects from the sidebar `+`. Statuses are still workspace-level (shared across all of a user's projects). The default seed creates two projects (`planbooq` and `side-experiment`) with tickets in each so the sidebar has more than one entry to render.
 
 
 Planbooq is a SaaS kanban platform built for the age of AI-generated code. Every ticket spawns multiple AI variants in parallel — each with a live preview URL and screenshots — so you decide by *picking*, not by re-prompting.
