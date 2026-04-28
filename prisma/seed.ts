@@ -24,6 +24,17 @@ type SeedTicket = {
   description?: string;
 };
 
+const SIDE_TICKETS: SeedTicket[] = [
+  { statusKey: "backlog", title: "Try out a tiny CLI for bulk-archiving tickets" },
+  { statusKey: "planning", title: "Sketch a 'focus mode' that hides everything but in-progress" },
+  { statusKey: "building", title: "Prototype embed-anywhere ticket card" },
+  { statusKey: "review", title: "Compare DnD libs: dnd-kit vs framer Reorder" },
+  {
+    statusKey: "completed",
+    title: "Throwaway: experiment with Server Actions revalidation patterns",
+  },
+];
+
 const SEED_TICKETS: SeedTicket[] = [
   {
     statusKey: "backlog",
@@ -116,14 +127,64 @@ async function main(): Promise<void> {
     statusByKey.set(s.key, status.id);
   }
 
-  // Idempotent ticket seeding: skip if any tickets already exist for this workspace.
-  const existingCount = await prisma.ticket.count({
-    where: { workspaceId: workspace.id },
+  const planbooqProject = await prisma.project.upsert({
+    where: { workspaceId_slug: { workspaceId: workspace.id, slug: "planbooq" } },
+    update: {
+      name: "Planbooq",
+      color: "#10b981",
+      description: "Dogfood project",
+      repoUrl: "https://github.com/jaequery/planbooq",
+      techStack:
+        "Next.js 16 + Prisma + Postgres + Ably + Inngest. Use shadcn for all UI. Strict TypeScript.",
+      position: 1,
+    },
+    create: {
+      workspaceId: workspace.id,
+      slug: "planbooq",
+      name: "Planbooq",
+      color: "#10b981",
+      description: "Dogfood project",
+      repoUrl: "https://github.com/jaequery/planbooq",
+      techStack:
+        "Next.js 16 + Prisma + Postgres + Ably + Inngest. Use shadcn for all UI. Strict TypeScript.",
+      position: 1,
+    },
   });
 
-  if (existingCount === 0) {
+  const sideProject = await prisma.project.upsert({
+    where: { workspaceId_slug: { workspaceId: workspace.id, slug: "side-experiment" } },
+    update: {
+      name: "Side experiment",
+      color: "#f59e0b",
+      description: "Where I prototype throwaway ideas",
+      position: 2,
+    },
+    create: {
+      workspaceId: workspace.id,
+      slug: "side-experiment",
+      name: "Side experiment",
+      color: "#f59e0b",
+      description: "Where I prototype throwaway ideas",
+      position: 2,
+    },
+  });
+
+  // Re-point any existing seeded tickets that lack a real project to Planbooq.
+  await prisma.ticket.updateMany({
+    where: {
+      workspaceId: workspace.id,
+      projectId: { not: planbooqProject.id },
+      project: { slug: "untitled" },
+    },
+    data: { projectId: planbooqProject.id },
+  });
+
+  async function seedTicketsForProject(projectId: string, tickets: SeedTicket[]): Promise<void> {
+    const existing = await prisma.ticket.count({ where: { projectId } });
+    if (existing > 0) return;
+
     const positionByStatus = new Map<string, number>();
-    for (const t of SEED_TICKETS) {
+    for (const t of tickets) {
       const statusId = statusByKey.get(t.statusKey);
       if (!statusId) continue;
       const next = (positionByStatus.get(statusId) ?? 0) + 1;
@@ -132,6 +193,7 @@ async function main(): Promise<void> {
       await prisma.ticket.create({
         data: {
           workspaceId: workspace.id,
+          projectId,
           statusId,
           title: t.title,
           description: t.description ?? null,
@@ -142,13 +204,20 @@ async function main(): Promise<void> {
     }
   }
 
+  await seedTicketsForProject(planbooqProject.id, SEED_TICKETS);
+  await seedTicketsForProject(sideProject.id, SIDE_TICKETS);
+
+  const ticketTotal = await prisma.ticket.count({ where: { workspaceId: workspace.id } });
+  const projectTotal = await prisma.project.count({ where: { workspaceId: workspace.id } });
+
   console.error(
     JSON.stringify({
       level: "info",
       message: "seed.complete",
       workspace: workspace.slug,
       user: user.email,
-      ticketsExisting: existingCount,
+      projects: projectTotal,
+      tickets: ticketTotal,
     }),
   );
 }

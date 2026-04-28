@@ -83,6 +83,27 @@ model Workspace {
   members  Member[]
   statuses Status[]
   tickets  Ticket[]
+  projects Project[]
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  workspaceId String
+  slug        String
+  name        String
+  color       String
+  description String?  @db.Text
+  repoUrl     String?
+  techStack   String?  @db.Text
+  position    Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tickets   Ticket[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, position])
 }
 
 model Member {
@@ -118,6 +139,7 @@ model Status {
 model Ticket {
   id          String   @id @default(cuid())
   workspaceId String
+  projectId   String
   statusId    String
   title       String
   description String?
@@ -127,10 +149,12 @@ model Ticket {
   updatedAt   DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   status    Status    @relation(fields: [statusId], references: [id], onDelete: Cascade)
   createdBy User      @relation("TicketCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
   @@index([workspaceId, statusId, position])
+  @@index([projectId, statusId, position])
   @@index([statusId])
   @@index([createdById])
 }
