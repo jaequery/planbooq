@@ -37,7 +37,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "database" },
   secret: env.NEXTAUTH_SECRET,
-  trustHost: true,
+  trustHost: process.env.AUTH_TRUST_HOST === "true",
   providers: [
     Nodemailer({
       server: env.EMAIL_SERVER,
@@ -46,6 +46,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   pages: {
     signIn: "/signin",
+  },
+  callbacks: {
+    redirect: async ({ url, baseUrl }) => {
+      try {
+        return new URL(url, baseUrl).origin === baseUrl ? url : baseUrl;
+      } catch {
+        return baseUrl;
+      }
+    },
   },
   events: {
     createUser: async ({ user }) => {

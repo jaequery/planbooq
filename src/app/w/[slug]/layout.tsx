@@ -31,13 +31,7 @@ export default async function WorkspaceLayout({
       },
     },
   });
-  if (!member) {
-    return (
-      <main className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-        You don&apos;t have access to this workspace.
-      </main>
-    );
-  }
+  if (!member) notFound();
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-background">

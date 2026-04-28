@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { env } from "@/env";
 import { createTokenRequest } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
@@ -8,7 +9,19 @@ const BodySchema = z.object({
   workspaceId: z.string().min(1),
 });
 
+function assertSameOrigin(req: Request): boolean {
+  const origin = req.headers.get("origin");
+  if (origin) {
+    return origin === env.NEXTAUTH_URL;
+  }
+  return req.headers.get("sec-fetch-site") === "same-origin";
+}
+
 export async function POST(req: Request): Promise<NextResponse> {
+  if (!assertSameOrigin(req)) {
+    return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
+  }
+
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

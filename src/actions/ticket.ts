@@ -57,10 +57,14 @@ export async function moveTicket(
     }
 
     const fromStatusId = ticket.statusId;
-    const updated = await prisma.ticket.update({
-      where: { id: ticketId },
+    const updateResult = await prisma.ticket.updateMany({
+      where: { id: ticketId, workspaceId: ticket.workspaceId },
       data: { statusId: toStatusId, position: finalPosition },
     });
+    if (updateResult.count !== 1) {
+      return { ok: false, error: "ticket_update_failed" };
+    }
+    const updated = { id: ticketId };
 
     const workspace = await prisma.workspace.findUnique({
       where: { id: ticket.workspaceId },

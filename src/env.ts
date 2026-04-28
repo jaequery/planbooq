@@ -10,8 +10,30 @@ export const env = createEnv({
     EMAIL_SERVER: z.string().min(1),
     EMAIL_FROM: z.string().min(1),
     ABLY_API_KEY: z.string().optional().default(""),
-    INNGEST_EVENT_KEY: z.string().optional().default(""),
-    INNGEST_SIGNING_KEY: z.string().optional().default(""),
+    INNGEST_EVENT_KEY: z
+      .string()
+      .optional()
+      .default("")
+      .superRefine((val, ctx) => {
+        if (process.env.NODE_ENV === "production" && (!val || val.length === 0)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "INNGEST_EVENT_KEY is required in production",
+          });
+        }
+      }),
+    INNGEST_SIGNING_KEY: z
+      .string()
+      .optional()
+      .default("")
+      .superRefine((val, ctx) => {
+        if (process.env.NODE_ENV === "production" && (!val || val.length === 0)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "INNGEST_SIGNING_KEY is required in production",
+          });
+        }
+      }),
   },
   client: {},
   runtimeEnv: {

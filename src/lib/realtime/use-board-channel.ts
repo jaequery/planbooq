@@ -2,6 +2,7 @@
 
 import * as Ably from "ably";
 import { useEffect, useRef, useState } from "react";
+import { logger } from "@/lib/logger";
 import type { AblyChannelEvent } from "@/lib/types";
 
 export type RealtimeStatus = "idle" | "connecting" | "connected" | "offline" | "disabled";
@@ -84,6 +85,13 @@ export function useBoardChannel(
       channel.subscribe((message) => {
         const data = message.data as AblyChannelEvent | undefined;
         if (!data || typeof data !== "object" || !("name" in data)) return;
+        if (data.workspaceId !== workspaceId) {
+          logger.warn("realtime.workspace_mismatch", {
+            expected: workspaceId,
+            received: data.workspaceId,
+          });
+          return;
+        }
         onEventRef.current(data, message.clientId ?? null);
       });
     };
