@@ -12,6 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { moveTicket } from "@/actions/ticket";
@@ -39,8 +40,10 @@ function computePosition(prev: Ticket | undefined, next: Ticket | undefined): nu
 }
 
 export function Board({ initialData }: Props): React.ReactElement {
+  const router = useRouter();
   const [statuses, setStatuses] = useState<StatusWithTickets[]>(initialData.statuses);
   const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
+  const currentProjectId = initialData.project.id;
 
   const allTickets = useMemo(() => {
     const map = new Map<string, Ticket>();
@@ -61,6 +64,11 @@ export function Board({ initialData }: Props): React.ReactElement {
       ) {
         return;
       }
+      if (event.name === "project.created") {
+        router.refresh();
+        return;
+      }
+      if (event.projectId !== currentProjectId) return;
       if (event.name === "ticket.moved") {
         setStatuses((prev) => {
           let moving: Ticket | null = null;
@@ -87,7 +95,7 @@ export function Board({ initialData }: Props): React.ReactElement {
         });
       }
     },
-    [allTickets],
+    [allTickets, currentProjectId, router],
   );
 
   const { status: rtStatus, clientId: rtClientId } = useBoardChannel(
