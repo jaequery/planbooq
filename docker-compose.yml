@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: planbooq-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: planbooq
+      POSTGRES_PASSWORD: planbooq
+      POSTGRES_DB: planbooq
+    ports:
+      - "5656:5432"
+    volumes:
+      - planbooq_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U planbooq -d planbooq"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: planbooq-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+volumes:
+  planbooq_postgres_data:
