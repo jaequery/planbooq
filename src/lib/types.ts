@@ -12,7 +12,13 @@ export type BoardData = {
 export type WorkspaceMembership = Member & { workspace: Workspace };
 
 export type AblyChannelEvent =
-  | { name: "ticket.created"; ticketId: string; workspaceId: string }
+  | {
+      name: "ticket.created";
+      ticketId: string;
+      workspaceId: string;
+      ticket: Ticket;
+      by: string;
+    }
   | {
       name: "ticket.moved";
       ticketId: string;
@@ -20,4 +26,7 @@ export type AblyChannelEvent =
       fromStatusId: string;
       toStatusId: string;
       position: number;
+      by: string;
     };
+
+export type ServerActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
