@@ -9,7 +9,7 @@ type Props = {
   params: Promise<{ slug: string }>;
 };
 
-export default async function WorkspaceLayout({
+export default async function ProjectLayout({
   children,
   params,
 }: Props): Promise<React.ReactElement> {
@@ -20,18 +20,18 @@ export default async function WorkspaceLayout({
 
   const { slug } = await params;
 
-  const workspace = await prisma.workspace.findUnique({ where: { slug } });
-  if (!workspace) notFound();
+  const membership = await prisma.member.findFirst({
+    where: { userId: session.user.id },
+    select: { workspaceId: true },
+  });
+  if (!membership) notFound();
 
-  const member = await prisma.member.findUnique({
+  const project = await prisma.project.findUnique({
     where: {
-      workspaceId_userId: {
-        workspaceId: workspace.id,
-        userId: session.user.id,
-      },
+      workspaceId_slug: { workspaceId: membership.workspaceId, slug },
     },
   });
-  if (!member) notFound();
+  if (!project) notFound();
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-background">
@@ -39,7 +39,14 @@ export default async function WorkspaceLayout({
         <div className="flex items-center gap-3">
           <div className="font-mono text-sm font-semibold tracking-tight">Planbooq</div>
           <span className="text-muted-foreground/50">/</span>
-          <div className="text-sm font-medium">{workspace.name}</div>
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span
+              aria-hidden
+              className="h-2 w-2 rounded-full"
+              style={{ backgroundColor: project.color }}
+            />
+            {project.name}
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <ThemeToggle />

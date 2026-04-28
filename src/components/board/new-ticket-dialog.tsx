@@ -30,14 +30,14 @@ const Schema = z.object({
 type FormValues = z.infer<typeof Schema>;
 
 type Props = {
-  workspaceId: string;
+  projectId: string;
   statusId: string;
   statusName: string;
   onCreated: (ticket: Ticket) => void;
 };
 
 export function NewTicketDialog({
-  workspaceId,
+  projectId,
   statusId,
   statusName,
   onCreated,
@@ -52,7 +52,7 @@ export function NewTicketDialog({
   const onSubmit = (values: FormValues): void => {
     startTransition(async () => {
       const result = await createTicket({
-        workspaceId,
+        projectId,
         statusId,
         title: values.title,
         description: values.description?.trim() ? values.description : undefined,

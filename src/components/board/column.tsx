@@ -10,11 +10,11 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   status: StatusWithTickets;
-  workspaceId: string;
+  projectId: string;
   onTicketCreated: (ticket: Ticket) => void;
 };
 
-export function Column({ status, workspaceId, onTicketCreated }: Props): React.ReactElement {
+export function Column({ status, projectId, onTicketCreated }: Props): React.ReactElement {
   const { setNodeRef, isOver } = useDroppable({
     id: status.id,
     data: { type: "column", statusId: status.id },
@@ -61,7 +61,7 @@ export function Column({ status, workspaceId, onTicketCreated }: Props): React.R
         </ScrollArea>
         <div className="border-t border-border/40 p-1">
           <NewTicketDialog
-            workspaceId={workspaceId}
+            projectId={projectId}
             statusId={status.id}
             statusName={status.name}
             onCreated={onTicketCreated}

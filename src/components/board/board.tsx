@@ -91,7 +91,7 @@ export function Board({ initialData }: Props): React.ReactElement {
   );
 
   const { status: rtStatus, clientId: rtClientId } = useBoardChannel(
-    initialData.workspace.id,
+    initialData.project.workspaceId,
     handleEvent,
   );
 
@@ -248,7 +248,7 @@ export function Board({ initialData }: Props): React.ReactElement {
             <Column
               key={status.id}
               status={status}
-              workspaceId={initialData.workspace.id}
+              projectId={initialData.project.id}
               onTicketCreated={onTicketCreated}
             />
           ))}

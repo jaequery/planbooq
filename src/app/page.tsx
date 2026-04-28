@@ -11,11 +11,23 @@ export default async function Home(): Promise<React.ReactElement> {
   if (session?.user?.id) {
     const membership = await prisma.member.findFirst({
       where: { userId: session.user.id },
-      include: { workspace: true },
+      include: {
+        workspace: {
+          include: {
+            projects: {
+              orderBy: { position: "asc" },
+              take: 1,
+            },
+          },
+        },
+      },
       orderBy: { createdAt: "asc" },
     });
     if (membership) {
-      redirect(`/w/${membership.workspace.slug}`);
+      const firstProject = membership.workspace.projects[0];
+      if (firstProject) {
+        redirect(`/p/${firstProject.slug}`);
+      }
     }
   }
 
