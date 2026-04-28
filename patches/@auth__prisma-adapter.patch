@@ -1,0 +1,22 @@
+diff --git a/index.js b/index.js
+index 67d4f597494e298c6a7e457eb50bb98bd074de56..450b350ba5a0cdef39e91bd1b1af3a7b1109b382 100644
+--- a/index.js
++++ b/index.js
+@@ -16,7 +16,7 @@ export function PrismaAdapter(prisma) {
+             where: { id },
+             ...stripUndefined(data),
+         }),
+-        deleteUser: (id) => p.user.delete({ where: { id } }),
++        deleteUser: async (id) => { try { return await p.user.delete({ where: { id } }); } catch (e) { if (e && typeof e === "object" && "code" in e && e.code === "P2025") return null; throw e; } },
+         linkAccount: (data) => p.account.create({ data }),
+         unlinkAccount: (provider_providerAccountId) => p.account.delete({
+             where: { provider_providerAccountId },
+@@ -36,7 +36,7 @@ export function PrismaAdapter(prisma) {
+             where: { sessionToken: data.sessionToken },
+             ...stripUndefined(data),
+         }),
+-        deleteSession: (sessionToken) => p.session.delete({ where: { sessionToken } }),
++        deleteSession: async (sessionToken) => { try { return await p.session.delete({ where: { sessionToken } }); } catch (e) { if (e && typeof e === "object" && "code" in e && e.code === "P2025") return null; throw e; } },
+         async createVerificationToken(data) {
+             const verificationToken = await p.verificationToken.create(stripUndefined(data));
+             if ("id" in verificationToken && verificationToken.id)
