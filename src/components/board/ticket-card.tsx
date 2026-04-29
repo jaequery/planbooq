@@ -33,6 +33,11 @@ type Props = {
   isOverlay?: boolean;
   onUpdated?: (ticket: Ticket) => void;
   onArchived?: (ticketId: string) => void;
+  statusName?: string;
+  statusColor?: string;
+  projectName?: string;
+  projectColor?: string;
+  projectSlug?: string;
 };
 
 export function TicketCard({
@@ -40,6 +45,11 @@ export function TicketCard({
   isOverlay = false,
   onUpdated,
   onArchived,
+  statusName = "",
+  statusColor = "#94a3b8",
+  projectName = "",
+  projectColor = "#94a3b8",
+  projectSlug,
 }: Props): React.ReactElement {
   const [detailOpen, setDetailOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -171,6 +181,11 @@ export function TicketCard({
             open={detailOpen}
             onOpenChange={setDetailOpen}
             onUpdated={(updated) => onUpdated?.(updated)}
+            statusName={statusName}
+            statusColor={statusColor}
+            projectName={projectName}
+            projectColor={projectColor}
+            projectSlug={projectSlug}
           />
           <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
             <DialogContent className="sm:max-w-md">

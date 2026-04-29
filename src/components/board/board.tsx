@@ -362,6 +362,9 @@ export function Board({ initialData }: Props): React.ReactElement {
               status={status}
               tickets={status.tickets}
               projectId={initialData.project.id}
+              projectName={initialData.project.name}
+              projectColor={initialData.project.color}
+              projectSlug={initialData.project.slug}
               onTicketCreated={onTicketCreated}
               onTicketUpdated={onTicketUpdated}
               onTicketArchived={onTicketArchived}

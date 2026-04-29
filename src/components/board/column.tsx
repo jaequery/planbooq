@@ -12,6 +12,9 @@ type Props = {
   status: StatusWithTickets;
   tickets?: Ticket[];
   projectId: string;
+  projectName: string;
+  projectColor: string;
+  projectSlug: string;
   onTicketCreated: (ticket: Ticket) => void;
   onTicketUpdated: (ticket: Ticket) => void;
   onTicketArchived: (ticketId: string) => void;
@@ -22,6 +25,9 @@ export function Column({
   status,
   tickets = status.tickets,
   projectId,
+  projectName,
+  projectColor,
+  projectSlug,
   onTicketCreated,
   onTicketUpdated,
   onTicketArchived,
@@ -77,6 +83,11 @@ export function Column({
                     ticket={ticket}
                     onUpdated={onTicketUpdated}
                     onArchived={onTicketArchived}
+                    statusName={status.name}
+                    statusColor={status.color}
+                    projectName={projectName}
+                    projectColor={projectColor}
+                    projectSlug={projectSlug}
                   />
                 ))
               )}
