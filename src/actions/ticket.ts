@@ -45,6 +45,7 @@ export async function moveTicket(
 
     const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
     if (!ticket) return { ok: false, error: "ticket_not_found" };
+    if (ticket.archivedAt) return { ok: false, error: "ticket_archived" };
 
     await requireMembership(ticket.workspaceId, userId);
     const fromStatusId = ticket.statusId;
@@ -69,7 +70,8 @@ export async function moveTicket(
           !before ||
           before.workspaceId !== ticket.workspaceId ||
           before.projectId !== ticket.projectId ||
-          before.statusId !== toStatusId
+          before.statusId !== toStatusId ||
+          before.archivedAt
         ) {
           throw new Error("invalid_anchor_before");
         }
@@ -79,7 +81,8 @@ export async function moveTicket(
           !after ||
           after.workspaceId !== ticket.workspaceId ||
           after.projectId !== ticket.projectId ||
-          after.statusId !== toStatusId
+          after.statusId !== toStatusId ||
+          after.archivedAt
         ) {
           throw new Error("invalid_anchor_after");
         }
@@ -98,6 +101,7 @@ export async function moveTicket(
             statusId: toStatusId,
             projectId: ticket.projectId,
             workspaceId: ticket.workspaceId,
+            archivedAt: null,
           },
           orderBy: { position: "desc" },
           select: { position: true },
@@ -187,7 +191,7 @@ export async function createTicket(
     }
 
     const last = await prisma.ticket.findFirst({
-      where: { projectId: project.id, statusId: data.statusId },
+      where: { projectId: project.id, statusId: data.statusId, archivedAt: null },
       orderBy: { position: "desc" },
     });
     const position = (last?.position ?? 0) + 1;
@@ -230,6 +234,106 @@ export async function createTicket(
     return { ok: true, data: ticket };
   } catch (error) {
     logger.error("createTicket.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
+const UpdateSchema = z
+  .object({
+    ticketId: z.string().min(1),
+    title: z.string().min(1).max(200),
+    description: z.string().max(5000).optional(),
+  })
+  .strict();
+
+export async function updateTicket(
+  input: z.infer<typeof UpdateSchema>,
+): Promise<ServerActionResult<Ticket>> {
+  try {
+    const data = UpdateSchema.parse(input);
+    const userId = await requireUserId();
+
+    const ticket = await prisma.ticket.findUnique({ where: { id: data.ticketId } });
+    if (!ticket || ticket.archivedAt) {
+      return { ok: false, error: "ticket_not_found" };
+    }
+    await requireMembership(ticket.workspaceId, userId);
+
+    const updated = await prisma.ticket.update({
+      where: { id: ticket.id },
+      data: {
+        title: data.title,
+        description: data.description?.trim() ? data.description : null,
+      },
+    });
+
+    const project = await prisma.project.findUnique({
+      where: { id: ticket.projectId },
+      select: { slug: true },
+    });
+    if (project) revalidatePath(`/p/${project.slug}`);
+
+    await publishWorkspaceEvent(ticket.workspaceId, {
+      name: "ticket.updated",
+      ticketId: ticket.id,
+      workspaceId: ticket.workspaceId,
+      projectId: ticket.projectId,
+      ticket: updated,
+      by: userId,
+    });
+
+    return { ok: true, data: updated };
+  } catch (error) {
+    logger.error("updateTicket.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
+const ArchiveSchema = z
+  .object({
+    ticketId: z.string().min(1),
+  })
+  .strict();
+
+export async function archiveTicket(
+  input: z.infer<typeof ArchiveSchema>,
+): Promise<ServerActionResult<{ ticketId: string }>> {
+  try {
+    const data = ArchiveSchema.parse(input);
+    const userId = await requireUserId();
+
+    const ticket = await prisma.ticket.findUnique({ where: { id: data.ticketId } });
+    if (!ticket || ticket.archivedAt) {
+      return { ok: false, error: "ticket_not_found" };
+    }
+    await requireMembership(ticket.workspaceId, userId);
+
+    await prisma.ticket.update({
+      where: { id: ticket.id },
+      data: { archivedAt: new Date() },
+    });
+
+    const project = await prisma.project.findUnique({
+      where: { id: ticket.projectId },
+      select: { slug: true },
+    });
+    if (project) revalidatePath(`/p/${project.slug}`);
+
+    await publishWorkspaceEvent(ticket.workspaceId, {
+      name: "ticket.archived",
+      ticketId: ticket.id,
+      workspaceId: ticket.workspaceId,
+      projectId: ticket.projectId,
+      by: userId,
+    });
+
+    return { ok: true, data: { ticketId: ticket.id } };
+  } catch (error) {
+    logger.error("archiveTicket.failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     return { ok: false, error: error instanceof Error ? error.message : "unknown" };

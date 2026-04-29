@@ -34,6 +34,21 @@ export type AblyChannelEvent =
       by: string;
     }
   | {
+      name: "ticket.updated";
+      ticketId: string;
+      workspaceId: string;
+      projectId: string;
+      ticket: Ticket;
+      by: string;
+    }
+  | {
+      name: "ticket.archived";
+      ticketId: string;
+      workspaceId: string;
+      projectId: string;
+      by: string;
+    }
+  | {
       name: "project.created";
       workspaceId: string;
       project: Project;

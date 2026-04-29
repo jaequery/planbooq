@@ -30,7 +30,7 @@ function slugify(input: string): string {
     .slice(0, 60);
 }
 
-export const CreateProjectSchema = z
+const CreateProjectSchema = z
   .object({
     name: z.string().min(1).max(80),
     slug: z.string().min(1).max(60).regex(SLUG_RE, "invalid_slug").optional(),
@@ -41,9 +41,9 @@ export const CreateProjectSchema = z
   })
   .strict();
 
-export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
+type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
 
-export type CreateProjectResult = { ok: true; project: Project } | { ok: false; error: string };
+type CreateProjectResult = { ok: true; project: Project } | { ok: false; error: string };
 
 export async function createProject(input: CreateProjectInput): Promise<CreateProjectResult> {
   try {

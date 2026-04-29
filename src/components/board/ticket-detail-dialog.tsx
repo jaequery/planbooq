@@ -1,12 +1,11 @@
 "use client";
 
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import { Plus } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useEffect, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { createTicket } from "@/actions/ticket";
+import { updateTicket } from "@/actions/ticket";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,7 +14,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,81 +28,64 @@ const Schema = z.object({
 type FormValues = z.infer<typeof Schema>;
 
 type Props = {
-  projectId: string;
-  statusId: string;
-  statusName: string;
-  onCreated: (ticket: Ticket) => void;
-  compact?: boolean;
+  ticket: Ticket;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onUpdated: (ticket: Ticket) => void;
 };
 
-export function NewTicketDialog({
-  projectId,
-  statusId,
-  statusName,
-  onCreated,
-  compact = false,
+export function TicketDetailDialog({
+  ticket,
+  open,
+  onOpenChange,
+  onUpdated,
 }: Props): React.ReactElement {
-  const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const form = useForm<FormValues>({
     resolver: standardSchemaResolver(Schema),
-    defaultValues: { title: "", description: "" },
+    defaultValues: {
+      title: ticket.title,
+      description: ticket.description ?? "",
+    },
   });
+
+  useEffect(() => {
+    if (!open) return;
+    form.reset({
+      title: ticket.title,
+      description: ticket.description ?? "",
+    });
+  }, [form, open, ticket.description, ticket.title]);
 
   const onSubmit = (values: FormValues): void => {
     startTransition(async () => {
-      const result = await createTicket({
-        projectId,
-        statusId,
+      const result = await updateTicket({
+        ticketId: ticket.id,
         title: values.title,
         description: values.description?.trim() ? values.description : undefined,
       });
       if (!result.ok) {
-        toast.error(`Could not create ticket: ${result.error}`);
+        toast.error(`Could not update ticket: ${result.error}`);
         return;
       }
-      onCreated(result.data);
-      toast.success("Ticket created");
-      form.reset();
-      setOpen(false);
+      onUpdated(result.data);
+      toast.success("Ticket updated");
+      onOpenChange(false);
     });
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {compact ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 gap-1 px-1.5 text-[12px] text-muted-foreground hover:text-foreground"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New
-          </Button>
-        ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-full justify-start gap-1.5 text-[12px] text-muted-foreground hover:text-foreground"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New ticket
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New ticket</DialogTitle>
-          <DialogDescription>
-            Adds to <span className="font-medium text-foreground">{statusName}</span>.
-          </DialogDescription>
+          <DialogTitle>Edit ticket</DialogTitle>
+          <DialogDescription>Update the work prompt and launch context.</DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-4" onSubmit={form.handleSubmit(onSubmit)}>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="title">Title</Label>
+            <Label htmlFor={`ticket-title-${ticket.id}`}>Title</Label>
             <Input
-              id="title"
+              id={`ticket-title-${ticket.id}`}
               placeholder="What needs doing?"
               autoFocus
               {...form.register("title")}
@@ -114,20 +95,25 @@ export function NewTicketDialog({
             ) : null}
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor={`ticket-description-${ticket.id}`}>Description</Label>
             <Textarea
-              id="description"
-              placeholder="Optional context, acceptance criteria, links…"
-              rows={4}
+              id={`ticket-description-${ticket.id}`}
+              placeholder="Acceptance criteria, links, screenshots, constraints…"
+              rows={7}
               {...form.register("description")}
             />
           </div>
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              disabled={pending}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={pending}>
-              {pending ? "Creating…" : "Create ticket"}
+              {pending ? "Saving…" : "Save changes"}
             </Button>
           </DialogFooter>
         </form>

@@ -121,4 +121,15 @@
   body {
     @apply bg-background text-foreground;
   }
+  button:not(:disabled),
+  a,
+  [role="button"]:not([aria-disabled="true"]),
+  [role="menuitem"],
+  [role="tab"],
+  [role="option"],
+  summary,
+  label[for],
+  select:not(:disabled) {
+    cursor: pointer;
+  }
 }

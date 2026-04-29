@@ -33,7 +33,7 @@ export default async function ProjectPage({ params }: Props): Promise<React.Reac
       orderBy: { position: "asc" },
       include: {
         tickets: {
-          where: { projectId: project.id },
+          where: { projectId: project.id, archivedAt: null },
           orderBy: { position: "asc" },
         },
       },

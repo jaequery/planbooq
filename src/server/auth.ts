@@ -1,10 +1,29 @@
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import { Prisma } from "@prisma/client";
 import NextAuth from "next-auth";
+import type { Adapter } from "next-auth/adapters";
 import Nodemailer from "next-auth/providers/nodemailer";
 import { env } from "@/env";
 import { DEFAULT_STATUSES } from "@/lib/default-statuses";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/server/db";
+
+function tolerantAdapter(): Adapter {
+  const base = PrismaAdapter(prisma) as Adapter;
+  const isMissing = (e: unknown): boolean =>
+    e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025";
+  return {
+    ...base,
+    deleteSession: async (sessionToken: string): Promise<void> => {
+      try {
+        await base.deleteSession?.(sessionToken);
+      } catch (e) {
+        if (isMissing(e)) return;
+        throw e;
+      }
+    },
+  };
+}
 
 async function ensurePersonalWorkspace(userId: string): Promise<void> {
   const existing = await prisma.member.findFirst({
@@ -66,7 +85,7 @@ async function ensurePersonalWorkspace(userId: string): Promise<void> {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  adapter: tolerantAdapter(),
   session: { strategy: "database" },
   secret: env.NEXTAUTH_SECRET,
   // Dev (NODE_ENV !== "production") auto-trusts the host so Auth.js endpoints

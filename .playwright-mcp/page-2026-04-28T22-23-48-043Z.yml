@@ -1,0 +1,15 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]: Check your inbox
+        - generic [ref=e6]: We sent a magic link to fresh+today@planbooq.local. Click it to sign in.
+      - generic [ref=e23]:
+        - text: In dev, check
+        - link "Mailpit" [ref=e24] [cursor=pointer]:
+          - /url: http://localhost:8025
+        - text: to grab the link.
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e18] [cursor=pointer]:
+    - img [ref=e19]
+  - alert [ref=e22]

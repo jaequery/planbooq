@@ -1,0 +1,7 @@
+onlyBuiltDependencies:
+  - '@prisma/engines'
+  - esbuild
+  - msw
+  - prisma
+  - protobufjs
+  - sharp

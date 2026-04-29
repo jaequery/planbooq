@@ -10,17 +10,27 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   status: StatusWithTickets;
+  tickets?: Ticket[];
   projectId: string;
   onTicketCreated: (ticket: Ticket) => void;
+  onTicketUpdated: (ticket: Ticket) => void;
+  onTicketArchived: (ticketId: string) => void;
+  isFiltered?: boolean;
 };
 
-export function Column({ status, projectId, onTicketCreated }: Props): React.ReactElement {
+export function Column({
+  status,
+  tickets = status.tickets,
+  projectId,
+  onTicketCreated,
+  onTicketUpdated,
+  onTicketArchived,
+  isFiltered = false,
+}: Props): React.ReactElement {
   const { setNodeRef, isOver } = useDroppable({
     id: status.id,
     data: { type: "column", statusId: status.id },
   });
-
-  const tickets = status.tickets;
 
   return (
     <div className="flex h-full w-[300px] shrink-0 flex-col">
@@ -38,6 +48,13 @@ export function Column({ status, projectId, onTicketCreated }: Props): React.Rea
             {tickets.length}
           </span>
         </div>
+        <NewTicketDialog
+          projectId={projectId}
+          statusId={status.id}
+          statusName={status.name}
+          onCreated={onTicketCreated}
+          compact
+        />
       </div>
       <div
         ref={setNodeRef}
@@ -51,22 +68,21 @@ export function Column({ status, projectId, onTicketCreated }: Props): React.Rea
             <div className="flex flex-col gap-1.5 p-2">
               {tickets.length === 0 ? (
                 <div className="flex h-20 items-center justify-center rounded-md border border-dashed border-border/40 text-[12px] text-muted-foreground/70">
-                  No tickets yet
+                  {isFiltered ? "No matching tickets" : "No tickets yet"}
                 </div>
               ) : (
-                tickets.map((ticket) => <TicketCard key={ticket.id} ticket={ticket} />)
+                tickets.map((ticket) => (
+                  <TicketCard
+                    key={ticket.id}
+                    ticket={ticket}
+                    onUpdated={onTicketUpdated}
+                    onArchived={onTicketArchived}
+                  />
+                ))
               )}
             </div>
           </SortableContext>
         </ScrollArea>
-        <div className="border-t border-border/40 p-1">
-          <NewTicketDialog
-            projectId={projectId}
-            statusId={status.id}
-            statusName={status.name}
-            onCreated={onTicketCreated}
-          />
-        </div>
       </div>
     </div>
   );

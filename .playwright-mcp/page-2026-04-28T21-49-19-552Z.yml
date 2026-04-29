@@ -1,0 +1,80 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]: Planbooq
+        - generic [ref=e6]: /
+        - generic [ref=e7]: Personal
+      - generic [ref=e8]:
+        - button "Toggle theme" [ref=e9]:
+          - img
+        - button "User menu" [ref=e10]:
+          - generic [ref=e12]: J
+    - generic [ref=e14]:
+      - generic [ref=e15]:
+        - generic [ref=e16]: Board
+        - generic [ref=e19]: Idle
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e23]:
+            - heading "Backlog" [level=3] [ref=e25]
+            - generic [ref=e26]: "0"
+          - generic [ref=e27]:
+            - generic [ref=e32]: No tickets yet
+            - button "New ticket" [ref=e34]:
+              - img
+              - text: New ticket
+        - generic [ref=e35]:
+          - generic [ref=e37]:
+            - heading "Planning" [level=3] [ref=e39]
+            - generic [ref=e40]: "0"
+          - generic [ref=e41]:
+            - generic [ref=e46]: No tickets yet
+            - button "New ticket" [ref=e48]:
+              - img
+              - text: New ticket
+        - generic [ref=e49]:
+          - generic [ref=e51]:
+            - heading "Building" [level=3] [ref=e53]
+            - generic [ref=e54]: "1"
+          - generic [ref=e55]:
+            - button "create landing page — 7 seconds" [ref=e60]:
+              - generic [ref=e61]: create landing page
+              - generic [ref=e62]:
+                - generic [ref=e63]:
+                  - img [ref=e64]
+                  - generic [ref=e68]: —
+                - time [ref=e69]: 7 seconds
+            - button "New ticket" [ref=e71]:
+              - img
+              - text: New ticket
+        - generic [ref=e72]:
+          - generic [ref=e74]:
+            - heading "Review" [level=3] [ref=e76]
+            - generic [ref=e77]: "0"
+          - generic [ref=e78]:
+            - generic [ref=e83]: No tickets yet
+            - button "New ticket" [ref=e85]:
+              - img
+              - text: New ticket
+        - generic [ref=e86]:
+          - generic [ref=e88]:
+            - heading "Shipping" [level=3] [ref=e90]
+            - generic [ref=e91]: "0"
+          - generic [ref=e92]:
+            - generic [ref=e97]: No tickets yet
+            - button "New ticket" [ref=e99]:
+              - img
+              - text: New ticket
+        - generic [ref=e100]:
+          - generic [ref=e102]:
+            - heading "Completed" [level=3] [ref=e104]
+            - generic [ref=e105]: "0"
+          - generic [ref=e106]:
+            - generic [ref=e111]: No tickets yet
+            - button "New ticket" [ref=e113]:
+              - img
+              - text: New ticket
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e119] [cursor=pointer]:
+    - img [ref=e120]
