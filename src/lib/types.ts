@@ -38,7 +38,7 @@ export type AblyChannelEvent =
       ticketId: string;
       workspaceId: string;
       projectId: string;
-      ticket: Ticket;
+      ticket: TicketWithRelations;
       by: string;
     }
   | {
@@ -56,7 +56,7 @@ export type AblyChannelEvent =
       ticketId: string;
       workspaceId: string;
       projectId: string;
-      ticket: Ticket;
+      ticket: TicketWithRelations;
       by: string;
     }
   | {
@@ -64,6 +64,14 @@ export type AblyChannelEvent =
       ticketId: string;
       workspaceId: string;
       projectId: string;
+      by: string;
+    }
+  | {
+      name: "ticket.deleted";
+      ticketId: string;
+      workspaceId: string;
+      projectId: string;
+      statusId: string;
       by: string;
     }
   | {

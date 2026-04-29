@@ -91,33 +91,36 @@ export function Board({ initialData }: Props): React.ReactElement {
         });
       } else if (event.name === "ticket.updated") {
         setStatuses((prev) => {
-          // Preserve any locally-known relations (assignee/labels) since the
-          // realtime payload only carries the bare Ticket fields.
-          const existing = prev.flatMap((s) => s.tickets).find((t) => t.id === event.ticket.id);
+          // Payload carries TicketWithRelations; default missing relations
+          // defensively in case an older client publishes a bare Ticket.
           const merged: TicketWithRelations = {
             ...event.ticket,
-            assignee: existing?.assignee ?? null,
-            labels: existing?.labels ?? [],
+            assignee: event.ticket.assignee ?? null,
+            labels: event.ticket.labels ?? [],
           };
           return prev.map((s) => {
-            if (s.id !== event.ticket.statusId) {
-              return { ...s, tickets: s.tickets.filter((t) => t.id !== event.ticket.id) };
+            if (s.id !== merged.statusId) {
+              return { ...s, tickets: s.tickets.filter((t) => t.id !== merged.id) };
             }
-            const without = s.tickets.filter((t) => t.id !== event.ticket.id);
+            const without = s.tickets.filter((t) => t.id !== merged.id);
             const next = [...without, merged].sort((a, b) => a.position - b.position);
             return { ...s, tickets: next };
           });
         });
-      } else if (event.name === "ticket.archived") {
+      } else if (event.name === "ticket.archived" || event.name === "ticket.deleted") {
         setStatuses((prev) =>
           prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== event.ticketId) })),
         );
       } else if (event.name === "ticket.created") {
         setStatuses((prev) => {
           if (allTickets.has(event.ticket.id)) return prev;
-          const created: TicketWithRelations = { ...event.ticket, assignee: null, labels: [] };
+          const created: TicketWithRelations = {
+            ...event.ticket,
+            assignee: event.ticket.assignee ?? null,
+            labels: event.ticket.labels ?? [],
+          };
           return prev.map((s) => {
-            if (s.id !== event.ticket.statusId) return s;
+            if (s.id !== created.statusId) return s;
             const next = [...s.tickets, created].sort((a, b) => a.position - b.position);
             return { ...s, tickets: next };
           });

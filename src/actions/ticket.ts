@@ -7,7 +7,6 @@ import { logger } from "@/lib/logger";
 import type {
   Label,
   ServerActionResult,
-  Ticket,
   TicketAssignee,
   TicketLabel,
   TicketWithRelations,
@@ -197,7 +196,7 @@ const CreateSchema = z.object({
 
 export async function createTicket(
   input: z.infer<typeof CreateSchema>,
-): Promise<ServerActionResult<Ticket>> {
+): Promise<ServerActionResult<TicketWithRelations>> {
   try {
     const data = CreateSchema.parse(input);
     const userId = await requireUserId();
@@ -232,6 +231,7 @@ export async function createTicket(
         position,
         createdById: userId,
       },
+      include: TICKET_RELATIONS_INCLUDE,
     });
 
     revalidatePath(`/p/${project.slug}`);
@@ -427,6 +427,15 @@ export async function deleteTicket(input: z.infer<typeof DeleteSchema>): Promise
       select: { slug: true },
     });
     if (project) revalidatePath(`/p/${project.slug}`);
+
+    await publishWorkspaceEvent(ticket.workspaceId, {
+      name: "ticket.deleted",
+      ticketId: ticket.id,
+      workspaceId: ticket.workspaceId,
+      projectId: ticket.projectId,
+      statusId: ticket.statusId,
+      by: userId,
+    });
 
     return {
       ok: true,
