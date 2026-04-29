@@ -47,3 +47,7 @@ yarn-error.log*
 .idea
 .vscode/*
 !.vscode/extensions.json
+
+# team-build worktree artifacts
+.team-build/
+.playwright-mcp/

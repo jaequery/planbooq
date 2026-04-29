@@ -7,8 +7,11 @@ function emit(level: LogLevel, message: string, meta?: Record<string, unknown>):
     timestamp: new Date().toISOString(),
     ...(meta ?? {}),
   };
-  // Server-side structured logging only; console.error is the safe channel.
-  console.error(JSON.stringify(payload));
+  const line = JSON.stringify(payload);
+  // Route by level so dev overlays don't surface info/warn as Console Errors.
+  if (level === "error") console.error(line);
+  else if (level === "warn") console.warn(line);
+  else console.log(line);
 }
 
 export const logger = {

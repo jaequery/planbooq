@@ -34,6 +34,7 @@ type Props = {
   statusId: string;
   statusName: string;
   onCreated: (ticket: Ticket) => void;
+  compact?: boolean;
 };
 
 export function NewTicketDialog({
@@ -41,6 +42,7 @@ export function NewTicketDialog({
   statusId,
   statusName,
   onCreated,
+  compact = false,
 }: Props): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -71,14 +73,25 @@ export function NewTicketDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 w-full justify-start gap-1.5 text-[12px] text-muted-foreground hover:text-foreground"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          New ticket
-        </Button>
+        {compact ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 gap-1 px-1.5 text-[12px] text-muted-foreground hover:text-foreground"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-full justify-start gap-1.5 text-[12px] text-muted-foreground hover:text-foreground"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New ticket
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>

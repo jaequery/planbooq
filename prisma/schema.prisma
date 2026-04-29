@@ -147,6 +147,7 @@ model Ticket {
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  archivedAt  DateTime?
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)

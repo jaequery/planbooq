@@ -80,23 +80,35 @@ export function useBoardChannel(
     });
 
     channel = realtime.channels.get(`workspace:${workspaceId}`);
-    channel.subscribe((message) => {
-      const data = message.data as AblyChannelEvent | undefined;
-      if (!data || typeof data !== "object" || !("name" in data)) return;
-      if (data.workspaceId !== workspaceId) {
-        logger.warn("realtime.workspace_mismatch", {
-          expected: workspaceId,
-          received: data.workspaceId,
+    channel
+      .subscribe((message) => {
+        const data = message.data as AblyChannelEvent | undefined;
+        if (!data || typeof data !== "object" || !("name" in data)) return;
+        if (data.workspaceId !== workspaceId) {
+          logger.warn("realtime.workspace_mismatch", {
+            expected: workspaceId,
+            received: data.workspaceId,
+          });
+          return;
+        }
+        onEventRef.current(data, message.clientId ?? null);
+      })
+      .catch((err: unknown) => {
+        // Subscribe attach can reject if the connection is closed during dev
+        // strict-mode double-invocation. Swallow — cleanup handled below.
+        logger.warn("realtime.subscribe_failed", {
+          error: err instanceof Error ? err.message : String(err),
         });
-        return;
-      }
-      onEventRef.current(data, message.clientId ?? null);
-    });
+      });
 
     return () => {
       cancelled = true;
-      if (channel) channel.unsubscribe();
-      if (realtime) realtime.close();
+      try {
+        if (channel) channel.unsubscribe();
+      } catch {}
+      try {
+        if (realtime) realtime.close();
+      } catch {}
     };
   }, [workspaceId]);
 

@@ -12,6 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { FileText, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -19,6 +20,8 @@ import { moveTicket } from "@/actions/ticket";
 import { Column } from "@/components/board/column";
 import { RealtimeIndicator } from "@/components/board/realtime-indicator";
 import { TicketCard } from "@/components/board/ticket-card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
 import type { BoardData, StatusWithTickets, Ticket } from "@/lib/types";
 
@@ -43,6 +46,8 @@ export function Board({ initialData }: Props): React.ReactElement {
   const router = useRouter();
   const [statuses, setStatuses] = useState<StatusWithTickets[]>(initialData.statuses);
   const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [hasDescriptionOnly, setHasDescriptionOnly] = useState(false);
   const currentProjectId = initialData.project.id;
 
   const allTickets = useMemo(() => {
@@ -84,6 +89,21 @@ export function Board({ initialData }: Props): React.ReactElement {
             return { ...s, tickets: next };
           });
         });
+      } else if (event.name === "ticket.updated") {
+        setStatuses((prev) =>
+          prev.map((s) => {
+            if (s.id !== event.ticket.statusId) {
+              return { ...s, tickets: s.tickets.filter((t) => t.id !== event.ticket.id) };
+            }
+            const without = s.tickets.filter((t) => t.id !== event.ticket.id);
+            const next = [...without, event.ticket].sort((a, b) => a.position - b.position);
+            return { ...s, tickets: next };
+          }),
+        );
+      } else if (event.name === "ticket.archived") {
+        setStatuses((prev) =>
+          prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== event.ticketId) })),
+        );
       } else if (event.name === "ticket.created") {
         setStatuses((prev) => {
           if (allTickets.has(event.ticket.id)) return prev;
@@ -128,6 +148,25 @@ export function Board({ initialData }: Props): React.ReactElement {
             }
           : s,
       ),
+    );
+  }, []);
+
+  const onTicketUpdated = useCallback((ticket: Ticket) => {
+    setStatuses((prev) =>
+      prev.map((s) => {
+        if (s.id !== ticket.statusId) {
+          return { ...s, tickets: s.tickets.filter((t) => t.id !== ticket.id) };
+        }
+        const without = s.tickets.filter((t) => t.id !== ticket.id);
+        const next = [...without, ticket].sort((a, b) => a.position - b.position);
+        return { ...s, tickets: next };
+      }),
+    );
+  }, []);
+
+  const onTicketArchived = useCallback((ticketId: string) => {
+    setStatuses((prev) =>
+      prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== ticketId) })),
     );
   }, []);
 
@@ -237,14 +276,79 @@ export function Board({ initialData }: Props): React.ReactElement {
   };
 
   const activeTicket = activeTicketId ? (allTickets.get(activeTicketId) ?? null) : null;
+  const normalizedQuery = query.trim().toLowerCase();
+  const isFiltered = normalizedQuery.length > 0 || hasDescriptionOnly;
+  const visibleStatuses = useMemo(
+    () =>
+      statuses.map((status) => ({
+        ...status,
+        tickets: status.tickets.filter((ticket) => {
+          if (hasDescriptionOnly && !ticket.description?.trim()) return false;
+          if (!normalizedQuery) return true;
+          return (
+            ticket.title.toLowerCase().includes(normalizedQuery) ||
+            (ticket.description?.toLowerCase().includes(normalizedQuery) ?? false)
+          );
+        }),
+      })),
+    [hasDescriptionOnly, normalizedQuery, statuses],
+  );
+  const visibleTicketCount = visibleStatuses.reduce(
+    (sum, status) => sum + status.tickets.length,
+    0,
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-between px-4 py-2">
-        <div className="text-[13px] font-medium text-muted-foreground">Board</div>
-        <RealtimeIndicator status={rtStatus} />
+      <div className="flex flex-col gap-2 px-4 py-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="text-[13px] font-medium text-muted-foreground">Board</div>
+            {isFiltered ? (
+              <span className="text-[12px] tabular-nums text-muted-foreground/70">
+                {visibleTicketCount} match{visibleTicketCount === 1 ? "" : "es"}
+              </span>
+            ) : null}
+          </div>
+          <RealtimeIndicator status={rtStatus} />
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative max-w-sm flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/70" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search tickets…"
+              className="h-8 pl-8 pr-8 text-[13px]"
+            />
+            {query ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="absolute right-1 top-1/2 -translate-y-1/2"
+                onClick={() => setQuery("")}
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            variant={hasDescriptionOnly ? "secondary" : "outline"}
+            size="sm"
+            className="h-8 gap-1.5 text-[12px]"
+            onClick={() => setHasDescriptionOnly((value) => !value)}
+            aria-pressed={hasDescriptionOnly}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Has context
+          </Button>
+        </div>
       </div>
       <DndContext
+        id="board-dnd"
         sensors={sensors}
         modifiers={[restrictToWindowEdges]}
         onDragStart={onDragStart}
@@ -252,12 +356,19 @@ export function Board({ initialData }: Props): React.ReactElement {
         onDragCancel={() => setActiveTicketId(null)}
       >
         <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-4 pb-4">
-          {statuses.map((status) => (
+          {visibleStatuses.map((status) => (
             <Column
               key={status.id}
               status={status}
+              tickets={status.tickets}
               projectId={initialData.project.id}
+              projectName={initialData.project.name}
+              projectColor={initialData.project.color}
+              projectSlug={initialData.project.slug}
               onTicketCreated={onTicketCreated}
+              onTicketUpdated={onTicketUpdated}
+              onTicketArchived={onTicketArchived}
+              isFiltered={isFiltered}
             />
           ))}
         </div>
