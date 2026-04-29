@@ -1,8 +1,26 @@
-import type { Member, Project, Role, Status, Ticket, User, Workspace } from "@prisma/client";
+import type {
+  Label,
+  Member,
+  Priority,
+  Project,
+  Role,
+  Status,
+  Ticket,
+  User,
+  Workspace,
+} from "@prisma/client";
 
-export type { Member, Project, Role, Status, Ticket, User, Workspace };
+export type { Label, Member, Priority, Project, Role, Status, Ticket, User, Workspace };
 
-export type StatusWithTickets = Status & { tickets: Ticket[] };
+export type TicketAssignee = Pick<User, "id" | "name" | "email" | "image">;
+export type TicketLabel = Pick<Label, "id" | "name" | "color">;
+
+export type TicketWithRelations = Ticket & {
+  assignee?: TicketAssignee | null;
+  labels?: TicketLabel[];
+};
+
+export type StatusWithTickets = Status & { tickets: TicketWithRelations[] };
 
 export type ProjectSummary = Pick<Project, "id" | "slug" | "name" | "color">;
 
