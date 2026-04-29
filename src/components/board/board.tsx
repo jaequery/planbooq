@@ -298,40 +298,35 @@ export function Board({ initialData }: Props): React.ReactElement {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-col gap-2 px-4 py-2">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <div className="text-[13px] font-medium text-muted-foreground">Board</div>
-            {isFiltered ? (
-              <span className="text-[12px] tabular-nums text-muted-foreground/70">
-                {visibleTicketCount} match{visibleTicketCount === 1 ? "" : "es"}
-              </span>
-            ) : null}
-          </div>
-          <RealtimeIndicator status={rtStatus} />
+      <div className="flex items-center gap-3 px-4 py-2">
+        <div className="relative max-w-sm flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/70" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search tickets…"
+            className="h-8 pl-8 pr-8 text-[13px]"
+          />
+          {query ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="absolute right-1 top-1/2 -translate-y-1/2"
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative max-w-sm flex-1">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/70" />
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search tickets…"
-              className="h-8 pl-8 pr-8 text-[13px]"
-            />
-            {query ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                className="absolute right-1 top-1/2 -translate-y-1/2"
-                onClick={() => setQuery("")}
-                aria-label="Clear search"
-              >
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            ) : null}
-          </div>
+        {isFiltered ? (
+          <span className="text-[12px] tabular-nums text-muted-foreground/70">
+            {visibleTicketCount} match{visibleTicketCount === 1 ? "" : "es"}
+          </span>
+        ) : null}
+        <div className="ml-auto">
+          <RealtimeIndicator status={rtStatus} />
         </div>
       </div>
       <DndContext
