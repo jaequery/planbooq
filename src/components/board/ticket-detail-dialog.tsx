@@ -1,17 +1,7 @@
 "use client";
 
 import { formatDistanceToNowStrict } from "date-fns";
-import {
-  CalendarDays,
-  ChevronRight,
-  Hash,
-  MoreHorizontal,
-  RefreshCw,
-  Star,
-  Tag,
-  User2,
-  X,
-} from "lucide-react";
+import { CalendarDays, Hash, MoreHorizontal, RefreshCw, Star, Tag, User2, X } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { updateTicket } from "@/actions/ticket";
@@ -57,7 +47,7 @@ function hashString(s: string): number {
 
 function Avatar({ name }: { name?: string | null }): React.ReactElement {
   if (!name) {
-    return <div aria-hidden className="h-4 w-4 shrink-0 rounded-full bg-muted-foreground/30" />;
+    return <div aria-hidden className="h-5 w-5 shrink-0 rounded-full bg-muted-foreground/30" />;
   }
   const color = AVATAR_COLORS[hashString(name) % AVATAR_COLORS.length];
   const initial = name.trim().charAt(0).toUpperCase() || "?";
@@ -65,7 +55,7 @@ function Avatar({ name }: { name?: string | null }): React.ReactElement {
     <div
       aria-hidden
       className={cn(
-        "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-medium text-white",
+        "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-medium text-white",
         color,
       )}
     >
@@ -227,7 +217,7 @@ export function TicketDetailDialog({
               />
               <span className="truncate">{projectName}</span>
             </span>
-            <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+            <span className="text-muted-foreground/40">/</span>
             <span className="font-mono text-[11px] uppercase opacity-80">{ticketIdLabel}</span>
           </div>
           <div className="flex items-center gap-1">
@@ -334,20 +324,18 @@ export function TicketDetailDialog({
             </div>
 
             <div className="mt-auto border-t border-border/60 px-8 py-6">
-              <div className="mb-3 text-[12px] font-medium uppercase tracking-wide text-muted-foreground">
-                Activity
-              </div>
+              <div className="mb-3 text-[13px] font-medium text-foreground">Activity</div>
               <ul className="space-y-2 text-[13px] text-muted-foreground">
                 <li className="flex items-center gap-2">
                   <Avatar name={null} />
-                  <span className="text-foreground">Created</span>
+                  <span className="text-foreground">You created the issue</span>
                   <span className="opacity-60">·</span>
                   <span>{formatDistanceToNowStrict(createdAt, { addSuffix: false })} ago</span>
                 </li>
                 {wasEdited ? (
                   <li className="flex items-center gap-2">
                     <Avatar name={null} />
-                    <span className="text-foreground">Edited</span>
+                    <span className="text-foreground">You edited the issue</span>
                     <span className="opacity-60">·</span>
                     <span>{formatDistanceToNowStrict(updatedAt, { addSuffix: false })} ago</span>
                   </li>
@@ -356,94 +344,60 @@ export function TicketDetailDialog({
             </div>
           </div>
 
-          <aside className="flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-border px-4 py-6">
-            <section>
-              <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                Properties
+          <aside className="flex w-[280px] shrink-0 flex-col gap-1 overflow-y-auto border-l border-border px-4 py-6">
+            <div className="flex items-center gap-2">
+              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Status</span>
+              <div className="flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[13px]">
+                <span
+                  aria-hidden
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{ backgroundColor: statusColor }}
+                />
+                <span className="text-foreground">{statusName}</span>
               </div>
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px]">
-                  <span
-                    aria-hidden
-                    className="h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: statusColor }}
-                  />
-                  <span className="text-foreground">{statusName}</span>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
-                  onClick={comingSoon("Priority")}
-                >
-                  <span className="inline-block h-2.5 w-2.5 rounded-full border border-dashed border-current" />
-                  Set priority
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
-                  onClick={comingSoon("Assignees")}
-                >
-                  <User2 className="h-3.5 w-3.5" />
-                  Assign
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
-                  onClick={comingSoon("Cycle")}
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Add to cycle
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
-                  onClick={comingSoon("Estimate")}
-                >
-                  <Hash className="h-3.5 w-3.5" />
-                  Set estimate
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
-                  onClick={comingSoon("Due date")}
-                >
-                  <CalendarDays className="h-3.5 w-3.5" />
-                  Set due date
-                </Button>
-              </div>
-            </section>
-
-            <section>
-              <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                Labels
-              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Priority</span>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-8 w-full justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
+                className="h-8 flex-1 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
+                onClick={comingSoon("Priority")}
+              >
+                <span className="inline-block h-2.5 w-2.5 rounded-full border border-dashed border-current" />
+                Set priority
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Assignee</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 flex-1 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
+                onClick={comingSoon("Assignees")}
+              >
+                <User2 className="h-3.5 w-3.5" />
+                Assign
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Labels</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 flex-1 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
                 onClick={comingSoon("Labels")}
               >
                 <Tag className="h-3.5 w-3.5" />
                 Add label
               </Button>
-            </section>
-
-            <section>
-              <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                Project
-              </div>
-              <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px]">
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Project</span>
+              <div className="flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[13px]">
                 <span
                   aria-hidden
                   className="h-3 w-3 rounded-sm"
@@ -451,7 +405,46 @@ export function TicketDetailDialog({
                 />
                 <span className="truncate text-foreground">{projectName}</span>
               </div>
-            </section>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Cycle</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 flex-1 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
+                onClick={comingSoon("Cycle")}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Add to cycle
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Estimate</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 flex-1 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
+                onClick={comingSoon("Estimate")}
+              >
+                <Hash className="h-3.5 w-3.5" />
+                Set estimate
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Due date</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 flex-1 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
+                onClick={comingSoon("Due date")}
+              >
+                <CalendarDays className="h-3.5 w-3.5" />
+                Set due date
+              </Button>
+            </div>
           </aside>
         </div>
       </DialogContent>
