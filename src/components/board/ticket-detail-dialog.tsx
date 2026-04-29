@@ -133,7 +133,7 @@ export function TicketDetailDialog({
       const result = await updateTicket({
         ticketId: ticket.id,
         title: nextTitle,
-        description: nextDescription.trim() ? nextDescription : undefined,
+        description: nextDescription.trim() ? nextDescription : null,
       });
       if (!result.ok) {
         rollback();
