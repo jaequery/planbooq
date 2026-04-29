@@ -1,11 +1,11 @@
 "use server";
 
+import type { Label } from "@prisma/client";
 import { Priority } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import type {
-  Label,
   ServerActionResult,
   TicketAssignee,
   TicketLabel,
