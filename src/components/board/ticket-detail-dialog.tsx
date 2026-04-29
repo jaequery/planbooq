@@ -1,8 +1,18 @@
 "use client";
 
 import { formatDistanceToNowStrict } from "date-fns";
-import { ChevronRight, MoreHorizontal, Send, Star, Tag, User2, X } from "lucide-react";
-import { useEffect, useRef, useState, useTransition } from "react";
+import {
+  CalendarDays,
+  ChevronRight,
+  Hash,
+  MoreHorizontal,
+  RefreshCw,
+  Star,
+  Tag,
+  User2,
+  X,
+} from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { updateTicket } from "@/actions/ticket";
 import { Button } from "@/components/ui/button";
@@ -23,6 +33,46 @@ type Props = {
   projectColor: string;
   projectSlug?: string;
 };
+
+const AVATAR_COLORS = [
+  "bg-rose-500",
+  "bg-orange-500",
+  "bg-amber-500",
+  "bg-lime-500",
+  "bg-emerald-500",
+  "bg-teal-500",
+  "bg-sky-500",
+  "bg-indigo-500",
+  "bg-violet-500",
+  "bg-fuchsia-500",
+];
+
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+function Avatar({ name }: { name?: string | null }): React.ReactElement {
+  if (!name) {
+    return <div aria-hidden className="h-4 w-4 shrink-0 rounded-full bg-muted-foreground/30" />;
+  }
+  const color = AVATAR_COLORS[hashString(name) % AVATAR_COLORS.length];
+  const initial = name.trim().charAt(0).toUpperCase() || "?";
+  return (
+    <div
+      aria-hidden
+      className={cn(
+        "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-medium text-white",
+        color,
+      )}
+    >
+      {initial}
+    </div>
+  );
+}
 
 function renderDescription(text: string): React.ReactElement {
   const lines = text.split("\n");
@@ -87,15 +137,11 @@ export function TicketDetailDialog({
   const [descriptionDraft, setDescriptionDraft] = useState(ticket.description ?? "");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
-  const editingTitleRef = useRef(false);
-  const editingDescRef = useRef(false);
-  editingTitleRef.current = isEditingTitle;
-  editingDescRef.current = isEditingDescription;
 
   useEffect(() => {
-    if (!editingTitleRef.current) setTitleDraft(ticket.title);
-    if (!editingDescRef.current) setDescriptionDraft(ticket.description ?? "");
-  }, [ticket.title, ticket.description]);
+    if (!isEditingTitle) setTitleDraft(ticket.title);
+    if (!isEditingDescription) setDescriptionDraft(ticket.description ?? "");
+  }, [ticket.title, ticket.description, isEditingTitle, isEditingDescription]);
 
   useEffect(() => {
     if (!open) {
@@ -160,7 +206,7 @@ export function TicketDetailDialog({
   const createdAt = new Date(ticket.createdAt);
   const updatedAt = new Date(ticket.updatedAt);
   const wasEdited = updatedAt.getTime() - createdAt.getTime() > 1000;
-  const ticketId = ticket.id.slice(-6).toUpperCase();
+  const ticketIdLabel = `${projectSlug?.slice(0, 4).toUpperCase() ?? "TKT"}-${ticket.id.slice(-6).toUpperCase()}`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -171,8 +217,8 @@ export function TicketDetailDialog({
         <DialogTitle className="sr-only">{ticket.title}</DialogTitle>
         <DialogDescription className="sr-only">Ticket detail for {ticket.title}</DialogDescription>
 
-        <div className="flex h-11 shrink-0 items-center justify-between border-b border-border/60 px-4">
-          <div className="flex min-w-0 items-center gap-1 text-[12px] text-muted-foreground">
+        <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/60 px-4">
+          <div className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
               <span
                 aria-hidden
@@ -181,13 +227,8 @@ export function TicketDetailDialog({
               />
               <span className="truncate">{projectName}</span>
             </span>
-            <ChevronRight className="h-3 w-3 opacity-60" />
-            <span className="font-mono text-[11px] uppercase opacity-80">
-              {projectSlug ? `${projectSlug}-` : ""}
-              {ticketId}
-            </span>
-            <ChevronRight className="h-3 w-3 opacity-60" />
-            <span className="truncate text-foreground/80">{ticket.title}</span>
+            <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+            <span className="font-mono text-[11px] uppercase opacity-80">{ticketIdLabel}</span>
           </div>
           <div className="flex items-center gap-1">
             <Button
@@ -208,20 +249,21 @@ export function TicketDetailDialog({
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
             </Button>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-xs"
               onClick={() => onOpenChange(false)}
-              className="ml-1 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
               aria-label="Close"
             >
               <X className="h-3.5 w-3.5" aria-hidden />
-            </button>
+            </Button>
           </div>
         </div>
 
         <div className="flex min-h-0 flex-1">
           <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-            <div className="px-10 py-8">
+            <div className="px-8 py-6">
               {isEditingTitle ? (
                 <Input
                   autoFocus
@@ -232,29 +274,26 @@ export function TicketDetailDialog({
                     if (e.key === "Escape") {
                       e.preventDefault();
                       cancelTitle();
-                    } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault();
-                      commitTitle();
                     } else if (e.key === "Enter") {
                       e.preventDefault();
                       commitTitle();
                     }
                   }}
                   aria-label="Ticket title"
-                  className="h-auto border-0 bg-transparent p-0 text-[26px] font-semibold leading-tight shadow-none focus-visible:ring-0 md:text-[26px]"
+                  className="h-auto border-0 bg-transparent p-0 text-[22px] font-semibold leading-tight tracking-tight shadow-none focus-visible:ring-0 md:text-[22px]"
                 />
               ) : (
                 <button
                   type="button"
                   onClick={() => setIsEditingTitle(true)}
-                  className="block w-full text-left text-[26px] font-semibold leading-tight tracking-tight text-foreground hover:opacity-90"
-                  aria-label="Edit title"
+                  className="block w-full text-left text-[22px] font-semibold leading-tight tracking-tight text-foreground hover:opacity-90"
+                  aria-label={`Edit title: ${ticket.title}`}
                 >
                   {ticket.title}
                 </button>
               )}
 
-              <div className="mt-6">
+              <div className="mt-4">
                 {isEditingDescription ? (
                   <Textarea
                     autoFocus
@@ -294,48 +333,32 @@ export function TicketDetailDialog({
               </div>
             </div>
 
-            <div className="mt-auto border-t border-border/60 px-10 py-6">
+            <div className="mt-auto border-t border-border/60 px-8 py-6">
               <div className="mb-3 text-[12px] font-medium uppercase tracking-wide text-muted-foreground">
                 Activity
               </div>
               <ul className="space-y-2 text-[13px] text-muted-foreground">
-                <li>
+                <li className="flex items-center gap-2">
+                  <Avatar name={null} />
                   <span className="text-foreground">Created</span>
-                  <span className="mx-1.5 opacity-60">·</span>
+                  <span className="opacity-60">·</span>
                   <span>{formatDistanceToNowStrict(createdAt, { addSuffix: false })} ago</span>
                 </li>
                 {wasEdited ? (
-                  <li>
+                  <li className="flex items-center gap-2">
+                    <Avatar name={null} />
                     <span className="text-foreground">Edited</span>
-                    <span className="mx-1.5 opacity-60">·</span>
+                    <span className="opacity-60">·</span>
                     <span>{formatDistanceToNowStrict(updatedAt, { addSuffix: false })} ago</span>
                   </li>
                 ) : null}
               </ul>
-              <div className="mt-4 flex items-end gap-2">
-                <Textarea
-                  disabled
-                  placeholder="Comments coming soon"
-                  rows={2}
-                  className="min-h-[44px] resize-none text-[13px]"
-                  aria-label="Leave a comment"
-                />
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  disabled
-                  aria-label="Send comment"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
             </div>
           </div>
 
-          <aside className="flex w-[280px] shrink-0 flex-col gap-5 overflow-y-auto border-l border-border/60 bg-muted/20 px-4 py-6">
+          <aside className="flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-border px-4 py-6">
             <section>
-              <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 Properties
               </div>
               <div className="flex flex-col gap-1">
@@ -367,11 +390,41 @@ export function TicketDetailDialog({
                   <User2 className="h-3.5 w-3.5" />
                   Assign
                 </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
+                  onClick={comingSoon("Cycle")}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Add to cycle
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
+                  onClick={comingSoon("Estimate")}
+                >
+                  <Hash className="h-3.5 w-3.5" />
+                  Set estimate
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
+                  onClick={comingSoon("Due date")}
+                >
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  Set due date
+                </Button>
               </div>
             </section>
 
             <section>
-              <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 Labels
               </div>
               <Button
@@ -387,7 +440,7 @@ export function TicketDetailDialog({
             </section>
 
             <section>
-              <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                 Project
               </div>
               <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px]">
