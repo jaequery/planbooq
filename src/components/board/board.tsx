@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { FileText, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -47,7 +47,6 @@ export function Board({ initialData }: Props): React.ReactElement {
   const [statuses, setStatuses] = useState<StatusWithTickets[]>(initialData.statuses);
   const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [hasDescriptionOnly, setHasDescriptionOnly] = useState(false);
   const currentProjectId = initialData.project.id;
 
   const allTickets = useMemo(() => {
@@ -277,13 +276,12 @@ export function Board({ initialData }: Props): React.ReactElement {
 
   const activeTicket = activeTicketId ? (allTickets.get(activeTicketId) ?? null) : null;
   const normalizedQuery = query.trim().toLowerCase();
-  const isFiltered = normalizedQuery.length > 0 || hasDescriptionOnly;
+  const isFiltered = normalizedQuery.length > 0;
   const visibleStatuses = useMemo(
     () =>
       statuses.map((status) => ({
         ...status,
         tickets: status.tickets.filter((ticket) => {
-          if (hasDescriptionOnly && !ticket.description?.trim()) return false;
           if (!normalizedQuery) return true;
           return (
             ticket.title.toLowerCase().includes(normalizedQuery) ||
@@ -291,7 +289,7 @@ export function Board({ initialData }: Props): React.ReactElement {
           );
         }),
       })),
-    [hasDescriptionOnly, normalizedQuery, statuses],
+    [normalizedQuery, statuses],
   );
   const visibleTicketCount = visibleStatuses.reduce(
     (sum, status) => sum + status.tickets.length,
@@ -334,17 +332,6 @@ export function Board({ initialData }: Props): React.ReactElement {
               </Button>
             ) : null}
           </div>
-          <Button
-            type="button"
-            variant={hasDescriptionOnly ? "secondary" : "outline"}
-            size="sm"
-            className="h-8 gap-1.5 text-[12px]"
-            onClick={() => setHasDescriptionOnly((value) => !value)}
-            aria-pressed={hasDescriptionOnly}
-          >
-            <FileText className="h-3.5 w-3.5" />
-            Has context
-          </Button>
         </div>
       </div>
       <DndContext
