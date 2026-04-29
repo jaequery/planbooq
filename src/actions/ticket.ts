@@ -5,12 +5,7 @@ import { Priority } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
-import type {
-  ServerActionResult,
-  TicketAssignee,
-  TicketLabel,
-  TicketWithRelations,
-} from "@/lib/types";
+import type { ServerActionResult, TicketAssignee, TicketWithRelations } from "@/lib/types";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
@@ -20,17 +15,6 @@ const TICKET_RELATIONS_INCLUDE = {
   assignee: { select: { id: true, name: true, email: true, image: true } },
   labels: { select: { id: true, name: true, color: true } },
 } as const;
-
-export const LABEL_COLORS = [
-  "#6b7280",
-  "#ef4444",
-  "#f59e0b",
-  "#eab308",
-  "#10b981",
-  "#06b6d4",
-  "#3b82f6",
-  "#8b5cf6",
-] as const;
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
@@ -546,5 +530,3 @@ export async function listWorkspaceMembers(
     return { ok: false, error: error instanceof Error ? error.message : "unknown" };
   }
 }
-
-export type { Label, TicketAssignee, TicketLabel, TicketWithRelations };

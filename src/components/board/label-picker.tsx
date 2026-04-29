@@ -3,10 +3,11 @@
 import { Check, Plus, Tag } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { createLabel, LABEL_COLORS, listLabels, updateTicket } from "@/actions/ticket";
+import { createLabel, listLabels, updateTicket } from "@/actions/ticket";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { LABEL_COLORS } from "@/lib/labels";
 import type { TicketLabel } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
