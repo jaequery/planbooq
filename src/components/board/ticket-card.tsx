@@ -155,6 +155,7 @@ export function TicketCard({
           {!isOverlay && ticket.assignee ? (
             <AssigneeAvatar
               name={ticket.assignee.name}
+              email={ticket.assignee.email}
               image={ticket.assignee.image}
               size="xs"
               className="mt-0.5"

@@ -113,7 +113,10 @@ export function Board({ initialData }: Props): React.ReactElement {
         );
       } else if (event.name === "ticket.created") {
         setStatuses((prev) => {
-          if (allTickets.has(event.ticket.id)) return prev;
+          // De-dupe by id against the latest state (closure-captured maps go
+          // stale during rapid optimistic + echo races).
+          const alreadyPresent = prev.some((s) => s.tickets.some((t) => t.id === event.ticket.id));
+          if (alreadyPresent) return prev;
           const created: TicketWithRelations = {
             ...event.ticket,
             assignee: event.ticket.assignee ?? null,
@@ -152,16 +155,20 @@ export function Board({ initialData }: Props): React.ReactElement {
 
   const onTicketCreated = useCallback((ticket: Ticket) => {
     const enriched: TicketWithRelations = { ...ticket, assignee: null, labels: [] };
-    setStatuses((prev) =>
-      prev.map((s) =>
+    setStatuses((prev) => {
+      // De-dupe defensively: if the realtime echo arrived first, skip the
+      // optimistic insert (and vice versa in the realtime handler).
+      const alreadyPresent = prev.some((s) => s.tickets.some((t) => t.id === ticket.id));
+      if (alreadyPresent) return prev;
+      return prev.map((s) =>
         s.id === ticket.statusId
           ? {
               ...s,
               tickets: [...s.tickets, enriched].sort((a, b) => a.position - b.position),
             }
           : s,
-      ),
-    );
+      );
+    });
   }, []);
 
   const onTicketUpdated = useCallback((ticket: TicketWithRelations) => {

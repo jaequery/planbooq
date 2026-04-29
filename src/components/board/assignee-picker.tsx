@@ -31,13 +31,35 @@ function hashString(s: string): number {
   return Math.abs(h);
 }
 
+function computeInitials(name?: string | null, email?: string | null): string {
+  const trimmedName = name?.trim();
+  if (trimmedName) {
+    const parts = trimmedName.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return ((parts[0]?.charAt(0) ?? "") + (parts[1]?.charAt(0) ?? "")).toUpperCase();
+    }
+    return (parts[0]?.charAt(0) ?? "?").toUpperCase();
+  }
+  const local = email?.split("@")[0]?.trim();
+  if (local) {
+    const segments = local.split(/[._-]+/).filter(Boolean);
+    if (segments.length >= 2) {
+      return ((segments[0]?.charAt(0) ?? "") + (segments[1]?.charAt(0) ?? "")).toUpperCase();
+    }
+    return local.slice(0, 2).toUpperCase();
+  }
+  return "?";
+}
+
 export function AssigneeAvatar({
   name,
+  email,
   image,
   size = "sm",
   className,
 }: {
   name?: string | null;
+  email?: string | null;
   image?: string | null;
   size?: "xs" | "sm";
   className?: string;
@@ -48,12 +70,13 @@ export function AssigneeAvatar({
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={image}
-        alt={name ?? "assignee"}
+        alt={name ?? email ?? "assignee"}
         className={cn("shrink-0 rounded-full object-cover", dim, className)}
       />
     );
   }
-  if (!name) {
+  const seed = (name?.trim() || email?.trim() || "").toLowerCase();
+  if (!seed) {
     return (
       <div
         aria-hidden
@@ -61,8 +84,8 @@ export function AssigneeAvatar({
       />
     );
   }
-  const color = AVATAR_COLORS[hashString(name) % AVATAR_COLORS.length];
-  const initial = name.trim().charAt(0).toUpperCase() || "?";
+  const color = AVATAR_COLORS[hashString(seed) % AVATAR_COLORS.length];
+  const initials = computeInitials(name, email);
   return (
     <div
       aria-hidden
@@ -73,7 +96,7 @@ export function AssigneeAvatar({
         className,
       )}
     >
-      {initial}
+      {initials}
     </div>
   );
 }
@@ -147,7 +170,12 @@ export function AssigneePicker({
           )}
         >
           {assignee ? (
-            <AssigneeAvatar name={assignee.name} image={assignee.image} size="xs" />
+            <AssigneeAvatar
+              name={assignee.name}
+              email={assignee.email}
+              image={assignee.image}
+              size="xs"
+            />
           ) : (
             <User2 className="h-3.5 w-3.5" aria-hidden />
           )}
@@ -195,7 +223,7 @@ export function AssigneePicker({
                 onClick={() => select(m)}
                 className="flex h-8 w-full items-center gap-2 rounded-sm px-2 text-[13px] text-foreground hover:bg-accent focus:bg-accent focus:outline-none"
               >
-                <AssigneeAvatar name={m.name} image={m.image} size="xs" />
+                <AssigneeAvatar name={m.name} email={m.email} image={m.image} size="xs" />
                 <span className="flex-1 truncate text-left">{m.name ?? m.email ?? "Unknown"}</span>
                 {selected ? (
                   <Check className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />

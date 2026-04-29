@@ -221,7 +221,12 @@ export function TicketDetailDialog({
               <>
                 <span className="text-muted-foreground/40">·</span>
                 <span className="inline-flex items-center gap-1.5">
-                  <AssigneeAvatar name={assignee.name} image={assignee.image} size="xs" />
+                  <AssigneeAvatar
+                    name={assignee.name}
+                    email={assignee.email}
+                    image={assignee.image}
+                    size="xs"
+                  />
                   <span className="truncate text-foreground">
                     {assignee.name ?? assignee.email ?? "Assignee"}
                   </span>
