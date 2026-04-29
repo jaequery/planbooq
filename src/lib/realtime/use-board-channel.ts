@@ -94,8 +94,6 @@ export function useBoardChannel(
         onEventRef.current(data, message.clientId ?? null);
       })
       .catch((err: unknown) => {
-        // Subscribe attach can reject if the connection is closed during dev
-        // strict-mode double-invocation. Swallow — cleanup handled below.
         logger.warn("realtime.subscribe_failed", {
           error: err instanceof Error ? err.message : String(err),
         });
