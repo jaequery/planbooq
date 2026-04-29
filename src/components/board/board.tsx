@@ -23,7 +23,7 @@ import { TicketCard } from "@/components/board/ticket-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
-import type { BoardData, StatusWithTickets, Ticket } from "@/lib/types";
+import type { BoardData, StatusWithTickets, Ticket, TicketWithRelations } from "@/lib/types";
 
 type Props = { initialData: BoardData };
 
@@ -51,7 +51,7 @@ export function Board({ initialData }: Props): React.ReactElement {
   const currentProjectId = initialData.project.id;
 
   const allTickets = useMemo(() => {
-    const map = new Map<string, Ticket>();
+    const map = new Map<string, TicketWithRelations>();
     for (const s of statuses) for (const t of s.tickets) map.set(t.id, t);
     return map;
   }, [statuses]);
@@ -90,16 +90,24 @@ export function Board({ initialData }: Props): React.ReactElement {
           });
         });
       } else if (event.name === "ticket.updated") {
-        setStatuses((prev) =>
-          prev.map((s) => {
+        setStatuses((prev) => {
+          // Preserve any locally-known relations (assignee/labels) since the
+          // realtime payload only carries the bare Ticket fields.
+          const existing = prev.flatMap((s) => s.tickets).find((t) => t.id === event.ticket.id);
+          const merged: TicketWithRelations = {
+            ...event.ticket,
+            assignee: existing?.assignee ?? null,
+            labels: existing?.labels ?? [],
+          };
+          return prev.map((s) => {
             if (s.id !== event.ticket.statusId) {
               return { ...s, tickets: s.tickets.filter((t) => t.id !== event.ticket.id) };
             }
             const without = s.tickets.filter((t) => t.id !== event.ticket.id);
-            const next = [...without, event.ticket].sort((a, b) => a.position - b.position);
+            const next = [...without, merged].sort((a, b) => a.position - b.position);
             return { ...s, tickets: next };
-          }),
-        );
+          });
+        });
       } else if (event.name === "ticket.archived") {
         setStatuses((prev) =>
           prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== event.ticketId) })),
@@ -107,9 +115,10 @@ export function Board({ initialData }: Props): React.ReactElement {
       } else if (event.name === "ticket.created") {
         setStatuses((prev) => {
           if (allTickets.has(event.ticket.id)) return prev;
+          const created: TicketWithRelations = { ...event.ticket, assignee: null, labels: [] };
           return prev.map((s) => {
             if (s.id !== event.ticket.statusId) return s;
-            const next = [...s.tickets, event.ticket].sort((a, b) => a.position - b.position);
+            const next = [...s.tickets, created].sort((a, b) => a.position - b.position);
             return { ...s, tickets: next };
           });
         });
@@ -139,19 +148,20 @@ export function Board({ initialData }: Props): React.ReactElement {
   );
 
   const onTicketCreated = useCallback((ticket: Ticket) => {
+    const enriched: TicketWithRelations = { ...ticket, assignee: null, labels: [] };
     setStatuses((prev) =>
       prev.map((s) =>
         s.id === ticket.statusId
           ? {
               ...s,
-              tickets: [...s.tickets, ticket].sort((a, b) => a.position - b.position),
+              tickets: [...s.tickets, enriched].sort((a, b) => a.position - b.position),
             }
           : s,
       ),
     );
   }, []);
 
-  const onTicketUpdated = useCallback((ticket: Ticket) => {
+  const onTicketUpdated = useCallback((ticket: TicketWithRelations) => {
     setStatuses((prev) =>
       prev.map((s) => {
         if (s.id !== ticket.statusId) {
@@ -165,6 +175,12 @@ export function Board({ initialData }: Props): React.ReactElement {
   }, []);
 
   const onTicketArchived = useCallback((ticketId: string) => {
+    setStatuses((prev) =>
+      prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== ticketId) })),
+    );
+  }, []);
+
+  const onTicketDeleted = useCallback((ticketId: string) => {
     setStatuses((prev) =>
       prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== ticketId) })),
     );
@@ -368,6 +384,7 @@ export function Board({ initialData }: Props): React.ReactElement {
               onTicketCreated={onTicketCreated}
               onTicketUpdated={onTicketUpdated}
               onTicketArchived={onTicketArchived}
+              onTicketDeleted={onTicketDeleted}
               isFiltered={isFiltered}
             />
           ))}

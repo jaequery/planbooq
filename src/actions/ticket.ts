@@ -404,9 +404,7 @@ export async function archiveTicket(
 
 const DeleteSchema = z.object({ ticketId: z.string().min(1) }).strict();
 
-export async function deleteTicket(
-  input: z.infer<typeof DeleteSchema>,
-): Promise<
+export async function deleteTicket(input: z.infer<typeof DeleteSchema>): Promise<
   ServerActionResult<{
     id: string;
     workspaceId: string;
