@@ -91,6 +91,7 @@ export function TicketCard({
       <div
         ref={setNodeRef}
         style={style}
+        suppressHydrationWarning
         {...attributes}
         {...listeners}
         className={cn(
