@@ -5,3 +5,6 @@ onlyBuiltDependencies:
   - prisma
   - protobufjs
   - sharp
+
+patchedDependencies:
+  '@auth/prisma-adapter': patches/@auth__prisma-adapter.patch

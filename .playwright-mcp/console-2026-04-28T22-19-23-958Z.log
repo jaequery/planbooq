@@ -1,3 +1,0 @@
-[     176ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3636/_next/static/chunks/0ddr_next_dist_0o6db7i._.js:2431
-[     584ms] [LOG] [Fast Refresh] done in 510ms @ http://localhost:3636/_next/static/chunks/0ddr_next_dist_0o6db7i._.js:2431
-[    1272ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3636/api/auth/error?error=Configuration:0

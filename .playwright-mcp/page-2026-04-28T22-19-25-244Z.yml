@@ -1,5 +1,0 @@
-- generic [ref=e3]:
-  - heading "Server error" [level=1] [ref=e4]
-  - generic [ref=e6]:
-    - paragraph [ref=e7]: There is a problem with the server configuration.
-    - paragraph [ref=e8]: Check the server logs for more information.
