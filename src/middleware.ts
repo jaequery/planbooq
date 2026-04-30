@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 // Lightweight edge-safe gate. We avoid importing the full Auth.js handler here
-// (which pulls Node's "stream" via nodemailer/Prisma) and only inspect the
-// session cookie. Real authorization is enforced server-side in route
-// handlers and server actions.
+// (which pulls Node's "stream" via Prisma) and only inspect the session
+// cookie. Real authorization is enforced server-side in route handlers and
+// server actions.
 const SESSION_COOKIES = [
   "authjs.session-token",
   "__Secure-authjs.session-token",

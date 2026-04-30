@@ -1,15 +1,12 @@
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { Prisma } from "@prisma/client";
-import NextAuth, { type NextAuthConfig } from "next-auth";
+import NextAuth from "next-auth";
 import type { Adapter } from "next-auth/adapters";
 import GitHub from "next-auth/providers/github";
-import Nodemailer from "next-auth/providers/nodemailer";
 import { env } from "@/env";
 import { DEFAULT_STATUSES } from "@/lib/default-statuses";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/server/db";
-
-export const isGitHubConfigured = Boolean(env.AUTH_GITHUB_ID && env.AUTH_GITHUB_SECRET);
 
 function tolerantAdapter(): Adapter {
   const base = PrismaAdapter(prisma) as Adapter;
@@ -96,20 +93,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   // explicitly (typically when running behind a trusted reverse proxy).
   trustHost: process.env.AUTH_TRUST_HOST === "true" || process.env.NODE_ENV !== "production",
   providers: [
-    Nodemailer({
-      server: env.EMAIL_SERVER,
-      from: env.EMAIL_FROM,
+    GitHub({
+      clientId: env.AUTH_GITHUB_ID,
+      clientSecret: env.AUTH_GITHUB_SECRET,
+      allowDangerousEmailAccountLinking: true,
     }),
-    ...(isGitHubConfigured
-      ? [
-          GitHub({
-            clientId: env.AUTH_GITHUB_ID,
-            clientSecret: env.AUTH_GITHUB_SECRET,
-            allowDangerousEmailAccountLinking: true,
-          }),
-        ]
-      : []),
-  ] satisfies NextAuthConfig["providers"],
+  ],
   pages: {
     signIn: "/signin",
   },
