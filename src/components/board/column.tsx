@@ -3,6 +3,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { NewTicketDialog } from "@/components/board/new-ticket-dialog";
+import type { StatusOption } from "@/components/board/status-picker";
 import { TicketCard } from "@/components/board/ticket-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { StatusWithTickets, Ticket, TicketWithRelations } from "@/lib/types";
@@ -10,6 +11,7 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   status: StatusWithTickets;
+  statuses: ReadonlyArray<StatusOption>;
   tickets?: TicketWithRelations[];
   projectId: string;
   projectName: string;
@@ -24,6 +26,7 @@ type Props = {
 
 export function Column({
   status,
+  statuses,
   tickets = status.tickets,
   projectId,
   projectName,
@@ -86,9 +89,8 @@ export function Column({
                     onUpdated={onTicketUpdated}
                     onArchived={onTicketArchived}
                     onDeleted={onTicketDeleted}
-                    statusName={status.name}
-                    statusColor={status.color}
                     statusKey={status.key}
+                    statuses={statuses}
                     projectName={projectName}
                     projectColor={projectColor}
                     projectSlug={projectSlug}

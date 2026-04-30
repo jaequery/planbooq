@@ -11,6 +11,7 @@ import { AssigneeAvatar } from "@/components/board/assignee-picker";
 import { formatDueDate } from "@/components/board/due-date-picker";
 import { LabelChip } from "@/components/board/label-picker";
 import { PriorityIcon } from "@/components/board/priority-picker";
+import type { StatusOption } from "@/components/board/status-picker";
 import { TicketDetailDialog } from "@/components/board/ticket-detail-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,9 +42,8 @@ type Props = {
   onUpdated?: (ticket: TicketWithRelations) => void;
   onArchived?: (ticketId: string) => void;
   onDeleted?: (ticketId: string) => void;
-  statusName?: string;
-  statusColor?: string;
   statusKey?: string;
+  statuses?: ReadonlyArray<StatusOption>;
   projectName?: string;
   projectColor?: string;
   projectSlug?: string;
@@ -55,9 +55,8 @@ export function TicketCard({
   onUpdated,
   onArchived,
   onDeleted,
-  statusName = "",
-  statusColor = "#94a3b8",
   statusKey,
+  statuses = [],
   projectName = "",
   projectColor = "#94a3b8",
   projectSlug,
@@ -246,8 +245,7 @@ export function TicketCard({
             onOpenChange={setDetailOpen}
             onUpdated={(updated) => onUpdated?.(updated)}
             onDeleted={(id) => onDeleted?.(id)}
-            statusName={statusName}
-            statusColor={statusColor}
+            statuses={statuses}
             projectName={projectName}
             projectColor={projectColor}
             projectSlug={projectSlug}
