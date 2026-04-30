@@ -14,6 +14,8 @@ export const env = createEnv({
     AUTH_SECRET: z.string().min(16).optional(),
     EMAIL_SERVER: z.string().min(1),
     EMAIL_FROM: z.string().min(1),
+    AUTH_GITHUB_ID: z.string().optional().default(""),
+    AUTH_GITHUB_SECRET: z.string().optional().default(""),
     ABLY_API_KEY: z.string().optional().default(""),
     INNGEST_REQUIRED: z.string().optional().default(""),
     INNGEST_EVENT_KEY: z
@@ -49,6 +51,8 @@ export const env = createEnv({
     AUTH_SECRET: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
     EMAIL_SERVER: process.env.EMAIL_SERVER,
     EMAIL_FROM: process.env.EMAIL_FROM,
+    AUTH_GITHUB_ID: process.env.AUTH_GITHUB_ID,
+    AUTH_GITHUB_SECRET: process.env.AUTH_GITHUB_SECRET,
     ABLY_API_KEY: process.env.ABLY_API_KEY,
     INNGEST_REQUIRED: process.env.INNGEST_REQUIRED,
     INNGEST_EVENT_KEY: process.env.INNGEST_EVENT_KEY,

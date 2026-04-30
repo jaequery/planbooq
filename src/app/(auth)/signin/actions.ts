@@ -35,3 +35,7 @@ export async function sendMagicLink(_prev: SignInState, formData: FormData): Pro
     return { status: "error", message };
   }
 }
+
+export async function signInWithGitHub(): Promise<void> {
+  await signIn("github", { redirectTo: "/" });
+}
