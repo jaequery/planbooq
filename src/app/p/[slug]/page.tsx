@@ -55,5 +55,5 @@ export default async function ProjectPage({ params }: Props): Promise<React.Reac
     allProjects,
   };
 
-  return <Board initialData={boardData} />;
+  return <Board initialData={boardData} currentUserId={session.user.id} />;
 }

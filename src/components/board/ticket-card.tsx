@@ -47,6 +47,7 @@ type Props = {
   projectName?: string;
   projectColor?: string;
   projectSlug?: string;
+  currentUserId?: string | null;
 };
 
 export function TicketCard({
@@ -60,6 +61,7 @@ export function TicketCard({
   projectName = "",
   projectColor = "#94a3b8",
   projectSlug,
+  currentUserId = null,
 }: Props): React.ReactElement {
   const [detailOpen, setDetailOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -249,6 +251,7 @@ export function TicketCard({
             projectName={projectName}
             projectColor={projectColor}
             projectSlug={projectSlug}
+            currentUserId={currentUserId}
           />
           <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
             <DialogContent className="sm:max-w-md">
