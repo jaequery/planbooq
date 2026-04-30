@@ -100,12 +100,19 @@ export async function createProject(input: CreateProjectInput): Promise<CreatePr
       revalidatePath(`/p/${project.slug}`);
     }
 
-    await publishWorkspaceEvent(workspaceId, {
-      name: "project.created",
-      workspaceId,
-      project,
-      by: userId,
-    });
+    try {
+      await publishWorkspaceEvent(workspaceId, {
+        name: "project.created",
+        workspaceId,
+        project,
+        by: userId,
+      });
+    } catch (err) {
+      logger.warn("publishWorkspaceEvent.failed", {
+        event: "project.created",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     void inngest
       .send({
@@ -168,12 +175,19 @@ export async function updateProject(input: UpdateProjectInput): Promise<UpdatePr
     revalidatePath(`/p/${updated.slug}`);
     revalidatePath("/");
 
-    await publishWorkspaceEvent(project.workspaceId, {
-      name: "project.updated",
-      workspaceId: project.workspaceId,
-      project: updated,
-      by: userId,
-    });
+    try {
+      await publishWorkspaceEvent(project.workspaceId, {
+        name: "project.updated",
+        workspaceId: project.workspaceId,
+        project: updated,
+        by: userId,
+      });
+    } catch (err) {
+      logger.warn("publishWorkspaceEvent.failed", {
+        event: "project.updated",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     return { ok: true, project: updated };
   } catch (error) {
@@ -216,13 +230,20 @@ export async function deleteProject(input: DeleteProjectInput): Promise<DeletePr
     revalidatePath(`/p/${project.slug}`);
     revalidatePath("/");
 
-    await publishWorkspaceEvent(project.workspaceId, {
-      name: "project.deleted",
-      workspaceId: project.workspaceId,
-      projectId: project.id,
-      slug: project.slug,
-      by: userId,
-    });
+    try {
+      await publishWorkspaceEvent(project.workspaceId, {
+        name: "project.deleted",
+        workspaceId: project.workspaceId,
+        projectId: project.id,
+        slug: project.slug,
+        by: userId,
+      });
+    } catch (err) {
+      logger.warn("publishWorkspaceEvent.failed", {
+        event: "project.deleted",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     return { ok: true };
   } catch (error) {

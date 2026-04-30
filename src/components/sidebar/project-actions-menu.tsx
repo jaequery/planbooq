@@ -101,7 +101,7 @@ export function ProjectActionsMenu({
             size="icon-xs"
             aria-label={`Actions for ${projectName}`}
             onClick={(e) => e.preventDefault()}
-            className="opacity-0 transition-opacity duration-[120ms] ease-out group-hover:opacity-100 data-[state=open]:opacity-100"
+            className="opacity-0 transition-opacity duration-[120ms] ease-out group-hover/row:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
           >
             <MoreHorizontal className="h-3.5 w-3.5" />
           </Button>

@@ -92,6 +92,30 @@ export type AblyChannelEvent =
       projectId: string;
       slug: string;
       by: string;
+    }
+  | {
+      name: "comment.created";
+      workspaceId: string;
+      projectId: string;
+      ticketId: string;
+      comment: { id: string; body: string; authorId: string; createdAt: Date };
+      by: string;
+    }
+  | {
+      name: "comment.updated";
+      workspaceId: string;
+      projectId: string;
+      ticketId: string;
+      comment: { id: string; body: string; authorId: string; updatedAt: Date };
+      by: string;
+    }
+  | {
+      name: "comment.deleted";
+      workspaceId: string;
+      projectId: string;
+      ticketId: string;
+      commentId: string;
+      by: string;
     };
 
 export type ServerActionResult<T> = { ok: true; data: T } | { ok: false; error: string };

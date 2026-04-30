@@ -1,6 +1,7 @@
 "use client";
 
-import { LogOut } from "lucide-react";
+import { KeyRound, LogOut } from "lucide-react";
+import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,13 @@ export function UserMenu({ email, name, image }: Props): React.ReactElement {
           {name ? <span className="text-sm">{name}</span> : null}
           <span className="text-xs font-normal text-muted-foreground">{email}</span>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/settings/api-keys">
+            <KeyRound className="mr-2 h-4 w-4" />
+            API keys
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={(e) => {

@@ -22,12 +22,18 @@ export function Sidebar({ projects, workspaceLabel }: Props): React.ReactElement
 
   const handleProjectDeleted = (deletedSlug: string): void => {
     const viewing = pathname === `/p/${deletedSlug}` || pathname.startsWith(`/p/${deletedSlug}/`);
-    if (viewing) {
-      const next = projects.find((p) => p.slug !== deletedSlug);
-      router.replace(next ? `/p/${next.slug}` : "/");
-    } else {
+    if (!viewing) {
       router.refresh();
+      return;
     }
+    const idx = projects.findIndex((p) => p.slug === deletedSlug);
+    if (idx === -1) {
+      router.refresh();
+      return;
+    }
+    // Prefer the next sibling, then the previous, then home.
+    const target = projects[idx + 1] ?? projects[idx - 1] ?? null;
+    router.replace(target ? `/p/${target.slug}` : "/");
   };
 
   return (
