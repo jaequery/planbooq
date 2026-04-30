@@ -69,6 +69,26 @@ export function Sidebar({ projects, workspaceLabel }: Props): React.ReactElement
                       style={{ backgroundColor: project.color }}
                     />
                     <span className="truncate">{project.name}</span>
+                    {(project.reviewCount ?? 0) > 0 || (project.buildingCount ?? 0) > 0 ? (
+                      <span className="ml-auto flex shrink-0 items-center gap-1">
+                        {(project.buildingCount ?? 0) > 0 ? (
+                          <span
+                            title={`${project.buildingCount} in progress`}
+                            className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500/15 px-1.5 text-[10.5px] font-medium tabular-nums text-amber-600 dark:text-amber-400"
+                          >
+                            {project.buildingCount}
+                          </span>
+                        ) : null}
+                        {(project.reviewCount ?? 0) > 0 ? (
+                          <span
+                            title={`${project.reviewCount} awaiting review`}
+                            className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-blue-500/15 px-1.5 text-[10.5px] font-medium tabular-nums text-blue-600 dark:text-blue-400"
+                          >
+                            {project.reviewCount}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : null}
                   </Link>
                   <div className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity duration-[120ms] ease-out group-hover/row:opacity-100 [&:has([data-state=open])]:opacity-100">
                     <ProjectActionsMenu

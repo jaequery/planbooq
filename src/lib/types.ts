@@ -22,7 +22,10 @@ export type TicketWithRelations = Ticket & {
 
 export type StatusWithTickets = Status & { tickets: TicketWithRelations[] };
 
-export type ProjectSummary = Pick<Project, "id" | "slug" | "name" | "color">;
+export type ProjectSummary = Pick<Project, "id" | "slug" | "name" | "color"> & {
+  reviewCount?: number;
+  buildingCount?: number;
+};
 
 export type BoardData = {
   project: Project;

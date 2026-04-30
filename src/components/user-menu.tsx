@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyRound, LogOut } from "lucide-react";
+import { KeyRound, LogOut, Palette } from "lucide-react";
 import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -38,6 +38,12 @@ export function UserMenu({ email, name, image }: Props): React.ReactElement {
           <span className="text-xs font-normal text-muted-foreground">{email}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/settings/appearance">
+            <Palette className="mr-2 h-4 w-4" />
+            Appearance
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href="/settings/api-keys">
             <KeyRound className="mr-2 h-4 w-4" />

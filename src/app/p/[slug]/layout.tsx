@@ -1,6 +1,5 @@
 import { notFound, redirect } from "next/navigation";
 import { Sidebar } from "@/components/sidebar/sidebar";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { UserMenu } from "@/components/user-menu";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
@@ -27,7 +26,7 @@ export default async function ProjectLayout({
   });
   if (!membership) notFound();
 
-  const [project, allProjects] = await Promise.all([
+  const [project, projectRows, statusRows] = await Promise.all([
     prisma.project.findUnique({
       where: { workspaceId_slug: { workspaceId: membership.workspaceId, slug } },
     }),
@@ -36,8 +35,39 @@ export default async function ProjectLayout({
       orderBy: { position: "asc" },
       select: { id: true, slug: true, name: true, color: true },
     }),
+    prisma.status.findMany({
+      where: {
+        workspaceId: membership.workspaceId,
+        key: { in: ["review", "building"] },
+      },
+      select: { id: true, key: true },
+    }),
   ]);
   if (!project) notFound();
+
+  const trackedStatusIds = statusRows.map((s) => s.id);
+  const ticketCounts = trackedStatusIds.length
+    ? await prisma.ticket.groupBy({
+        by: ["projectId", "statusId"],
+        where: {
+          workspaceId: membership.workspaceId,
+          statusId: { in: trackedStatusIds },
+        },
+        _count: { _all: true },
+      })
+    : [];
+  const statusKeyById = new Map(statusRows.map((s) => [s.id, s.key]));
+  const allProjects = projectRows.map((p) => {
+    let reviewCount = 0;
+    let buildingCount = 0;
+    for (const c of ticketCounts) {
+      if (c.projectId !== p.id) continue;
+      const key = statusKeyById.get(c.statusId);
+      if (key === "review") reviewCount = c._count._all;
+      else if (key === "building") buildingCount = c._count._all;
+    }
+    return { ...p, reviewCount, buildingCount };
+  });
 
   return (
     <div className="flex h-screen min-h-0 bg-background">
@@ -55,7 +85,6 @@ export default async function ProjectLayout({
             <span className="font-medium text-foreground">{project.name}</span>
           </div>
           <div className="flex items-center gap-1">
-            <ThemeToggle />
             <UserMenu
               email={session.user.email}
               name={session.user.name}
