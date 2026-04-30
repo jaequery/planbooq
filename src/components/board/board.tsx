@@ -68,12 +68,16 @@ export function Board({ initialData }: Props): React.ReactElement {
       ) {
         return;
       }
-      if (
-        event.name === "project.created" ||
-        event.name === "project.updated" ||
-        event.name === "project.deleted"
-      ) {
+      if (event.name === "project.created" || event.name === "project.updated") {
         router.refresh();
+        return;
+      }
+      if (event.name === "project.deleted") {
+        if (event.projectId === currentProjectId) {
+          router.replace("/");
+        } else {
+          router.refresh();
+        }
         return;
       }
       if (event.projectId !== currentProjectId) return;

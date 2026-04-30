@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveCaller, type AuthedCaller } from "@/server/api-auth";
+import { type AuthedCaller, resolveCaller } from "@/server/api-auth";
 import { prisma } from "@/server/db";
 import {
   createCommentSvc,
@@ -7,11 +7,7 @@ import {
   listTicketCommentsSvc,
   updateCommentSvc,
 } from "@/server/services/comments";
-import {
-  createProjectSvc,
-  deleteProjectSvc,
-  updateProjectSvc,
-} from "@/server/services/projects";
+import { createProjectSvc, deleteProjectSvc, updateProjectSvc } from "@/server/services/projects";
 import {
   createTicketSvc,
   getTicketSvc,
@@ -59,7 +55,8 @@ async function assertWorkspace(caller: AuthedCaller, workspaceId: string) {
 const TOOLS: ToolDef[] = [
   {
     name: "list_workspaces",
-    description: "List workspaces the caller can access. If the API key is workspace-scoped, returns only that workspace.",
+    description:
+      "List workspaces the caller can access. If the API key is workspace-scoped, returns only that workspace.",
     inputSchema: obj({}),
     handler: async (caller) => {
       const where = caller.workspaceScope
@@ -279,10 +276,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "list_comments",
     description: "List comments on a ticket, oldest first.",
-    inputSchema: obj(
-      { ticketId: str, cursor: strOpt, limit: { type: "number" } },
-      ["ticketId"],
-    ),
+    inputSchema: obj({ ticketId: str, cursor: strOpt, limit: { type: "number" } }, ["ticketId"]),
     handler: async (caller, a) => {
       const r = await listTicketCommentsSvc(caller.userId, String(a.ticketId), {
         cursor: a.cursor ? String(a.cursor) : undefined,

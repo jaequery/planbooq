@@ -180,6 +180,7 @@ export async function deleteProjectSvc(
       name: "project.deleted",
       workspaceId: project.workspaceId,
       projectId: project.id,
+      slug: project.slug,
       by: userId,
     });
     return { ok: true, data: { id: project.id, workspaceId: project.workspaceId } };

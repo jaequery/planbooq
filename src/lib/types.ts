@@ -90,6 +90,7 @@ export type AblyChannelEvent =
       name: "project.deleted";
       workspaceId: string;
       projectId: string;
+      slug: string;
       by: string;
     }
   | {

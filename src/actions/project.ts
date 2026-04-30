@@ -100,12 +100,19 @@ export async function createProject(input: CreateProjectInput): Promise<CreatePr
       revalidatePath(`/p/${project.slug}`);
     }
 
-    await publishWorkspaceEvent(workspaceId, {
-      name: "project.created",
-      workspaceId,
-      project,
-      by: userId,
-    });
+    try {
+      await publishWorkspaceEvent(workspaceId, {
+        name: "project.created",
+        workspaceId,
+        project,
+        by: userId,
+      });
+    } catch (err) {
+      logger.warn("publishWorkspaceEvent.failed", {
+        event: "project.created",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     void inngest
       .send({
@@ -122,6 +129,125 @@ export async function createProject(input: CreateProjectInput): Promise<CreatePr
     return { ok: true, project };
   } catch (error) {
     logger.error("createProject.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
+const UpdateProjectSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1).max(80),
+  })
+  .strict();
+
+type UpdateProjectInput = z.infer<typeof UpdateProjectSchema>;
+
+type UpdateProjectResult = { ok: true; project: Project } | { ok: false; error: string };
+
+export async function updateProject(input: UpdateProjectInput): Promise<UpdateProjectResult> {
+  try {
+    const data = UpdateProjectSchema.parse(input);
+    const userId = await requireUserId();
+
+    const project = await prisma.project.findUnique({
+      where: { id: data.id },
+      select: { id: true, workspaceId: true, slug: true },
+    });
+    if (!project) {
+      return { ok: false, error: "not_found" };
+    }
+
+    const member = await prisma.member.findFirst({
+      where: { userId, workspaceId: project.workspaceId },
+      select: { id: true },
+    });
+    if (!member) {
+      return { ok: false, error: "forbidden" };
+    }
+
+    const updated = await prisma.project.update({
+      where: { id: project.id },
+      data: { name: data.name },
+    });
+
+    revalidatePath(`/p/${updated.slug}`);
+    revalidatePath("/");
+
+    try {
+      await publishWorkspaceEvent(project.workspaceId, {
+        name: "project.updated",
+        workspaceId: project.workspaceId,
+        project: updated,
+        by: userId,
+      });
+    } catch (err) {
+      logger.warn("publishWorkspaceEvent.failed", {
+        event: "project.updated",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    return { ok: true, project: updated };
+  } catch (error) {
+    logger.error("updateProject.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
+const DeleteProjectSchema = z.object({ id: z.string().min(1) }).strict();
+
+type DeleteProjectInput = z.infer<typeof DeleteProjectSchema>;
+
+type DeleteProjectResult = { ok: true } | { ok: false; error: string };
+
+export async function deleteProject(input: DeleteProjectInput): Promise<DeleteProjectResult> {
+  try {
+    const data = DeleteProjectSchema.parse(input);
+    const userId = await requireUserId();
+
+    const project = await prisma.project.findUnique({
+      where: { id: data.id },
+      select: { id: true, workspaceId: true, slug: true },
+    });
+    if (!project) {
+      return { ok: false, error: "not_found" };
+    }
+
+    const member = await prisma.member.findFirst({
+      where: { userId, workspaceId: project.workspaceId },
+      select: { id: true },
+    });
+    if (!member) {
+      return { ok: false, error: "forbidden" };
+    }
+
+    await prisma.project.delete({ where: { id: project.id } });
+
+    revalidatePath(`/p/${project.slug}`);
+    revalidatePath("/");
+
+    try {
+      await publishWorkspaceEvent(project.workspaceId, {
+        name: "project.deleted",
+        workspaceId: project.workspaceId,
+        projectId: project.id,
+        slug: project.slug,
+        by: userId,
+      });
+    } catch (err) {
+      logger.warn("publishWorkspaceEvent.failed", {
+        event: "project.deleted",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    return { ok: true };
+  } catch (error) {
+    logger.error("deleteProject.failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     return { ok: false, error: error instanceof Error ? error.message : "unknown" };
