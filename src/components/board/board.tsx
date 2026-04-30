@@ -68,7 +68,11 @@ export function Board({ initialData }: Props): React.ReactElement {
       ) {
         return;
       }
-      if (event.name === "project.created") {
+      if (
+        event.name === "project.created" ||
+        event.name === "project.updated" ||
+        event.name === "project.deleted"
+      ) {
         router.refresh();
         return;
       }
@@ -303,19 +307,24 @@ export function Board({ initialData }: Props): React.ReactElement {
   const activeTicket = activeTicketId ? (allTickets.get(activeTicketId) ?? null) : null;
   const normalizedQuery = query.trim().toLowerCase();
   const isFiltered = normalizedQuery.length > 0;
+  const isDragging = activeTicketId !== null;
   const visibleStatuses = useMemo(
     () =>
-      statuses.map((status) => ({
-        ...status,
-        tickets: status.tickets.filter((ticket) => {
-          if (!normalizedQuery) return true;
-          return (
-            ticket.title.toLowerCase().includes(normalizedQuery) ||
-            (ticket.description?.toLowerCase().includes(normalizedQuery) ?? false)
-          );
-        }),
-      })),
-    [normalizedQuery, statuses],
+      statuses
+        .map((status) => ({
+          ...status,
+          tickets: status.tickets.filter((ticket) => {
+            if (!normalizedQuery) return true;
+            return (
+              ticket.title.toLowerCase().includes(normalizedQuery) ||
+              (ticket.description?.toLowerCase().includes(normalizedQuery) ?? false)
+            );
+          }),
+        }))
+        // Hide empty columns by default. Keep them visible while a drag is active
+        // so users have a drop target for previously-empty statuses.
+        .filter((status) => isDragging || status.tickets.length > 0),
+    [normalizedQuery, statuses, isDragging],
   );
   const visibleTicketCount = visibleStatuses.reduce(
     (sum, status) => sum + status.tickets.length,

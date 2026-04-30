@@ -1,0 +1,429 @@
+openapi: 3.1.0
+info:
+  title: Planbooq API
+  version: 0.1.0
+  description: |
+    REST surface for Planbooq tickets, projects, workspaces, and labels.
+    Companion to `docs/api.md`. Variants are reserved for v1.1.
+servers:
+  - url: http://localhost:3636/api/v1
+    description: Local dev
+  - url: https://planbooq.com/api/v1
+    description: Production (placeholder)
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: pbq_live_*
+  schemas:
+    Error:
+      type: object
+      required: [ok, error]
+      properties:
+        ok: { type: boolean, enum: [false] }
+        error: { type: string, example: ticket_not_found }
+    OkEnvelope:
+      type: object
+      required: [ok, data]
+      properties:
+        ok: { type: boolean, enum: [true] }
+        data: {}
+    Priority:
+      type: string
+      enum: [NO_PRIORITY, URGENT, HIGH, MEDIUM, LOW]
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string, nullable: true }
+        email: { type: string, format: email }
+        image: { type: string, nullable: true }
+    Workspace:
+      type: object
+      properties:
+        id: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Project:
+      type: object
+      properties:
+        id: { type: string }
+        workspaceId: { type: string }
+        slug: { type: string }
+        name: { type: string }
+        color: { type: string }
+        description: { type: string, nullable: true }
+        repoUrl: { type: string, nullable: true }
+        techStack: { type: string, nullable: true }
+        position: { type: number }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Status:
+      type: object
+      properties:
+        id: { type: string }
+        workspaceId: { type: string }
+        key: { type: string }
+        name: { type: string }
+        color: { type: string }
+        position: { type: number }
+    Label:
+      type: object
+      properties:
+        id: { type: string }
+        workspaceId: { type: string }
+        name: { type: string }
+        color: { type: string, pattern: '^#[0-9a-fA-F]{6}$' }
+    Ticket:
+      type: object
+      properties:
+        id: { type: string }
+        workspaceId: { type: string }
+        projectId: { type: string }
+        statusId: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        priority: { $ref: '#/components/schemas/Priority' }
+        assignee:
+          allOf:
+            - $ref: '#/components/schemas/User'
+          nullable: true
+        labels:
+          type: array
+          items: { $ref: '#/components/schemas/Label' }
+        dueDate: { type: string, format: date-time, nullable: true }
+        position: { type: number }
+        createdById: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        archivedAt: { type: string, format: date-time, nullable: true }
+    TicketCreate:
+      type: object
+      required: [projectId, statusId, title]
+      properties:
+        projectId: { type: string }
+        statusId: { type: string }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, maxLength: 5000 }
+    TicketUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: string, nullable: true, maxLength: 5000 }
+        priority: { $ref: '#/components/schemas/Priority' }
+        assigneeId: { type: string, nullable: true }
+        dueDate: { type: string, format: date-time, nullable: true }
+        labelIds:
+          type: array
+          items: { type: string }
+    TicketMove:
+      type: object
+      required: [toStatusId]
+      additionalProperties: false
+      properties:
+        toStatusId: { type: string }
+        beforeTicketId: { type: string, nullable: true }
+        afterTicketId: { type: string, nullable: true }
+  responses:
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Authenticated but not a member of the target workspace
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Invalid request body or query
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+paths:
+  /workspaces:
+    get:
+      summary: List workspaces the caller is a member of
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Workspace' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /workspaces/{workspaceId}/members:
+    parameters:
+      - { name: workspaceId, in: path, required: true, schema: { type: string } }
+    get:
+      summary: List members of a workspace
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            user: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /workspaces/{workspaceId}/labels:
+    parameters:
+      - { name: workspaceId, in: path, required: true, schema: { type: string } }
+    get:
+      summary: List labels
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Label' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      summary: Create a label
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, color]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 32 }
+                color: { type: string, pattern: '^#[0-9a-fA-F]{6}$' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Label' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /workspaces/{workspaceId}/projects:
+    parameters:
+      - { name: workspaceId, in: path, required: true, schema: { type: string } }
+    get:
+      summary: List projects in a workspace
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Project' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /workspaces/{workspaceId}/statuses:
+    parameters:
+      - { name: workspaceId, in: path, required: true, schema: { type: string } }
+    get:
+      summary: List statuses (kanban columns) in a workspace
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Status' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /tickets:
+    get:
+      summary: List tickets in a project
+      parameters:
+        - { name: projectId, in: query, required: true, schema: { type: string } }
+        - { name: statusId, in: query, schema: { type: string } }
+        - { name: assigneeId, in: query, schema: { type: string } }
+        - { name: includeArchived, in: query, schema: { type: boolean, default: false } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items: { $ref: '#/components/schemas/Ticket' }
+                          nextCursor: { type: string, nullable: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      summary: Create a ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TicketCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Ticket' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Invalid project or status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /tickets/{ticketId}:
+    parameters:
+      - { name: ticketId, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Get a ticket
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Ticket' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      summary: Update a ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TicketUpdate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkEnvelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Ticket' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      summary: Hard-delete a ticket
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          id: { type: string }
+                          workspaceId: { type: string }
+                          projectId: { type: string }
+                          statusId: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /tickets/{ticketId}/move:
+    parameters:
+      - { name: ticketId, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Move (reorder / change column)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TicketMove' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          ticketId: { type: string }
+                          toStatusId: { type: string }
+                          position: { type: number }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /tickets/{ticketId}/archive:
+    parameters:
+      - { name: ticketId, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Archive a ticket
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/OkEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          ticketId: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }

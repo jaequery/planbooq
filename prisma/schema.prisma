@@ -27,6 +27,27 @@ model User {
   memberships      Member[]
   createdTickets   Ticket[]  @relation("TicketCreatedBy")
   assignedTickets  Ticket[]  @relation("TicketAssignee")
+  apiKeys          ApiKey[]
+  comments         Comment[] @relation("CommentAuthor")
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  name        String
+  prefix      String    @unique
+  hash        String
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([userId])
 }
 
 model Account {
@@ -86,6 +107,8 @@ model Workspace {
   tickets  Ticket[]
   projects Project[]
   labels   Label[]
+  apiKeys  ApiKey[]
+  comments Comment[]
 }
 
 model Project {
@@ -168,6 +191,7 @@ model Ticket {
   createdBy User      @relation("TicketCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   assignee  User?     @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   labels    Label[]   @relation("TicketLabels")
+  comments  Comment[]
 
   @@index([workspaceId, statusId, position])
   @@index([projectId, statusId, position])
@@ -189,4 +213,22 @@ model Label {
 
   @@unique([workspaceId, name])
   @@index([workspaceId])
+}
+
+model Comment {
+  id          String   @id @default(cuid())
+  ticketId    String
+  workspaceId String
+  authorId    String
+  body        String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ticket    Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author    User      @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@index([workspaceId])
+  @@index([authorId])
 }
