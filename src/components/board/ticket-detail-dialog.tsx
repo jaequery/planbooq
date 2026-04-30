@@ -405,7 +405,7 @@ export function TicketDetailDialog({
             </div>
             <div className="flex items-center gap-2">
               <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Project</span>
-              <div className="flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[13px]">
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[13px]">
                 <span
                   aria-hidden
                   className="h-3 w-3 rounded-sm"
@@ -425,7 +425,7 @@ export function TicketDetailDialog({
             </div>
             <div className="flex items-center gap-2">
               <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">PR</span>
-              <div className="flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[13px]">
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[13px]">
                 <GitPullRequest
                   className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
                   aria-hidden
@@ -456,6 +456,7 @@ export function TicketDetailDialog({
                       href={ticket.prUrl}
                       target="_blank"
                       rel="noopener noreferrer"
+                      title={ticket.prUrl}
                       className="truncate text-foreground hover:underline"
                     >
                       {ticket.prUrl.replace(/^https?:\/\/(www\.)?github\.com\//, "")}
