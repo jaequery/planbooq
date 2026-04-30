@@ -9,6 +9,7 @@ import { AssigneeAvatar, AssigneePicker } from "@/components/board/assignee-pick
 import { DueDatePicker } from "@/components/board/due-date-picker";
 import { LabelPicker } from "@/components/board/label-picker";
 import { PriorityPicker } from "@/components/board/priority-picker";
+import { type StatusOption, StatusPicker } from "@/components/board/status-picker";
 import { TicketActionsMenu } from "@/components/board/ticket-actions-menu";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -23,8 +24,7 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   onUpdated: (ticket: TicketWithRelations) => void;
   onDeleted?: (ticketId: string) => void;
-  statusName: string;
-  statusColor: string;
+  statuses: ReadonlyArray<StatusOption>;
   projectName: string;
   projectColor: string;
   projectSlug?: string;
@@ -87,8 +87,7 @@ export function TicketDetailDialog({
   onOpenChange,
   onUpdated,
   onDeleted,
-  statusName,
-  statusColor,
+  statuses,
   projectName,
   projectColor,
   projectSlug,
@@ -375,14 +374,12 @@ export function TicketDetailDialog({
           <aside className="flex w-[280px] shrink-0 flex-col gap-1 overflow-y-auto border-l border-border px-4 py-6">
             <div className="flex items-center gap-2">
               <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Status</span>
-              <div className="flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[13px]">
-                <span
-                  aria-hidden
-                  className="h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: statusColor }}
-                />
-                <span className="text-foreground">{statusName}</span>
-              </div>
+              <StatusPicker
+                ticketId={ticket.id}
+                value={ticket.statusId}
+                options={statuses}
+                onChange={(next) => onUpdated({ ...ticket, statusId: next.id })}
+              />
             </div>
             <div className="flex items-center gap-2">
               <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Priority</span>

@@ -381,6 +381,7 @@ export function Board({ initialData }: Props): React.ReactElement {
             <Column
               key={status.id}
               status={status}
+              statuses={statuses.map((s) => ({ id: s.id, name: s.name, color: s.color }))}
               tickets={status.tickets}
               projectId={initialData.project.id}
               projectName={initialData.project.name}
