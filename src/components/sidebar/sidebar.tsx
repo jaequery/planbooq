@@ -2,9 +2,10 @@
 
 import { Plus } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { NewProjectDialog } from "@/components/sidebar/new-project-dialog";
+import { ProjectActionsMenu } from "@/components/sidebar/project-actions-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { ProjectSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,17 @@ type Props = {
 export function Sidebar({ projects, workspaceLabel }: Props): React.ReactElement {
   const [dialogOpen, setDialogOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleProjectDeleted = (deletedSlug: string): void => {
+    const viewing = pathname === `/p/${deletedSlug}` || pathname.startsWith(`/p/${deletedSlug}/`);
+    if (viewing) {
+      const next = projects.find((p) => p.slug !== deletedSlug);
+      router.replace(next ? `/p/${next.slug}` : "/");
+    } else {
+      router.refresh();
+    }
+  };
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-border/60 bg-muted/30">
@@ -35,11 +47,11 @@ export function Sidebar({ projects, workspaceLabel }: Props): React.ReactElement
               const href = `/p/${project.slug}`;
               const active = pathname === href || pathname.startsWith(`${href}/`);
               return (
-                <li key={project.id}>
+                <li key={project.id} className="group/row relative">
                   <Link
                     href={href}
                     className={cn(
-                      "group flex h-8 items-center gap-2.5 rounded-md px-3 text-[13px] transition-colors duration-[120ms] ease-out",
+                      "group flex h-8 items-center gap-2.5 rounded-md pr-8 pl-3 text-[13px] transition-colors duration-[120ms] ease-out",
                       active
                         ? "bg-foreground/[0.06] text-foreground"
                         : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground",
@@ -52,6 +64,14 @@ export function Sidebar({ projects, workspaceLabel }: Props): React.ReactElement
                     />
                     <span className="truncate">{project.name}</span>
                   </Link>
+                  <div className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity duration-[120ms] ease-out group-hover/row:opacity-100 [&:has([data-state=open])]:opacity-100">
+                    <ProjectActionsMenu
+                      projectId={project.id}
+                      projectName={project.name}
+                      onRenamed={() => router.refresh()}
+                      onDeleted={() => handleProjectDeleted(project.slug)}
+                    />
+                  </div>
                 </li>
               );
             })}
