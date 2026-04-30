@@ -10,6 +10,7 @@ import { DueDatePicker } from "@/components/board/due-date-picker";
 import { LabelPicker } from "@/components/board/label-picker";
 import { PriorityPicker } from "@/components/board/priority-picker";
 import { TicketActionsMenu } from "@/components/board/ticket-actions-menu";
+import { TicketComments } from "@/components/board/ticket-comments";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,7 @@ type Props = {
   projectName: string;
   projectColor: string;
   projectSlug?: string;
+  currentUserId: string | null;
 };
 
 function ActivityAvatar(): React.ReactElement {
@@ -92,6 +94,7 @@ export function TicketDetailDialog({
   projectName,
   projectColor,
   projectSlug,
+  currentUserId,
 }: Props): React.ReactElement {
   const [, startTransition] = useTransition();
   const [titleDraft, setTitleDraft] = useState(ticket.title);
@@ -369,6 +372,13 @@ export function TicketDetailDialog({
                   </li>
                 ) : null}
               </ul>
+              <div className="mt-4 border-t border-border/60 pt-4">
+                <TicketComments
+                  ticketId={ticket.id}
+                  workspaceId={ticket.workspaceId}
+                  currentUserId={currentUserId}
+                />
+              </div>
             </div>
           </div>
 

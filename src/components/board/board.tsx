@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
 import type { BoardData, StatusWithTickets, Ticket, TicketWithRelations } from "@/lib/types";
 
-type Props = { initialData: BoardData };
+type Props = { initialData: BoardData; currentUserId: string };
 
 function reorderInsert(list: Ticket[], inserted: Ticket, beforeTicketId: string | null): Ticket[] {
   const without = list.filter((t) => t.id !== inserted.id);
@@ -42,7 +42,7 @@ function computePosition(prev: Ticket | undefined, next: Ticket | undefined): nu
   return 1;
 }
 
-export function Board({ initialData }: Props): React.ReactElement {
+export function Board({ initialData, currentUserId }: Props): React.ReactElement {
   const router = useRouter();
   const [statuses, setStatuses] = useState<StatusWithTickets[]>(initialData.statuses);
   const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
@@ -386,6 +386,7 @@ export function Board({ initialData }: Props): React.ReactElement {
               projectName={initialData.project.name}
               projectColor={initialData.project.color}
               projectSlug={initialData.project.slug}
+              currentUserId={currentUserId}
               onTicketCreated={onTicketCreated}
               onTicketUpdated={onTicketUpdated}
               onTicketArchived={onTicketArchived}
