@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNowStrict } from "date-fns";
-import { CalendarDays, Hash, MoreHorizontal, RefreshCw, Star, Tag, User2, X } from "lucide-react";
+import { CalendarDays, Hash, RefreshCw, Tag, User2, X } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { updateTicket } from "@/actions/ticket";
@@ -220,35 +220,15 @@ export function TicketDetailDialog({
             <span className="text-muted-foreground/40">/</span>
             <span className="font-mono text-[11px] uppercase opacity-80">{ticketIdLabel}</span>
           </div>
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              onClick={comingSoon("Favorites")}
-              aria-label="Star ticket"
-            >
-              <Star className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              onClick={comingSoon("Ticket actions")}
-              aria-label="More actions"
-            >
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => onOpenChange(false)}
-              aria-label="Close"
-            >
-              <X className="h-3.5 w-3.5" aria-hidden />
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            onClick={() => onOpenChange(false)}
+            aria-label="Close"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </Button>
         </div>
 
         <div className="flex min-h-0 flex-1">

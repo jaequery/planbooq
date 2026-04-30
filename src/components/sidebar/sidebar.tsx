@@ -21,7 +21,7 @@ export function Sidebar({ projects, workspaceLabel }: Props): React.ReactElement
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-border/60 bg-muted/30">
       <div className="flex h-12 shrink-0 items-center border-b border-border/60 px-4">
-        <span className="font-mono text-[13px] font-semibold tracking-tight text-foreground/90">
+        <span className="truncate text-[13px] font-semibold tracking-tight text-foreground/90">
           {workspaceLabel}
         </span>
       </div>
