@@ -94,9 +94,13 @@ export function useBoardChannel(
         onEventRef.current(data, message.clientId ?? null);
       })
       .catch((err: unknown) => {
-        logger.warn("realtime.subscribe_failed", {
-          error: err instanceof Error ? err.message : String(err),
-        });
+        // Suppress benign races: the effect was torn down (StrictMode/HMR/nav)
+        // or auth returned null because Ably isn't configured. In both cases
+        // Ably rejects the pending subscribe with a "closed" error.
+        if (cancelled || disabled) return;
+        const message = err instanceof Error ? err.message : String(err);
+        if (/closed|closing/i.test(message)) return;
+        logger.warn("realtime.subscribe_failed", { error: message });
       });
 
     return () => {

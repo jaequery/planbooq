@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNowStrict } from "date-fns";
-import { X } from "lucide-react";
+import { GitPullRequest, X } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { updateTicket } from "@/actions/ticket";
@@ -106,6 +106,8 @@ export function TicketDetailDialog({
   const [dueDate, setDueDate] = useState<Date | null>(
     ticket.dueDate ? new Date(ticket.dueDate) : null,
   );
+  const [prUrlDraft, setPrUrlDraft] = useState(ticket.prUrl ?? "");
+  const [isEditingPrUrl, setIsEditingPrUrl] = useState(false);
 
   useEffect(() => {
     if (!isEditingTitle) setTitleDraft(ticket.title);
@@ -118,6 +120,34 @@ export function TicketDetailDialog({
     setLabels(ticket.labels ?? []);
     setDueDate(ticket.dueDate ? new Date(ticket.dueDate) : null);
   }, [ticket.priority, ticket.assignee, ticket.labels, ticket.dueDate]);
+
+  useEffect(() => {
+    if (!isEditingPrUrl) setPrUrlDraft(ticket.prUrl ?? "");
+  }, [ticket.prUrl, isEditingPrUrl]);
+
+  const commitPrUrl = (): void => {
+    setIsEditingPrUrl(false);
+    const original = ticket.prUrl ?? "";
+    const next = prUrlDraft.trim();
+    if (next === original) return;
+    if (next && !/^https?:\/\//i.test(next)) {
+      setPrUrlDraft(original);
+      toast.error("PR URL must start with http(s)://");
+      return;
+    }
+    startTransition(async () => {
+      const result = await updateTicket({
+        ticketId: ticket.id,
+        prUrl: next ? next : null,
+      });
+      if (!result.ok) {
+        setPrUrlDraft(original);
+        toast.error(`Could not update PR URL: ${result.error}`);
+        return;
+      }
+      onUpdated(result.data);
+    });
+  };
 
   useEffect(() => {
     if (!open) {
@@ -395,6 +425,63 @@ export function TicketDetailDialog({
                 onChange={setDueDate}
                 overdue={isOverdue}
               />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">PR</span>
+              <div className="flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[13px]">
+                <GitPullRequest
+                  className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                  aria-hidden
+                />
+                {isEditingPrUrl ? (
+                  <Input
+                    autoFocus
+                    value={prUrlDraft}
+                    onChange={(e) => setPrUrlDraft(e.target.value)}
+                    onBlur={commitPrUrl}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        setPrUrlDraft(ticket.prUrl ?? "");
+                        setIsEditingPrUrl(false);
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        commitPrUrl();
+                      }
+                    }}
+                    placeholder="https://github.com/.../pull/123"
+                    aria-label="PR URL"
+                    className="h-6 border-0 bg-transparent p-0 text-[13px] shadow-none focus-visible:ring-0"
+                  />
+                ) : ticket.prUrl ? (
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <a
+                      href={ticket.prUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="truncate text-foreground hover:underline"
+                    >
+                      {ticket.prUrl.replace(/^https?:\/\/(www\.)?github\.com\//, "")}
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingPrUrl(true)}
+                      className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground"
+                      aria-label="Edit PR URL"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingPrUrl(true)}
+                    className="flex-1 text-left text-muted-foreground hover:text-foreground"
+                  >
+                    Add PR link…
+                  </button>
+                )}
+              </div>
             </div>
           </aside>
         </div>

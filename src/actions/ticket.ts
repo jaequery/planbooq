@@ -259,6 +259,7 @@ const UpdateSchema = z
     assigneeId: z.string().min(1).nullable().optional(),
     dueDate: z.coerce.date().nullable().optional(),
     labelIds: z.array(z.string().min(1)).optional(),
+    prUrl: z.string().url().max(500).nullable().optional(),
   })
   .strict();
 
@@ -307,6 +308,9 @@ export async function updateTicket(
     if (data.dueDate !== undefined) updateData.dueDate = data.dueDate;
     if (data.labelIds !== undefined) {
       updateData.labels = { set: data.labelIds.map((id) => ({ id })) };
+    }
+    if (data.prUrl !== undefined) {
+      updateData.prUrl = data.prUrl?.trim() ? data.prUrl : null;
     }
 
     const updated = await prisma.ticket.update({
