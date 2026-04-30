@@ -39,8 +39,11 @@ export function TicketActionsMenu({
 
   const copyLink = (): void => {
     if (typeof window === "undefined") return;
-    const slug = projectSlug ?? "";
-    const url = `${window.location.origin}/p/${slug}?ticket=${ticketId}`;
+    if (!projectSlug) {
+      toast.error("Cannot copy link: project unknown");
+      return;
+    }
+    const url = `${window.location.origin}/p/${projectSlug}?ticket=${ticketId}`;
     void navigator.clipboard
       .writeText(url)
       .then(() => toast.success("Link copied"))

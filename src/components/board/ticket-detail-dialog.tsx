@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNowStrict } from "date-fns";
-import { Star, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { updateTicket } from "@/actions/ticket";
@@ -175,10 +175,6 @@ export function TicketDetailDialog({
     setIsEditingDescription(false);
   };
 
-  const comingSoon = (label: string) => (): void => {
-    toast.info(`${label} coming soon`);
-  };
-
   const handleDeleted = (): void => {
     onOpenChange(false);
     onDeleted?.(ticket.id);
@@ -235,15 +231,6 @@ export function TicketDetailDialog({
             ) : null}
           </div>
           <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              onClick={comingSoon("Favorites")}
-              aria-label="Star ticket"
-            >
-              <Star className="h-3.5 w-3.5" />
-            </Button>
             <TicketActionsMenu
               ticketId={ticket.id}
               ticketTitle={ticket.title}
