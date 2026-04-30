@@ -1,6 +1,5 @@
 import { notFound, redirect } from "next/navigation";
 import { Sidebar } from "@/components/sidebar/sidebar";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { UserMenu } from "@/components/user-menu";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
@@ -86,7 +85,6 @@ export default async function ProjectLayout({
             <span className="font-medium text-foreground">{project.name}</span>
           </div>
           <div className="flex items-center gap-1">
-            <ThemeToggle />
             <UserMenu
               email={session.user.email}
               name={session.user.name}

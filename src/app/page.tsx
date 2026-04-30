@@ -2,7 +2,6 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { EmptyProjectsState } from "@/components/sidebar/empty-projects-state";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { UserMenu } from "@/components/user-menu";
 import { auth } from "@/server/auth";
@@ -38,7 +37,6 @@ export default async function Home(): Promise<React.ReactElement> {
               {membership.workspace.name}
             </div>
             <div className="flex items-center gap-1">
-              <ThemeToggle />
               <UserMenu
                 email={session.user.email}
                 name={session.user.name}
@@ -56,9 +54,6 @@ export default async function Home(): Promise<React.ReactElement> {
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center px-6">
-      <div className="absolute right-6 top-6">
-        <ThemeToggle />
-      </div>
       <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
         <h1 className="font-mono text-5xl font-semibold tracking-tight sm:text-6xl">Planbooq</h1>
         <p className="mt-6 text-lg text-muted-foreground sm:text-xl">
