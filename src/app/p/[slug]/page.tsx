@@ -35,6 +35,10 @@ export default async function ProjectPage({ params }: Props): Promise<React.Reac
         tickets: {
           where: { projectId: project.id, archivedAt: null },
           orderBy: { position: "asc" },
+          include: {
+            assignee: { select: { id: true, name: true, email: true, image: true } },
+            labels: { select: { id: true, name: true, color: true } },
+          },
         },
       },
     }),

@@ -23,7 +23,7 @@ import { TicketCard } from "@/components/board/ticket-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
-import type { BoardData, StatusWithTickets, Ticket } from "@/lib/types";
+import type { BoardData, StatusWithTickets, Ticket, TicketWithRelations } from "@/lib/types";
 
 type Props = { initialData: BoardData };
 
@@ -50,7 +50,7 @@ export function Board({ initialData }: Props): React.ReactElement {
   const currentProjectId = initialData.project.id;
 
   const allTickets = useMemo(() => {
-    const map = new Map<string, Ticket>();
+    const map = new Map<string, TicketWithRelations>();
     for (const s of statuses) for (const t of s.tickets) map.set(t.id, t);
     return map;
   }, [statuses]);
@@ -89,32 +89,47 @@ export function Board({ initialData }: Props): React.ReactElement {
           });
         });
       } else if (event.name === "ticket.updated") {
-        setStatuses((prev) =>
-          prev.map((s) => {
-            if (s.id !== event.ticket.statusId) {
-              return { ...s, tickets: s.tickets.filter((t) => t.id !== event.ticket.id) };
+        setStatuses((prev) => {
+          // Payload carries TicketWithRelations; default missing relations
+          // defensively in case an older client publishes a bare Ticket.
+          const merged: TicketWithRelations = {
+            ...event.ticket,
+            assignee: event.ticket.assignee ?? null,
+            labels: event.ticket.labels ?? [],
+          };
+          return prev.map((s) => {
+            if (s.id !== merged.statusId) {
+              return { ...s, tickets: s.tickets.filter((t) => t.id !== merged.id) };
             }
-            const without = s.tickets.filter((t) => t.id !== event.ticket.id);
-            const next = [...without, event.ticket].sort((a, b) => a.position - b.position);
+            const without = s.tickets.filter((t) => t.id !== merged.id);
+            const next = [...without, merged].sort((a, b) => a.position - b.position);
             return { ...s, tickets: next };
-          }),
-        );
-      } else if (event.name === "ticket.archived") {
+          });
+        });
+      } else if (event.name === "ticket.archived" || event.name === "ticket.deleted") {
         setStatuses((prev) =>
           prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== event.ticketId) })),
         );
       } else if (event.name === "ticket.created") {
         setStatuses((prev) => {
-          if (allTickets.has(event.ticket.id)) return prev;
+          // De-dupe by id against the latest state (closure-captured maps go
+          // stale during rapid optimistic + echo races).
+          const alreadyPresent = prev.some((s) => s.tickets.some((t) => t.id === event.ticket.id));
+          if (alreadyPresent) return prev;
+          const created: TicketWithRelations = {
+            ...event.ticket,
+            assignee: event.ticket.assignee ?? null,
+            labels: event.ticket.labels ?? [],
+          };
           return prev.map((s) => {
-            if (s.id !== event.ticket.statusId) return s;
-            const next = [...s.tickets, event.ticket].sort((a, b) => a.position - b.position);
+            if (s.id !== created.statusId) return s;
+            const next = [...s.tickets, created].sort((a, b) => a.position - b.position);
             return { ...s, tickets: next };
           });
         });
       }
     },
-    [allTickets, currentProjectId, router],
+    [currentProjectId, router],
   );
 
   const { status: rtStatus, clientId: rtClientId } = useBoardChannel(
@@ -138,19 +153,24 @@ export function Board({ initialData }: Props): React.ReactElement {
   );
 
   const onTicketCreated = useCallback((ticket: Ticket) => {
-    setStatuses((prev) =>
-      prev.map((s) =>
+    const enriched: TicketWithRelations = { ...ticket, assignee: null, labels: [] };
+    setStatuses((prev) => {
+      // De-dupe defensively: if the realtime echo arrived first, skip the
+      // optimistic insert (and vice versa in the realtime handler).
+      const alreadyPresent = prev.some((s) => s.tickets.some((t) => t.id === ticket.id));
+      if (alreadyPresent) return prev;
+      return prev.map((s) =>
         s.id === ticket.statusId
           ? {
               ...s,
-              tickets: [...s.tickets, ticket].sort((a, b) => a.position - b.position),
+              tickets: [...s.tickets, enriched].sort((a, b) => a.position - b.position),
             }
           : s,
-      ),
-    );
+      );
+    });
   }, []);
 
-  const onTicketUpdated = useCallback((ticket: Ticket) => {
+  const onTicketUpdated = useCallback((ticket: TicketWithRelations) => {
     setStatuses((prev) =>
       prev.map((s) => {
         if (s.id !== ticket.statusId) {
@@ -164,6 +184,12 @@ export function Board({ initialData }: Props): React.ReactElement {
   }, []);
 
   const onTicketArchived = useCallback((ticketId: string) => {
+    setStatuses((prev) =>
+      prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== ticketId) })),
+    );
+  }, []);
+
+  const onTicketDeleted = useCallback((ticketId: string) => {
     setStatuses((prev) =>
       prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== ticketId) })),
     );
@@ -350,6 +376,7 @@ export function Board({ initialData }: Props): React.ReactElement {
               onTicketCreated={onTicketCreated}
               onTicketUpdated={onTicketUpdated}
               onTicketArchived={onTicketArchived}
+              onTicketDeleted={onTicketDeleted}
               isFiltered={isFiltered}
             />
           ))}

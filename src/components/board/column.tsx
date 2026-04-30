@@ -5,19 +5,20 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { NewTicketDialog } from "@/components/board/new-ticket-dialog";
 import { TicketCard } from "@/components/board/ticket-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { StatusWithTickets, Ticket } from "@/lib/types";
+import type { StatusWithTickets, Ticket, TicketWithRelations } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
   status: StatusWithTickets;
-  tickets?: Ticket[];
+  tickets?: TicketWithRelations[];
   projectId: string;
   projectName: string;
   projectColor: string;
   projectSlug: string;
   onTicketCreated: (ticket: Ticket) => void;
-  onTicketUpdated: (ticket: Ticket) => void;
+  onTicketUpdated: (ticket: TicketWithRelations) => void;
   onTicketArchived: (ticketId: string) => void;
+  onTicketDeleted: (ticketId: string) => void;
   isFiltered?: boolean;
 };
 
@@ -31,6 +32,7 @@ export function Column({
   onTicketCreated,
   onTicketUpdated,
   onTicketArchived,
+  onTicketDeleted,
   isFiltered = false,
 }: Props): React.ReactElement {
   const { setNodeRef, isOver } = useDroppable({
@@ -83,8 +85,10 @@ export function Column({
                     ticket={ticket}
                     onUpdated={onTicketUpdated}
                     onArchived={onTicketArchived}
+                    onDeleted={onTicketDeleted}
                     statusName={status.name}
                     statusColor={status.color}
+                    statusKey={status.key}
                     projectName={projectName}
                     projectColor={projectColor}
                     projectSlug={projectSlug}

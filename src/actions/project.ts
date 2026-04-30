@@ -1,9 +1,9 @@
 "use server";
 
+import type { Project } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
-import type { Project } from "@/lib/types";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";

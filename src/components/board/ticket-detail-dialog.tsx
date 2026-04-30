@@ -1,22 +1,28 @@
 "use client";
 
 import { formatDistanceToNowStrict } from "date-fns";
-import { CalendarDays, Hash, RefreshCw, Tag, User2, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { updateTicket } from "@/actions/ticket";
+import { AssigneeAvatar, AssigneePicker } from "@/components/board/assignee-picker";
+import { DueDatePicker } from "@/components/board/due-date-picker";
+import { LabelPicker } from "@/components/board/label-picker";
+import { PriorityPicker } from "@/components/board/priority-picker";
+import { TicketActionsMenu } from "@/components/board/ticket-actions-menu";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import type { Ticket } from "@/lib/types";
+import type { Priority, TicketAssignee, TicketLabel, TicketWithRelations } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
-  ticket: Ticket;
+  ticket: TicketWithRelations;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUpdated: (ticket: Ticket) => void;
+  onUpdated: (ticket: TicketWithRelations) => void;
+  onDeleted?: (ticketId: string) => void;
   statusName: string;
   statusColor: string;
   projectName: string;
@@ -24,44 +30,8 @@ type Props = {
   projectSlug?: string;
 };
 
-const AVATAR_COLORS = [
-  "bg-rose-500",
-  "bg-orange-500",
-  "bg-amber-500",
-  "bg-lime-500",
-  "bg-emerald-500",
-  "bg-teal-500",
-  "bg-sky-500",
-  "bg-indigo-500",
-  "bg-violet-500",
-  "bg-fuchsia-500",
-];
-
-function hashString(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (h * 31 + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
-function Avatar({ name }: { name?: string | null }): React.ReactElement {
-  if (!name) {
-    return <div aria-hidden className="h-5 w-5 shrink-0 rounded-full bg-muted-foreground/30" />;
-  }
-  const color = AVATAR_COLORS[hashString(name) % AVATAR_COLORS.length];
-  const initial = name.trim().charAt(0).toUpperCase() || "?";
-  return (
-    <div
-      aria-hidden
-      className={cn(
-        "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-medium text-white",
-        color,
-      )}
-    >
-      {initial}
-    </div>
-  );
+function ActivityAvatar(): React.ReactElement {
+  return <div aria-hidden className="h-5 w-5 shrink-0 rounded-full bg-muted-foreground/30" />;
 }
 
 function renderDescription(text: string): React.ReactElement {
@@ -116,6 +86,7 @@ export function TicketDetailDialog({
   open,
   onOpenChange,
   onUpdated,
+  onDeleted,
   statusName,
   statusColor,
   projectName,
@@ -128,10 +99,25 @@ export function TicketDetailDialog({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
 
+  // Optimistic mirrors of relational fields.
+  const [priority, setPriority] = useState<Priority>(ticket.priority);
+  const [assignee, setAssignee] = useState<TicketAssignee | null>(ticket.assignee ?? null);
+  const [labels, setLabels] = useState<TicketLabel[]>(ticket.labels ?? []);
+  const [dueDate, setDueDate] = useState<Date | null>(
+    ticket.dueDate ? new Date(ticket.dueDate) : null,
+  );
+
   useEffect(() => {
     if (!isEditingTitle) setTitleDraft(ticket.title);
     if (!isEditingDescription) setDescriptionDraft(ticket.description ?? "");
   }, [ticket.title, ticket.description, isEditingTitle, isEditingDescription]);
+
+  useEffect(() => {
+    setPriority(ticket.priority);
+    setAssignee(ticket.assignee ?? null);
+    setLabels(ticket.labels ?? []);
+    setDueDate(ticket.dueDate ? new Date(ticket.dueDate) : null);
+  }, [ticket.priority, ticket.assignee, ticket.labels, ticket.dueDate]);
 
   useEffect(() => {
     if (!open) {
@@ -147,7 +133,7 @@ export function TicketDetailDialog({
       const result = await updateTicket({
         ticketId: ticket.id,
         title: nextTitle,
-        description: nextDescription.trim() ? nextDescription : undefined,
+        description: nextDescription.trim() ? nextDescription : null,
       });
       if (!result.ok) {
         rollback();
@@ -189,9 +175,17 @@ export function TicketDetailDialog({
     setIsEditingDescription(false);
   };
 
-  const comingSoon = (label: string) => (): void => {
-    toast.info(`${label} coming soon`);
+  const handleDeleted = (): void => {
+    onOpenChange(false);
+    onDeleted?.(ticket.id);
   };
+
+  const isOverdue = (() => {
+    if (!dueDate) return false;
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return dueDate.getTime() < start.getTime();
+  })();
 
   const createdAt = new Date(ticket.createdAt);
   const updatedAt = new Date(ticket.updatedAt);
@@ -219,16 +213,40 @@ export function TicketDetailDialog({
             </span>
             <span className="text-muted-foreground/40">/</span>
             <span className="font-mono text-[11px] uppercase opacity-80">{ticketIdLabel}</span>
+            {assignee ? (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <AssigneeAvatar
+                    name={assignee.name}
+                    email={assignee.email}
+                    image={assignee.image}
+                    size="xs"
+                  />
+                  <span className="truncate text-foreground">
+                    {assignee.name ?? assignee.email ?? "Assignee"}
+                  </span>
+                </span>
+              </>
+            ) : null}
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            onClick={() => onOpenChange(false)}
-            aria-label="Close"
-          >
-            <X className="h-3.5 w-3.5" aria-hidden />
-          </Button>
+          <div className="flex items-center gap-1">
+            <TicketActionsMenu
+              ticketId={ticket.id}
+              ticketTitle={ticket.title}
+              projectSlug={projectSlug}
+              onDeleted={handleDeleted}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => onOpenChange(false)}
+              aria-label="Close"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden />
+            </Button>
+          </div>
         </div>
 
         <div className="flex min-h-0 flex-1">
@@ -307,14 +325,14 @@ export function TicketDetailDialog({
               <div className="mb-3 text-[13px] font-medium text-foreground">Activity</div>
               <ul className="space-y-2 text-[13px] text-muted-foreground">
                 <li className="flex items-center gap-2">
-                  <Avatar name={null} />
+                  <ActivityAvatar />
                   <span className="text-foreground">You created the issue</span>
                   <span className="opacity-60">·</span>
                   <span>{formatDistanceToNowStrict(createdAt, { addSuffix: false })} ago</span>
                 </li>
                 {wasEdited ? (
                   <li className="flex items-center gap-2">
-                    <Avatar name={null} />
+                    <ActivityAvatar />
                     <span className="text-foreground">You edited the issue</span>
                     <span className="opacity-60">·</span>
                     <span>{formatDistanceToNowStrict(updatedAt, { addSuffix: false })} ago</span>
@@ -338,42 +356,25 @@ export function TicketDetailDialog({
             </div>
             <div className="flex items-center gap-2">
               <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Priority</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 flex-1 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
-                onClick={comingSoon("Priority")}
-              >
-                <span className="inline-block h-2.5 w-2.5 rounded-full border border-dashed border-current" />
-                Set priority
-              </Button>
+              <PriorityPicker ticketId={ticket.id} value={priority} onChange={setPriority} />
             </div>
             <div className="flex items-center gap-2">
               <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Assignee</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 flex-1 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
-                onClick={comingSoon("Assignees")}
-              >
-                <User2 className="h-3.5 w-3.5" />
-                Assign
-              </Button>
+              <AssigneePicker
+                ticketId={ticket.id}
+                workspaceId={ticket.workspaceId}
+                assignee={assignee}
+                onChange={setAssignee}
+              />
             </div>
             <div className="flex items-center gap-2">
               <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Labels</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 flex-1 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
-                onClick={comingSoon("Labels")}
-              >
-                <Tag className="h-3.5 w-3.5" />
-                Add label
-              </Button>
+              <LabelPicker
+                ticketId={ticket.id}
+                workspaceId={ticket.workspaceId}
+                value={labels}
+                onChange={setLabels}
+              />
             </div>
             <div className="flex items-center gap-2">
               <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Project</span>
@@ -387,43 +388,13 @@ export function TicketDetailDialog({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Cycle</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 flex-1 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
-                onClick={comingSoon("Cycle")}
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                Add to cycle
-              </Button>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Estimate</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 flex-1 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
-                onClick={comingSoon("Estimate")}
-              >
-                <Hash className="h-3.5 w-3.5" />
-                Set estimate
-              </Button>
-            </div>
-            <div className="flex items-center gap-2">
               <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Due date</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 flex-1 justify-start gap-2 px-2 text-[13px] font-normal text-muted-foreground"
-                onClick={comingSoon("Due date")}
-              >
-                <CalendarDays className="h-3.5 w-3.5" />
-                Set due date
-              </Button>
+              <DueDatePicker
+                ticketId={ticket.id}
+                value={dueDate}
+                onChange={setDueDate}
+                overdue={isOverdue}
+              />
             </div>
           </aside>
         </div>

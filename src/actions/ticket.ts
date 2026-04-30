@@ -1,13 +1,22 @@
 "use server";
 
+import type { Label } from "@prisma/client";
+import { Priority } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
-import type { ServerActionResult, Ticket } from "@/lib/types";
+import type { ServerActionResult, TicketAssignee, TicketWithRelations } from "@/lib/types";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { inngest } from "@/server/inngest/client";
+
+const TICKET_RELATIONS_INCLUDE = {
+  assignee: { select: { id: true, name: true, email: true, image: true } },
+  labels: { select: { id: true, name: true, color: true } },
+} as const;
+
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 async function requireUserId(): Promise<string> {
   const session = await auth();
@@ -171,7 +180,7 @@ const CreateSchema = z.object({
 
 export async function createTicket(
   input: z.infer<typeof CreateSchema>,
-): Promise<ServerActionResult<Ticket>> {
+): Promise<ServerActionResult<TicketWithRelations>> {
   try {
     const data = CreateSchema.parse(input);
     const userId = await requireUserId();
@@ -206,6 +215,7 @@ export async function createTicket(
         position,
         createdById: userId,
       },
+      include: TICKET_RELATIONS_INCLUDE,
     });
 
     revalidatePath(`/p/${project.slug}`);
@@ -243,14 +253,18 @@ export async function createTicket(
 const UpdateSchema = z
   .object({
     ticketId: z.string().min(1),
-    title: z.string().min(1).max(200),
-    description: z.string().max(5000).optional(),
+    title: z.string().min(1).max(200).optional(),
+    description: z.string().max(5000).nullable().optional(),
+    priority: z.nativeEnum(Priority).optional(),
+    assigneeId: z.string().min(1).nullable().optional(),
+    dueDate: z.coerce.date().nullable().optional(),
+    labelIds: z.array(z.string().min(1)).optional(),
   })
   .strict();
 
 export async function updateTicket(
   input: z.infer<typeof UpdateSchema>,
-): Promise<ServerActionResult<Ticket>> {
+): Promise<ServerActionResult<TicketWithRelations>> {
   try {
     const data = UpdateSchema.parse(input);
     const userId = await requireUserId();
@@ -261,12 +275,44 @@ export async function updateTicket(
     }
     await requireMembership(ticket.workspaceId, userId);
 
+    if (data.assigneeId) {
+      const member = await prisma.member.findUnique({
+        where: {
+          workspaceId_userId: { workspaceId: ticket.workspaceId, userId: data.assigneeId },
+        },
+      });
+      if (!member) return { ok: false, error: "invalid_assignee" };
+    }
+
+    if (data.labelIds && data.labelIds.length > 0) {
+      const labels = await prisma.label.findMany({
+        where: { id: { in: data.labelIds } },
+        select: { id: true, workspaceId: true },
+      });
+      if (labels.length !== data.labelIds.length) {
+        return { ok: false, error: "invalid_label" };
+      }
+      if (labels.some((l) => l.workspaceId !== ticket.workspaceId)) {
+        return { ok: false, error: "invalid_label" };
+      }
+    }
+
+    const updateData: Record<string, unknown> = {};
+    if (data.title !== undefined) updateData.title = data.title;
+    if (data.description !== undefined) {
+      updateData.description = data.description?.trim() ? data.description : null;
+    }
+    if (data.priority !== undefined) updateData.priority = data.priority;
+    if (data.assigneeId !== undefined) updateData.assigneeId = data.assigneeId;
+    if (data.dueDate !== undefined) updateData.dueDate = data.dueDate;
+    if (data.labelIds !== undefined) {
+      updateData.labels = { set: data.labelIds.map((id) => ({ id })) };
+    }
+
     const updated = await prisma.ticket.update({
       where: { id: ticket.id },
-      data: {
-        title: data.title,
-        description: data.description?.trim() ? data.description : null,
-      },
+      data: updateData,
+      include: TICKET_RELATIONS_INCLUDE,
     });
 
     const project = await prisma.project.findUnique({
@@ -334,6 +380,151 @@ export async function archiveTicket(
     return { ok: true, data: { ticketId: ticket.id } };
   } catch (error) {
     logger.error("archiveTicket.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
+const DeleteSchema = z.object({ ticketId: z.string().min(1) }).strict();
+
+export async function deleteTicket(input: z.infer<typeof DeleteSchema>): Promise<
+  ServerActionResult<{
+    id: string;
+    workspaceId: string;
+    projectId: string;
+    statusId: string;
+  }>
+> {
+  try {
+    const data = DeleteSchema.parse(input);
+    const userId = await requireUserId();
+
+    const ticket = await prisma.ticket.findUnique({ where: { id: data.ticketId } });
+    if (!ticket) return { ok: false, error: "ticket_not_found" };
+    await requireMembership(ticket.workspaceId, userId);
+
+    await prisma.ticket.delete({ where: { id: ticket.id } });
+
+    const project = await prisma.project.findUnique({
+      where: { id: ticket.projectId },
+      select: { slug: true },
+    });
+    if (project) revalidatePath(`/p/${project.slug}`);
+
+    await publishWorkspaceEvent(ticket.workspaceId, {
+      name: "ticket.deleted",
+      ticketId: ticket.id,
+      workspaceId: ticket.workspaceId,
+      projectId: ticket.projectId,
+      statusId: ticket.statusId,
+      by: userId,
+    });
+
+    return {
+      ok: true,
+      data: {
+        id: ticket.id,
+        workspaceId: ticket.workspaceId,
+        projectId: ticket.projectId,
+        statusId: ticket.statusId,
+      },
+    };
+  } catch (error) {
+    logger.error("deleteTicket.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
+const ListLabelsSchema = z.object({ workspaceId: z.string().min(1) }).strict();
+
+export async function listLabels(
+  input: z.infer<typeof ListLabelsSchema>,
+): Promise<ServerActionResult<Label[]>> {
+  try {
+    const { workspaceId } = ListLabelsSchema.parse(input);
+    const userId = await requireUserId();
+    await requireMembership(workspaceId, userId);
+
+    const labels = await prisma.label.findMany({
+      where: { workspaceId },
+      orderBy: { name: "asc" },
+    });
+    return { ok: true, data: labels };
+  } catch (error) {
+    logger.error("listLabels.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
+const CreateLabelSchema = z
+  .object({
+    workspaceId: z.string().min(1),
+    name: z
+      .string()
+      .min(1)
+      .max(32)
+      .transform((s) => s.trim())
+      .refine((s) => s.length > 0, "name_empty"),
+    color: z.string().refine((c) => HEX_COLOR.test(c), "invalid_color"),
+  })
+  .strict();
+
+export async function createLabel(
+  input: z.infer<typeof CreateLabelSchema>,
+): Promise<ServerActionResult<Label>> {
+  try {
+    const data = CreateLabelSchema.parse(input);
+    const userId = await requireUserId();
+    await requireMembership(data.workspaceId, userId);
+
+    try {
+      const label = await prisma.label.create({
+        data: {
+          workspaceId: data.workspaceId,
+          name: data.name,
+          color: data.color,
+        },
+      });
+      return { ok: true, data: label };
+    } catch (e) {
+      if (e instanceof Error && "code" in e && (e as { code?: string }).code === "P2002") {
+        return { ok: false, error: "label_name_taken" };
+      }
+      throw e;
+    }
+  } catch (error) {
+    logger.error("createLabel.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
+const ListMembersSchema = z.object({ workspaceId: z.string().min(1) }).strict();
+
+export async function listWorkspaceMembers(
+  input: z.infer<typeof ListMembersSchema>,
+): Promise<ServerActionResult<{ user: TicketAssignee }[]>> {
+  try {
+    const { workspaceId } = ListMembersSchema.parse(input);
+    const userId = await requireUserId();
+    await requireMembership(workspaceId, userId);
+
+    const members = await prisma.member.findMany({
+      where: { workspaceId },
+      select: {
+        user: { select: { id: true, name: true, email: true, image: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    return { ok: true, data: members };
+  } catch (error) {
+    logger.error("listWorkspaceMembers.failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     return { ok: false, error: error instanceof Error ? error.message : "unknown" };
