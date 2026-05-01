@@ -102,11 +102,13 @@ export async function POST(req: Request): Promise<Response> {
   });
 
   // Build OpenRouter messages from history
-  const history = await prisma.aiPanelMessage.findMany({
-    where: { conversationId: conversation.id },
-    orderBy: { createdAt: "asc" },
-    take: AI_PANEL_HISTORY_LIMIT,
-  });
+  const history = (
+    await prisma.aiPanelMessage.findMany({
+      where: { conversationId: conversation.id },
+      orderBy: { createdAt: "desc" },
+      take: AI_PANEL_HISTORY_LIMIT,
+    })
+  ).reverse();
   const messages: OpenRouterMessage[] = [{ role: "system", content: SYSTEM_PROMPT }];
   messages.push({
     role: "system",
@@ -284,6 +286,7 @@ export async function POST(req: Request): Promise<Response> {
           conversationId: conversation.id,
           body: assistantText,
           toolCalls: finishedTools.length > 0 ? finishedTools : undefined,
+          pageContext: parsedBody.pageContext,
         });
         for (let i = 0; i < persisted.toolMessages.length; i++) {
           const tm = persisted.toolMessages[i];

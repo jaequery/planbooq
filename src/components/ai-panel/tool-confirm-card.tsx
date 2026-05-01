@@ -32,7 +32,7 @@ export function ToolConfirmCard({ message, defaultProjectId, onConfirm, onReject
 
   const status = message.toolStatus;
 
-  if (status === "executed" || status === "confirmed") {
+  if (status === "executed") {
     const result = asObj(message.toolResult);
     const url = typeof result.url === "string" ? result.url : null;
     const kind = typeof result.kind === "string" ? result.kind : isTicket ? "ticket" : "project";

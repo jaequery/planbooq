@@ -1,7 +1,6 @@
 "use server";
 
 import type { AiPanelMessage } from "@prisma/client";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { ServerActionResult } from "@/lib/types";
 import { auth } from "@/server/auth";
@@ -50,7 +49,6 @@ export async function confirmToolCall(input: {
     messageId: parsed.data.messageId,
     args: argsObject,
   });
-  if (result.ok) revalidatePath("/");
   return result;
 }
 

@@ -119,6 +119,7 @@ export async function appendAssistantMessageSvc(args: {
   conversationId: string;
   body: string;
   toolCalls?: ToolCallToPersist[];
+  pageContext?: AiPanelPageContext;
 }): Promise<{ assistant: AiPanelMessage; toolMessages: AiPanelMessage[] }> {
   const conversation = await prisma.aiConversation.findUnique({
     where: { id: args.conversationId },
@@ -146,6 +147,7 @@ export async function appendAssistantMessageSvc(args: {
           toolName: call.name,
           toolArgs: call.args as unknown as object,
           toolStatus: "pending",
+          pageContext: args.pageContext as unknown as object,
         },
       });
       toolMessages.push(tm);
