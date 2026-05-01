@@ -131,7 +131,7 @@ export function TicketCard({
           }
         }}
         className={cn(
-          "group select-none rounded-md border border-border/70 bg-card px-3 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.02)] outline-none",
+          "group w-full min-w-0 select-none rounded-md border border-border/70 bg-card px-3 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.02)] outline-none",
           "transition-[transform,box-shadow,border-color] duration-150",
           "hover:border-border hover:shadow-[0_1px_2px_rgba(0,0,0,0.06),0_4px_8px_-4px_rgba(0,0,0,0.08)]",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
@@ -148,12 +148,12 @@ export function TicketCard({
                   <PriorityIcon value={ticket.priority} />
                 </span>
               ) : null}
-              <div className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-foreground">
+              <div className="min-w-0 flex-1 break-words text-[13px] font-medium leading-snug text-foreground">
                 {ticket.title}
               </div>
             </div>
             {ticket.description ? (
-              <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-muted-foreground">
+              <p className="mt-1 line-clamp-2 break-words text-[12px] leading-snug text-muted-foreground">
                 {ticket.description}
               </p>
             ) : null}
