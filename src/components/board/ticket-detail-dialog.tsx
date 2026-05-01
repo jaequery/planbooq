@@ -626,7 +626,7 @@ export function TicketDetailDialog({
                       className="h-6 border-0 bg-transparent p-0 text-[13px] shadow-none focus-visible:ring-0"
                     />
                   ) : ticket.prUrl ? (
-                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
                       <a
                         href={ticket.prUrl}
                         target="_blank"
