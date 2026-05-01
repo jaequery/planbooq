@@ -12,10 +12,6 @@ export async function getOpenRouterApiKey(_workspaceId: string): Promise<string 
 
 type OpenRouterRunResult = { ok: true; reply: string } | { ok: false; error: string };
 
-export async function getOpenRouterApiKey(_workspaceId: string): Promise<string | null> {
-  return process.env.OPENROUTER_API_KEY ?? null;
-}
-
 export async function runOpenRouterForTicket(args: {
   ticketId: string;
   workspaceId: string;
