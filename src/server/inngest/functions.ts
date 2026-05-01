@@ -1,6 +1,7 @@
 import { logger } from "@/lib/logger";
 import { prisma } from "@/server/db";
 import { runOpenRouterForTicket } from "@/server/openrouter";
+import { recordAiSystemMessageSvc } from "@/server/services/ai-chat";
 
 import { inngest } from "./client";
 
@@ -59,4 +60,45 @@ export const ticketCreated = inngest.createFunction(
   },
 );
 
-export const inngestFunctions = [ticketCreated];
+type AiCodeRunPayload = {
+  ticketId: string;
+  workspaceId: string;
+  requestedBy: string;
+};
+
+export const ticketAiCodeRun = inngest.createFunction(
+  {
+    id: "ticket-ai-code-run",
+    name: "Ticket AI code run",
+    triggers: [{ event: "ticket/ai-code-run.requested" }],
+  },
+  async ({ event, step }) => {
+    const data = event.data as AiCodeRunPayload;
+
+    await step.run("log-ai-code-run", () => {
+      logger.info("inngest.ai-code-run.received", {
+        ticketId: data.ticketId,
+        workspaceId: data.workspaceId,
+      });
+      return { ok: true };
+    });
+
+    // Worker stub: the eventual implementation spawns a git worktree, runs the
+    // Claude Code agent SDK against it, commits the diff, opens a PR, and
+    // posts the PR link back to the chat thread. For now we record a system
+    // message so the UI surface and event flow are fully functional.
+    await step.run("post-stub-result", async () => {
+      await recordAiSystemMessageSvc({
+        ticketId: data.ticketId,
+        workspaceId: data.workspaceId,
+        body: "Code agent worker is not yet wired to a runtime. The request was logged; once the agent SDK integration ships, this message will be replaced by a real branch + PR link.",
+        kind: "code-run-result",
+      });
+      return { ok: true };
+    });
+
+    return { ticketId: data.ticketId };
+  },
+);
+
+export const inngestFunctions = [ticketCreated, ticketAiCodeRun];

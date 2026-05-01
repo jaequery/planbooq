@@ -120,6 +120,21 @@ export type AblyChannelEvent =
       ticketId: string;
       commentId: string;
       by: string;
+    }
+  | {
+      name: "ai.message.created";
+      workspaceId: string;
+      projectId: string;
+      ticketId: string;
+      message: {
+        id: string;
+        role: string;
+        body: string;
+        kind: string;
+        authorId: string | null;
+        createdAt: Date;
+      };
+      by: string;
     };
 
 export type ServerActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
