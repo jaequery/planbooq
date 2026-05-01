@@ -92,6 +92,8 @@ export function mapErrorToStatus(code: string): number {
       return 404;
     case "rate_limited":
       return 429;
+    case "duplicate_title":
+      return 409;
     case "validation_error":
     case "invalid_assignee":
     case "invalid_label":

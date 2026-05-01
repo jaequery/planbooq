@@ -3,22 +3,53 @@
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { NewProjectDialog } from "@/components/sidebar/new-project-dialog";
 import { ProjectActionsMenu } from "@/components/sidebar/project-actions-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { ProjectSummary } from "@/lib/types";
+import { useBoardChannel } from "@/lib/realtime/use-board-channel";
+import type { AblyChannelEvent, ProjectSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
   projects: ReadonlyArray<ProjectSummary>;
   workspaceLabel: string;
+  workspaceId: string;
 };
 
-export function Sidebar({ projects, workspaceLabel }: Props): React.ReactElement {
+const COUNT_AFFECTING_EVENTS: ReadonlySet<AblyChannelEvent["name"]> = new Set([
+  "ticket.created",
+  "ticket.moved",
+  "ticket.deleted",
+  "ticket.archived",
+]);
+
+export function Sidebar({ projects, workspaceLabel, workspaceId }: Props): React.ReactElement {
   const [dialogOpen, setDialogOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleEvent = useCallback(
+    (event: AblyChannelEvent) => {
+      if (!COUNT_AFFECTING_EVENTS.has(event.name)) return;
+      if (refreshTimerRef.current) return;
+      refreshTimerRef.current = setTimeout(() => {
+        refreshTimerRef.current = null;
+        router.refresh();
+      }, 150);
+    },
+    [router],
+  );
+
+  useBoardChannel(workspaceId, handleEvent);
+
+  useEffect(
+    () => () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    },
+    [],
+  );
 
   const handleProjectDeleted = (deletedSlug: string): void => {
     const viewing = pathname === `/p/${deletedSlug}` || pathname.startsWith(`/p/${deletedSlug}/`);

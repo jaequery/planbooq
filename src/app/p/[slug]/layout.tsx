@@ -71,7 +71,11 @@ export default async function ProjectLayout({
 
   return (
     <div className="flex h-screen min-h-0 bg-background">
-      <Sidebar projects={allProjects} workspaceLabel={membership.workspace.name} />
+      <Sidebar
+        projects={allProjects}
+        workspaceLabel={membership.workspace.name}
+        workspaceId={membership.workspaceId}
+      />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-4">
           <div className="flex items-center gap-2.5 text-[13px]">

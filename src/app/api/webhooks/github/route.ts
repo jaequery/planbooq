@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 
 import { env } from "@/env";
 import { logger } from "@/lib/logger";
-import { autoCompleteTicketByPrUrl, verifyGitHubSignature } from "@/server/services/webhook-github";
+import {
+  autoCompleteTicketByPrUrl,
+  linkTicketPrUrlFromPrBody,
+  verifyGitHubSignature,
+} from "@/server/services/webhook-github";
 
 export const runtime = "nodejs";
 
@@ -11,6 +15,7 @@ type PullRequestPayload = {
   pull_request: {
     html_url: string;
     merged: boolean;
+    body: string | null;
   };
 };
 
@@ -21,7 +26,8 @@ function isPullRequestPayload(value: unknown): value is PullRequestPayload {
   const pr = v.pull_request;
   if (!pr || typeof pr !== "object") return false;
   const p = pr as Record<string, unknown>;
-  return typeof p.html_url === "string" && typeof p.merged === "boolean";
+  if (typeof p.html_url !== "string" || typeof p.merged !== "boolean") return false;
+  return p.body === null || typeof p.body === "string" || p.body === undefined;
 }
 
 export async function POST(req: Request): Promise<NextResponse> {
@@ -45,14 +51,20 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (!isPullRequestPayload(parsed)) {
     return NextResponse.json({ ok: false, error: "invalid_payload" }, { status: 400 });
   }
+  const prUrl = parsed.pull_request.html_url;
+
+  if (parsed.action === "opened" || parsed.action === "edited" || parsed.action === "reopened") {
+    const link = await linkTicketPrUrlFromPrBody(prUrl, parsed.pull_request.body);
+    logger.info("github.webhook.handled", { action: parsed.action, prUrl, outcome: link.kind });
+    return NextResponse.json({ ok: true, outcome: link.kind });
+  }
+
   if (parsed.action !== "closed" || !parsed.pull_request.merged) {
     return new NextResponse(null, { status: 204 });
   }
 
-  const outcome = await autoCompleteTicketByPrUrl(parsed.pull_request.html_url);
-  logger.info("github.webhook.handled", {
-    prUrl: parsed.pull_request.html_url,
-    outcome: outcome.kind,
-  });
+  await linkTicketPrUrlFromPrBody(prUrl, parsed.pull_request.body);
+  const outcome = await autoCompleteTicketByPrUrl(prUrl);
+  logger.info("github.webhook.handled", { action: parsed.action, prUrl, outcome: outcome.kind });
   return NextResponse.json({ ok: true, outcome: outcome.kind });
 }

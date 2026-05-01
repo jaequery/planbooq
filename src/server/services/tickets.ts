@@ -54,6 +54,20 @@ export async function createTicketSvc(
       return { ok: false, error: "invalid_status" };
     }
 
+    const normalizedTitle = data.title.trim();
+    const dedupeWindow = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const duplicate = await prisma.ticket.findFirst({
+      where: {
+        projectId: project.id,
+        archivedAt: null,
+        title: { equals: normalizedTitle, mode: "insensitive" },
+        createdAt: { gte: dedupeWindow },
+        status: { key: { not: "completed" } },
+      },
+      select: { id: true },
+    });
+    if (duplicate) return { ok: false, error: "duplicate_title" };
+
     const last = await prisma.ticket.findFirst({
       where: { projectId: project.id, statusId: data.statusId, archivedAt: null },
       orderBy: { position: "desc" },

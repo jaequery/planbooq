@@ -30,6 +30,57 @@ type AutoCompleteOutcome =
   | { kind: "already_completed" }
   | { kind: "moved"; ticketId: string; workspaceId: string; toStatusId: string };
 
+type LinkPrOutcome =
+  | { kind: "no_identifier" }
+  | { kind: "no_match" }
+  | { kind: "already_linked" }
+  | { kind: "linked"; ticketId: string; workspaceId: string };
+
+const TICKET_RELATIONS_INCLUDE = {
+  assignee: { select: { id: true, name: true, email: true, image: true } },
+  labels: { select: { id: true, name: true, color: true } },
+} as const;
+
+const PLANBOOQ_REF_RE = /Closes\s+Planbooq\s+ticket:\s*([A-Za-z0-9]+)-([A-Za-z0-9]{6})\b/i;
+
+export async function linkTicketPrUrlFromPrBody(
+  prUrl: string,
+  body: string | null | undefined,
+): Promise<LinkPrOutcome> {
+  const match = body?.match(PLANBOOQ_REF_RE);
+  if (!match?.[1] || !match[2]) return { kind: "no_identifier" };
+  const projectPrefix = match[1].toLowerCase();
+  const idSuffix = match[2].toLowerCase();
+
+  const ticket = await prisma.ticket.findFirst({
+    where: {
+      archivedAt: null,
+      id: { endsWith: idSuffix, mode: "insensitive" },
+      project: { slug: { startsWith: projectPrefix, mode: "insensitive" } },
+    },
+    select: { id: true, workspaceId: true, projectId: true, prUrl: true },
+  });
+  if (!ticket) return { kind: "no_match" };
+  if (ticket.prUrl === prUrl) return { kind: "already_linked" };
+
+  const updated = await prisma.ticket.update({
+    where: { id: ticket.id },
+    data: { prUrl },
+    include: TICKET_RELATIONS_INCLUDE,
+  });
+
+  await publishWorkspaceEvent(ticket.workspaceId, {
+    name: "ticket.updated",
+    ticketId: ticket.id,
+    workspaceId: ticket.workspaceId,
+    projectId: ticket.projectId,
+    ticket: updated,
+    by: "github-webhook",
+  });
+
+  return { kind: "linked", ticketId: ticket.id, workspaceId: ticket.workspaceId };
+}
+
 export async function autoCompleteTicketByPrUrl(prUrl: string): Promise<AutoCompleteOutcome> {
   const ticket = await prisma.ticket.findFirst({
     where: { prUrl, archivedAt: null },
