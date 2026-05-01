@@ -117,6 +117,19 @@ export function TicketCard({
         style={style}
         {...attributes}
         {...listeners}
+        role={isOverlay ? undefined : "button"}
+        tabIndex={isOverlay ? undefined : 0}
+        aria-label={isOverlay ? undefined : `Open ${ticket.title}`}
+        onClick={() => {
+          if (!isOverlay) setDetailOpen(true);
+        }}
+        onKeyDown={(event) => {
+          if (isOverlay) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setDetailOpen(true);
+          }
+        }}
         className={cn(
           "group select-none rounded-md border border-border/70 bg-card px-3 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.02)] outline-none",
           "transition-[transform,box-shadow,border-color] duration-150",
@@ -128,15 +141,7 @@ export function TicketCard({
         )}
       >
         <div className="flex items-start gap-2">
-          <button
-            type="button"
-            className="min-w-0 flex-1 text-left outline-none"
-            onPointerDown={stopDragPropagation}
-            onClick={() => {
-              if (!isOverlay) setDetailOpen(true);
-            }}
-            aria-label={`Open ${ticket.title}`}
-          >
+          <div className="min-w-0 flex-1">
             <div className="flex items-start gap-1.5">
               {ticket.priority !== "NO_PRIORITY" ? (
                 <span className="mt-1 shrink-0">
@@ -152,7 +157,7 @@ export function TicketCard({
                 {ticket.description}
               </p>
             ) : null}
-          </button>
+          </div>
           {!isOverlay && ticket.assignee ? (
             <AssigneeAvatar
               name={ticket.assignee.name}
