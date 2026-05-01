@@ -94,8 +94,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: process.env.AUTH_TRUST_HOST === "true" || process.env.NODE_ENV !== "production",
   providers: [
     GitHub({
-      clientId: env.AUTH_GITHUB_ID,
-      clientSecret: env.AUTH_GITHUB_SECRET,
+      clientId: env.GITHUB_ID,
+      clientSecret: env.GITHUB_SECRET,
       allowDangerousEmailAccountLinking: true,
     }),
   ],

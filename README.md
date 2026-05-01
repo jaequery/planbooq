@@ -40,7 +40,7 @@ Copy `.env.example` to `.env.local` and fill values once Backend wires them up.
 ```
 
 - Local prod build: `AUTH_TRUST_HOST` is auto-true in dev; set `INNGEST_REQUIRED=true` on real prod deploys to enforce Inngest signing.
-- Auth: GitHub OAuth is required. Create an OAuth app at <https://github.com/settings/developers> with callback URL `$NEXTAUTH_URL/api/auth/callback/github` and set `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET` in `.env`.
+- Auth: GitHub OAuth is required. Create an OAuth app at <https://github.com/settings/developers> with callback URL `$NEXTAUTH_URL/api/auth/callback/github` and set `GITHUB_ID` / `GITHUB_SECRET` in `.env`.
 - Inngest dev server: **http://localhost:8288** — the SDK fails-soft when `INNGEST_SIGNING_KEY` is empty as long as `INNGEST_DEV=1` is set (it is, in `.env.example`).
 - Ably: `ABLY_API_KEY` is optional in dev. The token endpoint returns `503 ably_not_configured` and the publish helper no-ops when the key is missing, so the rest of the app keeps working.
 - GitHub webhook: tickets auto-move to `Completed` when their linked PR is merged. Set `GITHUB_WEBHOOK_SECRET` in `.env` and configure the webhook on each repo — see [`docs/github-webhook.md`](docs/github-webhook.md).
