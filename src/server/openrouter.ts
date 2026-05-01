@@ -1,9 +1,15 @@
 import "server-only";
 import { logger } from "@/lib/logger";
 
+const DEFAULT_MODEL = "anthropic/claude-opus-4.7";
+
 export function getOpenRouterApiKey(): string | null {
   const key = process.env.OPENROUTER_API_KEY;
   return key && key.length > 0 ? key : null;
+}
+
+export function getOpenRouterModel(): string {
+  return process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
 }
 
 type OpenRouterRunResult = { ok: true; reply: string } | { ok: false; error: string };
@@ -28,7 +34,7 @@ export async function runOpenRouterForTicket(args: {
         "X-Title": "Planbooq",
       },
       body: JSON.stringify({
-        model: "openrouter/auto",
+        model: getOpenRouterModel(),
         messages: [
           {
             role: "system",
