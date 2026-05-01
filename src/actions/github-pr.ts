@@ -13,6 +13,7 @@ import {
   type PrStatus,
   parseGitHubPrUrl,
 } from "@/server/services/github-pr";
+import { autoCompleteTicketByPrUrl } from "@/server/services/webhook-github";
 
 const TICKET_RELATIONS_INCLUDE = {
   assignee: { select: { id: true, name: true, email: true, image: true } },
@@ -143,6 +144,8 @@ export async function mergePullRequest(
 
     if (outcome.kind === "ok") {
       logger.info("github_pr.merge.ok", { ticketId: id, sha: outcome.sha });
+      const completion = await autoCompleteTicketByPrUrl(ticket.prUrl);
+      logger.info("github_pr.merge.auto_complete", { ticketId: id, outcome: completion.kind });
       revalidatePath(`/p/${ticket.project.slug}`);
 
       const updated = await prisma.ticket.findUnique({
