@@ -67,9 +67,6 @@ importers:
       next-themes:
         specifier: latest
         version: 0.4.6(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      nodemailer:
-        specifier: ^7.0.13
-        version: 7.0.13
       pg:
         specifier: ^8.20.0
         version: 8.20.0
@@ -107,9 +104,6 @@ importers:
       '@types/node':
         specifier: latest
         version: 25.6.0
-      '@types/nodemailer':
-        specifier: ^6.4.23
-        version: 6.4.23
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.0
@@ -2350,9 +2344,6 @@ packages:
 
   '@types/node@25.6.0':
     resolution: {integrity: sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ==}
-
-  '@types/nodemailer@6.4.23':
-    resolution: {integrity: sha512-aFV3/NsYFLSx9mbb5gtirBSXJnAlrusoKNuPbxsASWc7vrKLmIrTQRpdcxNcSFL3VW2A2XpeLEavwb2qMi6nlQ==}
 
   '@types/oracledb@6.5.2':
     resolution: {integrity: sha512-kK1eBS/Adeyis+3OlBDMeQQuasIDLUYXsi2T15ccNJ0iyUpQ4xDF7svFu3+bGVrI0CMBUclPciz+lsQR3JX3TQ==}
@@ -6765,10 +6756,6 @@ snapshots:
     dependencies:
       undici-types: 7.19.2
 
-  '@types/nodemailer@6.4.23':
-    dependencies:
-      '@types/node': 25.6.0
-
   '@types/oracledb@6.5.2':
     dependencies:
       '@types/node': 25.6.0
@@ -7887,7 +7874,8 @@ snapshots:
 
   node-releases@2.0.38: {}
 
-  nodemailer@7.0.13: {}
+  nodemailer@7.0.13:
+    optional: true
 
   normalize-url@6.1.0: {}
 
