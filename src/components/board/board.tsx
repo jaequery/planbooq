@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { moveTicket } from "@/actions/ticket";
 import { Column } from "@/components/board/column";
+import { QuickAddTicket } from "@/components/board/quick-add-ticket";
 import { RealtimeIndicator } from "@/components/board/realtime-indicator";
 import { TicketCard } from "@/components/board/ticket-card";
 import { Button } from "@/components/ui/button";
@@ -359,8 +360,9 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
             {visibleTicketCount} match{visibleTicketCount === 1 ? "" : "es"}
           </span>
         ) : null}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <RealtimeIndicator status={rtStatus} />
+          <QuickAddTicket projectId={currentProjectId} onCreated={onTicketCreated} />
         </div>
       </div>
       <DndContext
@@ -378,12 +380,10 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
               status={status}
               statuses={statuses.map((s) => ({ id: s.id, name: s.name, color: s.color }))}
               tickets={status.tickets}
-              projectId={initialData.project.id}
               projectName={initialData.project.name}
               projectColor={initialData.project.color}
               projectSlug={initialData.project.slug}
               currentUserId={currentUserId}
-              onTicketCreated={onTicketCreated}
               onTicketUpdated={onTicketUpdated}
               onTicketArchived={onTicketArchived}
               onTicketDeleted={onTicketDeleted}

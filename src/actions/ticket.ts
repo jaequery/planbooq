@@ -10,6 +10,7 @@ import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { inngest } from "@/server/inngest/client";
+import { generateTicketDraft } from "@/server/openrouter";
 
 const TICKET_RELATIONS_INCLUDE = {
   assignee: { select: { id: true, name: true, email: true, image: true } },
@@ -258,6 +259,51 @@ export async function createTicket(
     return { ok: true, data: ticket };
   } catch (error) {
     logger.error("createTicket.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
+const QuickCreateSchema = z.object({
+  projectId: z.string().min(1),
+  prompt: z.string().min(1).max(2000),
+});
+
+export async function quickCreateTicket(
+  input: z.infer<typeof QuickCreateSchema>,
+): Promise<ServerActionResult<TicketWithRelations>> {
+  try {
+    const data = QuickCreateSchema.parse(input);
+    const userId = await requireUserId();
+
+    const project = await prisma.project.findUnique({
+      where: { id: data.projectId },
+      select: { id: true, workspaceId: true, slug: true },
+    });
+    if (!project) return { ok: false, error: "invalid_project" };
+    await requireMembership(project.workspaceId, userId);
+
+    const backlog = await prisma.status.findFirst({
+      where: { workspaceId: project.workspaceId, key: "backlog" },
+      select: { id: true },
+    });
+    if (!backlog) return { ok: false, error: "no_backlog_status" };
+
+    const draftResult = await generateTicketDraft({
+      workspaceId: project.workspaceId,
+      prompt: data.prompt,
+    });
+    if (!draftResult.ok) return { ok: false, error: draftResult.error };
+
+    return await createTicket({
+      projectId: project.id,
+      statusId: backlog.id,
+      title: draftResult.draft.title,
+      description: draftResult.draft.description || undefined,
+    });
+  } catch (error) {
+    logger.error("quickCreateTicket.failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     return { ok: false, error: error instanceof Error ? error.message : "unknown" };
