@@ -1,5 +1,5 @@
 import { jsonErr, jsonOk, mapErrorToStatus, requireCaller } from "@/server/api-auth";
-import { getMaxSizeForMime } from "@/server/services/attachment";
+import { ATTACHMENT_LIMITS, getMaxSizeForMime } from "@/server/services/attachment";
 import { addTicketPreviewSvc, listTicketPreviewsSvc } from "@/server/services/ticket-preview";
 
 type Ctx = { params: Promise<{ ticketId: string }> };
@@ -16,6 +16,11 @@ export async function POST(req: Request, ctx: Ctx) {
   const caller = await requireCaller(req);
   if (caller instanceof Response) return caller;
   const { ticketId } = await ctx.params;
+
+  const contentLength = Number(req.headers.get("content-length") ?? "0");
+  if (contentLength > ATTACHMENT_LIMITS.maxVideoSizeBytes + 64 * 1024) {
+    return jsonErr("file_too_large", 413);
+  }
 
   let form: FormData;
   try {

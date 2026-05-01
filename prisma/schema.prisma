@@ -28,8 +28,8 @@ model User {
   createdTickets  Ticket[]     @relation("TicketCreatedBy")
   assignedTickets Ticket[]     @relation("TicketAssignee")
   apiKeys         ApiKey[]
-  comments        Comment[]       @relation("CommentAuthor")
-  attachments     Attachment[]    @relation("AttachmentUploader")
+  comments        Comment[]    @relation("CommentAuthor")
+  attachments     Attachment[] @relation("AttachmentUploader")
   ticketPreviews  TicketPreview[] @relation("TicketPreviewCreator")
 }
 

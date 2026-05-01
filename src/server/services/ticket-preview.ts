@@ -89,11 +89,12 @@ export async function addTicketPreviewSvc(args: {
     });
     const nextPosition = (last?.position ?? 0) + 1;
 
+    const safeLabel = label ? label.slice(0, 200) : null;
     const created = await prisma.ticketPreview.create({
       data: {
         ticketId,
         attachmentId: attachment.id,
-        label: label ?? null,
+        label: safeLabel,
         position: nextPosition,
         createdById: caller.userId,
       },
