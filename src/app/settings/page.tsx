@@ -8,7 +8,7 @@ import { prisma } from "@/server/db";
 
 export default async function SettingsPage(): Promise<React.ReactElement> {
   const session = await auth();
-  if (!session?.user?.id) redirect("/signin");
+  if (!session?.user?.id) redirect("/");
 
   const membership = await prisma.member.findFirst({
     where: { userId: session.user.id },

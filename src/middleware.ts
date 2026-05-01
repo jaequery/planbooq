@@ -14,7 +14,7 @@ const SESSION_COOKIES = [
 export default function middleware(req: NextRequest): NextResponse {
   const hasSession = SESSION_COOKIES.some((name) => req.cookies.has(name));
   if (!hasSession) {
-    return NextResponse.redirect(new URL("/signin", req.url));
+    return NextResponse.redirect(new URL("/", req.url));
   }
   return NextResponse.next();
 }

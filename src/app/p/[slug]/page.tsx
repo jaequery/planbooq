@@ -9,7 +9,7 @@ type Props = { params: Promise<{ slug: string }> };
 export default async function ProjectPage({ params }: Props): Promise<React.ReactElement> {
   const session = await auth();
   if (!session?.user?.id) {
-    redirect("/signin");
+    redirect("/");
   }
 
   const { slug } = await params;
