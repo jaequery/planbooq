@@ -1,6 +1,5 @@
 "use client";
 
-import { formatDistanceToNowStrict } from "date-fns";
 import { GitMerge, GitPullRequest, X } from "lucide-react";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -12,13 +11,11 @@ import { LabelPicker } from "@/components/board/label-picker";
 import { PriorityPicker } from "@/components/board/priority-picker";
 import { type StatusOption, StatusPicker } from "@/components/board/status-picker";
 import { TicketActionsMenu } from "@/components/board/ticket-actions-menu";
-import { TicketAiChat } from "@/components/board/ticket-ai-chat";
-import { TicketComments } from "@/components/board/ticket-comments";
+import { TicketTimeline } from "@/components/board/ticket-timeline";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Markdown } from "@/components/ui/markdown";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { formatTicketIdentifier } from "@/lib/ticket-identifier";
 import type { Priority, TicketAssignee, TicketLabel, TicketWithRelations } from "@/lib/types";
@@ -99,10 +96,6 @@ function describeMergeDisabledReason(status: PrStatus): string | null {
   return null;
 }
 
-function ActivityAvatar(): React.ReactElement {
-  return <div aria-hidden className="h-5 w-5 shrink-0 rounded-full bg-muted-foreground/30" />;
-}
-
 export function TicketDetailDialog({
   ticket,
   open,
@@ -120,21 +113,6 @@ export function TicketDetailDialog({
   const [descriptionDraft, setDescriptionDraft] = useState(ticket.description ?? "");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
-  const tabStorageKey = `planbooq.ticket.${ticket.id}.discussion-tab`;
-  const [discussionTab, setDiscussionTab] = useState<"ai" | "comments">("ai");
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem(tabStorageKey);
-    if (stored === "ai" || stored === "comments") setDiscussionTab(stored);
-  }, [tabStorageKey]);
-  const onDiscussionTabChange = (value: string): void => {
-    if (value !== "ai" && value !== "comments") return;
-    setDiscussionTab(value);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(tabStorageKey, value);
-    }
-  };
-
   // Optimistic mirrors of relational fields.
   const [priority, setPriority] = useState<Priority>(ticket.priority);
   const [assignee, setAssignee] = useState<TicketAssignee | null>(ticket.assignee ?? null);
@@ -505,43 +483,14 @@ export function TicketDetailDialog({
             </div>
 
             <div className="mt-auto border-t border-border/60 px-8 py-6">
-              <Tabs value={discussionTab} onValueChange={onDiscussionTabChange}>
-                <TabsList>
-                  <TabsTrigger value="ai">AI</TabsTrigger>
-                  <TabsTrigger value="comments">Comments</TabsTrigger>
-                </TabsList>
-                <TabsContent value="ai" className="pt-4">
-                  <TicketAiChat ticketId={ticket.id} workspaceId={ticket.workspaceId} />
-                </TabsContent>
-                <TabsContent value="comments" className="pt-4">
-                  <div className="mb-3 text-[13px] font-medium text-foreground">Activity</div>
-                  <ul className="space-y-2 text-[13px] text-muted-foreground">
-                    <li className="flex items-center gap-2">
-                      <ActivityAvatar />
-                      <span className="text-foreground">You created the issue</span>
-                      <span className="opacity-60">·</span>
-                      <span>{formatDistanceToNowStrict(createdAt, { addSuffix: false })} ago</span>
-                    </li>
-                    {wasEdited ? (
-                      <li className="flex items-center gap-2">
-                        <ActivityAvatar />
-                        <span className="text-foreground">You edited the issue</span>
-                        <span className="opacity-60">·</span>
-                        <span>
-                          {formatDistanceToNowStrict(updatedAt, { addSuffix: false })} ago
-                        </span>
-                      </li>
-                    ) : null}
-                  </ul>
-                  <div className="mt-4 border-t border-border/60 pt-4">
-                    <TicketComments
-                      ticketId={ticket.id}
-                      workspaceId={ticket.workspaceId}
-                      currentUserId={currentUserId}
-                    />
-                  </div>
-                </TabsContent>
-              </Tabs>
+              <TicketTimeline
+                ticketId={ticket.id}
+                workspaceId={ticket.workspaceId}
+                currentUserId={currentUserId}
+                createdAt={createdAt}
+                updatedAt={updatedAt}
+                wasEdited={wasEdited}
+              />
             </div>
           </div>
 
