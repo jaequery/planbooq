@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { createComment, deleteComment, listTicketComments } from "@/actions/comment";
 import { AssigneeAvatar } from "@/components/board/assignee-picker";
 import { Button } from "@/components/ui/button";
+import { Markdown } from "@/components/ui/markdown";
 import { Textarea } from "@/components/ui/textarea";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
 import type { AblyChannelEvent } from "@/lib/types";
@@ -177,9 +178,7 @@ export function TicketComments({
                       </button>
                     ) : null}
                   </div>
-                  <p className="whitespace-pre-wrap break-words text-[13px] text-foreground">
-                    {comment.body}
-                  </p>
+                  <Markdown className="text-[13px] text-foreground">{comment.body}</Markdown>
                 </div>
               </li>
             );
