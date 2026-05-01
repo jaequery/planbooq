@@ -11,6 +11,7 @@ import { LabelPicker } from "@/components/board/label-picker";
 import { PriorityPicker } from "@/components/board/priority-picker";
 import { type StatusOption, StatusPicker } from "@/components/board/status-picker";
 import { TicketActionsMenu } from "@/components/board/ticket-actions-menu";
+import { TicketPreviewsPanel } from "@/components/board/ticket-previews-panel";
 import { TicketTimeline } from "@/components/board/ticket-timeline";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -648,6 +649,7 @@ export function TicketDetailDialog({
                 <div className="text-[12px] text-red-600 dark:text-red-400">{mergeError}</div>
               ) : null}
             </div>
+            <TicketPreviewsPanel ticketId={ticket.id} workspaceId={ticket.workspaceId} />
           </aside>
         </div>
       </DialogContent>
