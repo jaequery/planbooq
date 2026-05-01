@@ -408,7 +408,7 @@ export async function listProjectTicketsSvc(
       ...(opts.includeArchived ? {} : { archivedAt: null }),
     },
     include: TICKET_RELATIONS_INCLUDE,
-    orderBy: [{ statusId: "asc" }, { position: "asc" }],
+    orderBy: [{ statusId: "asc" }, { updatedAt: "desc" }, { id: "desc" }],
     take: limit + 1,
     ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
   });

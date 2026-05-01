@@ -43,6 +43,11 @@ function computePosition(prev: Ticket | undefined, next: Ticket | undefined): nu
   return 1;
 }
 
+function byUpdatedDesc(a: Ticket, b: Ticket): number {
+  const diff = +new Date(b.updatedAt) - +new Date(a.updatedAt);
+  return diff !== 0 ? diff : b.id.localeCompare(a.id);
+}
+
 export function Board({ initialData, currentUserId }: Props): React.ReactElement {
   const router = useRouter();
   const [statuses, setStatuses] = useState<StatusWithTickets[]>(initialData.statuses);
@@ -93,7 +98,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           if (!moving) return prev;
           return stripped.map((s) => {
             if (s.id !== event.toStatusId) return s;
-            const next = [...s.tickets, moving as Ticket].sort((a, b) => a.position - b.position);
+            const next = [...s.tickets, moving as Ticket].sort(byUpdatedDesc);
             return { ...s, tickets: next };
           });
         });
@@ -111,7 +116,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
               return { ...s, tickets: s.tickets.filter((t) => t.id !== merged.id) };
             }
             const without = s.tickets.filter((t) => t.id !== merged.id);
-            const next = [...without, merged].sort((a, b) => a.position - b.position);
+            const next = [...without, merged].sort(byUpdatedDesc);
             return { ...s, tickets: next };
           });
         });
@@ -132,7 +137,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           };
           return prev.map((s) => {
             if (s.id !== created.statusId) return s;
-            const next = [...s.tickets, created].sort((a, b) => a.position - b.position);
+            const next = [...s.tickets, created].sort(byUpdatedDesc);
             return { ...s, tickets: next };
           });
         });
@@ -172,7 +177,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         s.id === ticket.statusId
           ? {
               ...s,
-              tickets: [...s.tickets, enriched].sort((a, b) => a.position - b.position),
+              tickets: [...s.tickets, enriched].sort(byUpdatedDesc),
             }
           : s,
       );
@@ -186,7 +191,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           return { ...s, tickets: s.tickets.filter((t) => t.id !== ticket.id) };
         }
         const without = s.tickets.filter((t) => t.id !== ticket.id);
-        const next = [...without, ticket].sort((a, b) => a.position - b.position);
+        const next = [...without, ticket].sort(byUpdatedDesc);
         return { ...s, tickets: next };
       }),
     );
@@ -280,7 +285,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           statusId: targetStatusId,
           position: optimisticPosition,
         };
-        const merged = [...s.tickets, updated].sort((a, b) => a.position - b.position);
+        const merged = [...s.tickets, updated].sort(byUpdatedDesc);
         return { ...s, tickets: merged };
       });
     });
@@ -302,7 +307,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           if (s.id !== targetStatusId) return s;
           const tickets = s.tickets
             .map((t) => (t.id === activeId ? { ...t, position: result.data.position } : t))
-            .sort((a, b) => a.position - b.position);
+            .sort(byUpdatedDesc);
           return { ...s, tickets };
         }),
       );
