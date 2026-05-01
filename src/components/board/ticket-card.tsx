@@ -34,7 +34,7 @@ import type { TicketWithRelations } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // Statuses where a missed due date should not raise an overdue alarm.
-const COMPLETED_STATUS_KEYS = new Set(["completed", "shipping"]);
+const COMPLETED_STATUS_KEYS = new Set(["completed"]);
 
 type Props = {
   ticket: TicketWithRelations;

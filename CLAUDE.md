@@ -8,7 +8,7 @@ Planbooq is a SaaS kanban platform for vibe coding in the age of parallel AI cod
 
 It is positioned to replace the current vibe coding stack (Lovable + Cursor + Linear) with a single surface optimized for fast review/decide/redirect rather than for writing or tracking.
 
-See `README.md` for the full pitch and the default workflow (`backlog` → `planning` → `todo` → `building` → `review` → `shipping` → `completed`).
+See `README.md` for the full pitch and the default workflow (`backlog` → `planning` → `todo` → `building` → `review` → `completed`).
 
 ## Core Product Concepts
 

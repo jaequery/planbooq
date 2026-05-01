@@ -9,6 +9,7 @@ import { inngest } from "@/server/inngest/client";
 const TICKET_RELATIONS_INCLUDE = {
   assignee: { select: { id: true, name: true, email: true, image: true } },
   labels: { select: { id: true, name: true, color: true } },
+  project: { select: { slug: true } },
 } as const;
 
 async function requireMembership(workspaceId: string, userId: string): Promise<void> {

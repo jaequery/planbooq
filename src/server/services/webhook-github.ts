@@ -3,6 +3,7 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { logger } from "@/lib/logger";
+import { parseTicketRef } from "@/lib/ticket-identifier";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
 
@@ -41,23 +42,31 @@ const TICKET_RELATIONS_INCLUDE = {
   labels: { select: { id: true, name: true, color: true } },
 } as const;
 
-const PLANBOOQ_REF_RE = /Closes\s+Planbooq\s+ticket:\s*([A-Za-z0-9]+)-([A-Za-z0-9]{6})\b/i;
+const PLANBOOQ_REF_RE = /Closes\s+Planbooq\s+ticket:\s*([A-Za-z0-9-]+)/i;
 
 export async function linkTicketPrUrlFromPrBody(
   prUrl: string,
   body: string | null | undefined,
 ): Promise<LinkPrOutcome> {
   const match = body?.match(PLANBOOQ_REF_RE);
-  if (!match?.[1] || !match[2]) return { kind: "no_identifier" };
-  const projectPrefix = match[1].toLowerCase();
-  const idSuffix = match[2].toLowerCase();
+  if (!match?.[1]) return { kind: "no_identifier" };
+  const ref = parseTicketRef(match[1]);
+  if (!ref) return { kind: "no_identifier" };
+
+  const where =
+    ref.kind === "canonical"
+      ? {
+          archivedAt: null,
+          id: { endsWith: ref.idSuffix, mode: "insensitive" as const },
+          project: { slug: { startsWith: ref.projectPrefix, mode: "insensitive" as const } },
+        }
+      : {
+          archivedAt: null,
+          id: { startsWith: ref.idPrefix, mode: "insensitive" as const },
+        };
 
   const ticket = await prisma.ticket.findFirst({
-    where: {
-      archivedAt: null,
-      id: { endsWith: idSuffix, mode: "insensitive" },
-      project: { slug: { startsWith: projectPrefix, mode: "insensitive" } },
-    },
+    where,
     select: { id: true, workspaceId: true, projectId: true, prUrl: true },
   });
   if (!ticket) return { kind: "no_match" };

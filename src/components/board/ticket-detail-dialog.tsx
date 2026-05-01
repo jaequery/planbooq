@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { Markdown } from "@/components/ui/markdown";
 import { Textarea } from "@/components/ui/textarea";
+import { formatTicketIdentifier } from "@/lib/ticket-identifier";
 import type { Priority, TicketAssignee, TicketLabel, TicketWithRelations } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { PrStatus } from "@/server/services/github-pr";
@@ -354,7 +355,7 @@ export function TicketDetailDialog({
   const createdAt = new Date(ticket.createdAt);
   const updatedAt = new Date(ticket.updatedAt);
   const wasEdited = updatedAt.getTime() - createdAt.getTime() > 1000;
-  const ticketIdLabel = `${projectSlug?.slice(0, 4).toUpperCase() ?? "TKT"}-${ticket.id.slice(-6).toUpperCase()}`;
+  const ticketIdLabel = formatTicketIdentifier(projectSlug, ticket.id);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

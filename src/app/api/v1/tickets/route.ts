@@ -1,5 +1,6 @@
 import { jsonErr, jsonOk, mapErrorToStatus, requireCaller } from "@/server/api-auth";
 import { createTicketSvc, listProjectTicketsSvc } from "@/server/services/tickets";
+import { withIdentifier, withIdentifierList } from "../_lib/decorate-ticket";
 
 export async function GET(req: Request) {
   const caller = await requireCaller(req);
@@ -14,7 +15,9 @@ export async function GET(req: Request) {
     cursor: url.searchParams.get("cursor"),
     limit: Number(url.searchParams.get("limit") ?? 50),
   });
-  return r.ok ? jsonOk(r.data) : jsonErr(r.error, mapErrorToStatus(r.error));
+  return r.ok
+    ? jsonOk({ items: withIdentifierList(r.data.items), nextCursor: r.data.nextCursor })
+    : jsonErr(r.error, mapErrorToStatus(r.error));
 }
 
 export async function POST(req: Request) {
@@ -23,5 +26,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   if (!body) return jsonErr("validation_error", 400);
   const r = await createTicketSvc(caller.userId, body);
-  return r.ok ? jsonOk(r.data, { status: 201 }) : jsonErr(r.error, mapErrorToStatus(r.error));
+  return r.ok
+    ? jsonOk(withIdentifier(r.data), { status: 201 })
+    : jsonErr(r.error, mapErrorToStatus(r.error));
 }

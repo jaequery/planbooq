@@ -105,7 +105,6 @@ Planbooq collapses all three into a single surface optimized for the *new* bottl
 | `todo`        | Scoped and ready. Queued for an agent to pick up.        |
 | `building`    | N variants generating in parallel.                       |
 | `review`      | Variants ready. Waiting on you to pick.                  |
-| `shipping`    | Winner picked. PR open, CI running.                      |
 | `completed`   | Merged and deployed.                                     |
 
 Statuses, variant count, and automation hooks are fully customizable per workspace.

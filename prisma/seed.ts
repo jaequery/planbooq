@@ -14,8 +14,7 @@ const DEFAULT_STATUSES = [
   { key: "planning", name: "Planning", color: "#a78bfa", position: 2 },
   { key: "building", name: "Building", color: "#f59e0b", position: 3 },
   { key: "review", name: "Review", color: "#3b82f6", position: 4 },
-  { key: "shipping", name: "Shipping", color: "#06b6d4", position: 5 },
-  { key: "completed", name: "Completed", color: "#22c55e", position: 6 },
+  { key: "completed", name: "Completed", color: "#22c55e", position: 5 },
 ] as const;
 
 type SeedTicket = {
@@ -69,10 +68,6 @@ const SEED_TICKETS: SeedTicket[] = [
   {
     statusKey: "review",
     title: "Cmd-K command palette (tickets / statuses / nav)",
-  },
-  {
-    statusKey: "shipping",
-    title: "GitHub PR auto-open on winner select",
   },
   {
     statusKey: "completed",

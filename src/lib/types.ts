@@ -18,6 +18,7 @@ export type TicketLabel = Pick<Label, "id" | "name" | "color">;
 export type TicketWithRelations = Ticket & {
   assignee?: TicketAssignee | null;
   labels?: TicketLabel[];
+  project?: Pick<Project, "slug"> | null;
 };
 
 export type StatusWithTickets = Status & { tickets: TicketWithRelations[] };

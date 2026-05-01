@@ -14,6 +14,5 @@ export const DEFAULT_STATUSES: ReadonlyArray<DefaultStatusSeed> = [
   { key: "todo", name: "Todo", color: "#64748b", position: 3 },
   { key: "building", name: "Building", color: "#f59e0b", position: 4 },
   { key: "review", name: "Review", color: "#3b82f6", position: 5 },
-  { key: "shipping", name: "Shipping", color: "#06b6d4", position: 6 },
-  { key: "completed", name: "Completed", color: "#22c55e", position: 7 },
+  { key: "completed", name: "Completed", color: "#22c55e", position: 6 },
 ];
