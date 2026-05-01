@@ -22,6 +22,29 @@ function tolerantAdapter(): Adapter {
         throw e;
       }
     },
+    // Refresh token + scope on every sign-in. Default PrismaAdapter only
+    // creates the row once, so scope expansions never propagate.
+    linkAccount: async (account) => {
+      await prisma.account.upsert({
+        where: {
+          provider_providerAccountId: {
+            provider: account.provider,
+            providerAccountId: account.providerAccountId,
+          },
+        },
+        create: account as Prisma.AccountUncheckedCreateInput,
+        update: {
+          access_token: account.access_token ?? null,
+          refresh_token: account.refresh_token ?? null,
+          expires_at: account.expires_at ?? null,
+          scope: account.scope ?? null,
+          token_type: account.token_type ?? null,
+          id_token: account.id_token ?? null,
+          session_state:
+            typeof account.session_state === "string" ? account.session_state : null,
+        },
+      });
+    },
   };
 }
 
