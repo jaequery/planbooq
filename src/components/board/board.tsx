@@ -86,7 +86,6 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         }
         return;
       }
-      if (event.name === "ai-panel.message.created") return;
       if (event.projectId !== currentProjectId) return;
       if (event.name === "ticket.moved") {
         setStatuses((prev) => {

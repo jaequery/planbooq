@@ -29,7 +29,6 @@ model User {
   assignedTickets  Ticket[]  @relation("TicketAssignee")
   apiKeys          ApiKey[]
   comments         Comment[] @relation("CommentAuthor")
-  aiConversations  AiConversation[]
 }
 
 model ApiKey {
@@ -110,8 +109,6 @@ model Workspace {
   labels   Label[]
   apiKeys  ApiKey[]
   comments Comment[]
-  aiMessages TicketAiMessage[]
-  aiConversations AiConversation[]
 }
 
 model Project {
@@ -196,7 +193,6 @@ model Ticket {
   assignee  User?     @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   labels    Label[]   @relation("TicketLabels")
   comments  Comment[]
-  aiMessages TicketAiMessage[]
 
   @@index([workspaceId, statusId, position])
   @@index([projectId, statusId, position])
@@ -238,52 +234,3 @@ model Comment {
   @@index([authorId])
 }
 
-model TicketAiMessage {
-  id          String   @id @default(cuid())
-  ticketId    String
-  workspaceId String
-  role        String
-  body        String   @db.Text
-  authorId    String?
-  kind        String   @default("chat")
-  createdAt   DateTime @default(now())
-
-  ticket    Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@index([ticketId, createdAt])
-  @@index([workspaceId])
-}
-
-model AiConversation {
-  id          String   @id @default(cuid())
-  workspaceId String
-  userId      String
-  title       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages  AiPanelMessage[]
-
-  @@unique([workspaceId, userId])
-  @@index([userId, updatedAt])
-}
-
-model AiPanelMessage {
-  id             String   @id @default(cuid())
-  conversationId String
-  role           String
-  body           String   @db.Text
-  toolName       String?
-  toolArgs       Json?
-  toolStatus     String?
-  toolResult     Json?
-  pageContext    Json?
-  createdAt      DateTime @default(now())
-
-  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  @@index([conversationId, createdAt])
-}

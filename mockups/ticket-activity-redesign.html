@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Planbooq · PB-142 · Activity</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --paper: #F5F2EA;
+    --paper-2: #EFEBDF;
+    --ink: #0E0E0C;
+    --ink-2: #1F1E1A;
+    --mute: #6F6A60;
+    --mute-2: #9A9485;
+    --line: #E1DCCC;
+    --line-2: #D2CCBA;
+
+    /* signal chartreuse — reserved for the agent dispatch action only */
+    --signal: #C8FF2D;
+    --signal-shade: #A8D826;
+
+    /* Soft accents — used sparingly to type events */
+    --ai: #FF6B3D;        /* AI / Ask */
+    --variant: #6B5BFF;   /* Variant cards */
+    --ok: #2F9E5C;
+    --warn: #B8861B;
+
+    --radius-sm: 6px;
+    --radius: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 22px;
+
+    --shadow-1: 0 1px 0 rgba(14,14,12,0.04), 0 1px 2px rgba(14,14,12,0.04);
+    --shadow-2: 0 4px 16px -8px rgba(14,14,12,0.18), 0 1px 0 rgba(14,14,12,0.04);
+    --shadow-pop: 0 24px 48px -24px rgba(14,14,12,0.30), 0 2px 0 rgba(14,14,12,0.04);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Geist', system-ui, sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+    background-image:
+      radial-gradient(1200px 600px at 90% -10%, rgba(200, 255, 45, 0.06), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(107, 91, 255, 0.05), transparent 60%);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "cv11";
+    line-height: 1.45;
+  }
+
+  /* subtle paper grain */
+  body::before {
+    content: "";
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.05 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    opacity: .55;
+    mix-blend-mode: multiply;
+  }
+
+  .stage {
+    position: relative;
+    z-index: 1;
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 56px 32px 160px;
+  }
+
+  /* —— Ticket header —————————————————————— */
+  .ticket-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--line);
+  }
+  .crumb {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 14px;
+  }
+  .crumb .sep { opacity: .35; }
+  .crumb .id { color: var(--ink); font-weight: 500; }
+
+  h1.title {
+    font-family: 'Fraunces', serif;
+    font-weight: 500;
+    font-size: 38px;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin: 0 0 14px;
+    max-width: 620px;
+  }
+  h1.title em { font-style: italic; color: var(--mute); font-weight: 400; }
+
+  .meta-row {
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.5);
+    font-size: 12px;
+    color: var(--ink-2);
+    font-weight: 500;
+  }
+  .pill .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--mute); }
+  .pill.status .dot { background: var(--signal-shade); box-shadow: 0 0 0 3px rgba(200,255,45,.25); }
+  .pill.label-bug .dot { background: #E04545; }
+  .pill.label-ui .dot { background: var(--variant); }
+  .pill.assignee { padding-left: 4px; }
+  .pill.assignee .ava {
+    width: 18px; height: 18px; border-radius: 999px;
+    background: linear-gradient(135deg, #FFB36B, #FF6B3D);
+    color: white; font-size: 10px; font-weight: 600;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: 'Geist Mono', monospace;
+  }
+
+  .head-actions { display: flex; gap: 8px; }
+  .icon-btn {
+    width: 34px; height: 34px;
+    border: 1px solid var(--line-2);
+    background: rgba(255,255,255,0.5);
+    border-radius: var(--radius);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--ink-2);
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+  .icon-btn:hover { background: white; border-color: var(--ink); color: var(--ink); }
+
+  /* —— Section header for activity ——————————— */
+  .activity-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin: 40px 0 20px;
+  }
+  .section-eyebrow {
+    display: flex; align-items: baseline; gap: 14px;
+  }
+  .section-eyebrow h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 500;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .section-eyebrow .count {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    color: var(--mute);
+    letter-spacing: 0.06em;
+  }
+
+  .filter-pills {
+    display: inline-flex;
+    background: rgba(255,255,255,0.5);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .filter-pills button {
+    border: 0; background: transparent;
+    padding: 5px 12px;
+    font-family: inherit;
+    font-size: 12px;
+    color: var(--mute);
+    border-radius: 999px;
+    cursor: pointer;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    transition: all .15s;
+  }
+  .filter-pills button:hover { color: var(--ink); }
+  .filter-pills button[aria-pressed="true"] {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  /* —— Timeline ——————————————————————————— */
+  .timeline {
+    position: relative;
+    padding-left: 28px;
+  }
+  .timeline::before {
+    content: ""; position: absolute; left: 11px; top: 6px; bottom: 6px;
+    width: 1px;
+    background: linear-gradient(to bottom, transparent, var(--line-2) 12%, var(--line-2) 88%, transparent);
+  }
+  .event {
+    position: relative;
+    padding: 0 0 22px;
+  }
+  .event:last-child { padding-bottom: 4px; }
+
+  .event .marker {
+    position: absolute;
+    left: -28px; top: 4px;
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .event .marker .node {
+    width: 9px; height: 9px;
+    border-radius: 999px;
+    background: var(--paper);
+    border: 1.5px solid var(--mute-2);
+  }
+  .event.user .marker .node { background: var(--ink); border-color: var(--ink); }
+  .event.system .marker .node { background: var(--paper); border-color: var(--mute-2); }
+  .event.agent .marker .node {
+    width: 11px; height: 11px;
+    background: var(--signal); border-color: var(--ink);
+    border-radius: 2px;
+    box-shadow: 0 0 0 3px rgba(200,255,45,.28);
+  }
+  .event.ai .marker .node { background: var(--ai); border-color: var(--ai); }
+  .event.variant .marker .node {
+    width: 11px; height: 11px;
+    background: var(--variant); border-color: var(--variant);
+    border-radius: 2px;
+  }
+
+  .ev-line {
+    display: flex; align-items: baseline; gap: 8px;
+    flex-wrap: wrap;
+    font-size: 13.5px;
+    color: var(--ink-2);
+  }
+  .ev-line .who { font-weight: 600; color: var(--ink); }
+  .ev-line .when {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    color: var(--mute);
+    letter-spacing: 0.02em;
+  }
+  .ev-line .when::before { content: "·"; margin-right: 6px; color: var(--mute-2); }
+
+  .ev-body {
+    margin-top: 6px;
+    color: var(--ink-2);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  /* User comment block */
+  .comment-card {
+    margin-top: 8px;
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: 12px 14px;
+    box-shadow: var(--shadow-1);
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--ink-2);
+  }
+  .comment-card .react-row {
+    margin-top: 10px;
+    display: flex; gap: 6px;
+  }
+  .react {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px;
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    font-size: 11.5px;
+    color: var(--mute);
+    background: var(--paper);
+    cursor: pointer;
+  }
+  .react:hover { color: var(--ink); border-color: var(--ink); }
+
+  /* Agent dispatch event */
+  .agent-card {
+    margin-top: 8px;
+    background: linear-gradient(180deg, #FCFBF6, #F8F5EB);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+    box-shadow: var(--shadow-1);
+    position: relative;
+    overflow: hidden;
+  }
+  .agent-card::before {
+    content: "";
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; background: var(--signal);
+  }
+  .agent-card .head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap;
+  }
+  .agent-card .head .lbl {
+    font-family: 'Geist Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .agent-card .head .lbl .swirl {
+    display: inline-block; width: 6px; height: 6px; border-radius: 999px;
+    background: var(--signal); margin-right: 6px;
+    box-shadow: 0 0 0 3px rgba(200,255,45,.30);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(200,255,45,.30); }
+    50% { box-shadow: 0 0 0 6px rgba(200,255,45,0); }
+  }
+  .agent-card .prompt {
+    margin-top: 8px;
+    font-size: 13.5px;
+    color: var(--ink-2);
+    font-style: italic;
+    font-family: 'Fraunces', serif;
+    line-height: 1.5;
+    border-left: 2px solid var(--line-2);
+    padding-left: 10px;
+  }
+  .agent-card .specs {
+    margin-top: 12px;
+    display: flex; gap: 14px; flex-wrap: wrap;
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    color: var(--mute);
+  }
+  .agent-card .specs span strong { color: var(--ink); font-weight: 500; }
+
+  /* Variant grid event */
+  .variants-event .ev-line .who { color: var(--variant); }
+  .variant-grid {
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .variant {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-1);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    cursor: pointer;
+    position: relative;
+  }
+  .variant:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-2);
+    border-color: var(--ink-2);
+  }
+  .variant .preview {
+    aspect-ratio: 16/10;
+    background: linear-gradient(135deg, #1a1a18, #2a2a26);
+    position: relative;
+    overflow: hidden;
+  }
+  .variant .preview svg { width: 100%; height: 100%; display: block; }
+  .variant .badge {
+    position: absolute; top: 8px; left: 8px;
+    background: rgba(14,14,12,0.7);
+    backdrop-filter: blur(6px);
+    color: var(--paper);
+    font-family: 'Geist Mono', monospace;
+    font-size: 10px;
+    padding: 3px 7px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+    font-weight: 500;
+  }
+  .variant .meta {
+    padding: 10px 12px 12px;
+  }
+  .variant .meta .row1 {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px;
+  }
+  .variant .meta .name {
+    font-size: 12.5px; font-weight: 600;
+  }
+  .variant .meta .stats {
+    font-family: 'Geist Mono', monospace;
+    font-size: 10.5px;
+    color: var(--mute);
+    margin-top: 4px;
+    display: flex; gap: 8px;
+  }
+  .variant .meta .stats .add { color: var(--ok); }
+  .variant .meta .stats .del { color: #C04D3F; }
+  .variant .pick {
+    margin-top: 10px;
+    display: flex; gap: 6px;
+  }
+  .variant .pick button {
+    flex: 1;
+    border: 1px solid var(--line-2);
+    background: var(--paper);
+    color: var(--ink-2);
+    padding: 6px 0;
+    font-size: 11.5px;
+    font-weight: 500;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all .15s;
+  }
+  .variant .pick button:hover { border-color: var(--ink); color: var(--ink); }
+  .variant .pick .primary {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+  .variant .pick .primary:hover { background: var(--ink-2); }
+
+  /* AI response card */
+  .ai-card {
+    margin-top: 8px;
+    background: #FFF7F2;
+    border: 1px solid #FFD9C5;
+    border-radius: var(--radius-lg);
+    padding: 12px 14px;
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink-2);
+    position: relative;
+  }
+  .ai-card::before {
+    content: "";
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; background: var(--ai); border-radius: 3px 0 0 3px;
+  }
+  .ai-card .ai-tag {
+    font-family: 'Geist Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ai);
+    font-weight: 600;
+    margin-bottom: 6px;
+    display: inline-block;
+  }
+
+  /* —— Composer ——————————————————————————— */
+  .composer-wrap {
+    position: sticky;
+    bottom: 24px;
+    margin-top: 36px;
+    z-index: 20;
+  }
+  .composer {
+    background: white;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-pop);
+    overflow: hidden;
+  }
+
+  .mode-bar {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid var(--line);
+    background: var(--paper-2);
+  }
+  .mode {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    padding: 14px 16px;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--mute);
+    border-right: 1px solid var(--line);
+    position: relative;
+    transition: all .18s ease;
+  }
+  .mode:last-child { border-right: 0; }
+  .mode .mode-label {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--mute);
+  }
+  .mode .mode-sub {
+    margin-top: 3px;
+    font-size: 11px;
+    color: var(--mute-2);
+    line-height: 1.35;
+  }
+  .mode .icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    background: rgba(14,14,12,0.05);
+    color: var(--mute);
+  }
+  .mode:hover { background: rgba(255,255,255,0.6); color: var(--ink); }
+  .mode:hover .mode-label { color: var(--ink); }
+
+  .mode[aria-pressed="true"] {
+    background: white;
+    color: var(--ink);
+  }
+  .mode[aria-pressed="true"] .mode-label { color: var(--ink); }
+  .mode[aria-pressed="true"] .mode-sub { color: var(--mute); }
+  .mode[aria-pressed="true"]::after {
+    content: "";
+    position: absolute; left: 14px; right: 14px; bottom: -1px;
+    height: 2px; background: var(--ink);
+  }
+
+  /* Run agent mode is highlighted as primary even when not active */
+  .mode.primary .icon {
+    background: var(--signal);
+    color: var(--ink);
+  }
+  .mode.primary[aria-pressed="true"]::after {
+    background: var(--ink);
+  }
+  .mode.primary[aria-pressed="true"] {
+    background: linear-gradient(180deg, #FBFEEC 0%, #FFFFFF 60%);
+  }
+
+  /* Composer body */
+  .composer-body {
+    padding: 16px 18px 14px;
+  }
+  .field-label {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .field-label .lead {
+    font-family: 'Fraunces', serif;
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    color: var(--ink);
+  }
+  .field-label .lead em { font-style: italic; color: var(--mute); font-weight: 400; }
+  .field-label .hint {
+    font-family: 'Geist Mono', monospace;
+    font-size: 10.5px;
+    color: var(--mute);
+    letter-spacing: 0.05em;
+  }
+  .field-label .hint kbd {
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 10px;
+    color: var(--ink-2);
+  }
+
+  textarea.composer-input {
+    width: 100%;
+    min-height: 92px;
+    border: 0;
+    background: transparent;
+    resize: vertical;
+    font-family: inherit;
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--ink);
+    outline: none;
+    padding: 4px 0;
+  }
+  textarea.composer-input::placeholder { color: var(--mute-2); }
+
+  /* Suggestion chips for run-agent mode */
+  .suggest-row {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin-top: 6px;
+  }
+  .suggest {
+    border: 1px dashed var(--line-2);
+    background: var(--paper);
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    color: var(--mute);
+    cursor: pointer;
+    font-family: 'Geist Mono', monospace;
+    letter-spacing: 0.01em;
+    transition: all .15s;
+  }
+  .suggest::before { content: "↳ "; opacity: .6; }
+  .suggest:hover { color: var(--ink); border-color: var(--ink); border-style: solid; background: white; }
+
+  .composer-footer {
+    border-top: 1px solid var(--line);
+    padding: 10px 18px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+    background: linear-gradient(180deg, white, var(--paper-2));
+  }
+
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .ctrl {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 10px;
+    border: 1px solid var(--line-2);
+    background: white;
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--ink-2);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all .15s;
+  }
+  .ctrl:hover { border-color: var(--ink); }
+  .ctrl .k {
+    color: var(--mute); font-family: 'Geist Mono', monospace; font-size: 10.5px;
+  }
+  .ctrl strong {
+    font-weight: 600; color: var(--ink);
+  }
+  .ctrl.count strong { font-family: 'Geist Mono', monospace; }
+
+  /* Variant count stepper */
+  .stepper {
+    display: inline-flex; align-items: center;
+    border: 1px solid var(--line-2);
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .stepper button {
+    border: 0; background: transparent;
+    width: 26px; height: 30px;
+    cursor: pointer;
+    color: var(--mute);
+    font-size: 14px;
+    font-family: inherit;
+  }
+  .stepper button:hover { color: var(--ink); background: var(--paper); }
+  .stepper .val {
+    font-family: 'Geist Mono', monospace;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 0 6px;
+    color: var(--ink);
+    min-width: 50px; text-align: center;
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+    line-height: 30px;
+  }
+  .stepper .val small { color: var(--mute); font-weight: 400; margin-right: 2px; }
+
+  /* PRIMARY DISPATCH BUTTON — the hero */
+  .dispatch {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 10px 18px 10px 16px;
+    border-radius: 10px;
+    border: 1.5px solid var(--ink);
+    background: var(--signal);
+    color: var(--ink);
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 13.5px;
+    letter-spacing: 0.005em;
+    cursor: pointer;
+    box-shadow: 0 2px 0 var(--ink), 0 6px 16px -8px rgba(168, 216, 38, 0.6);
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .dispatch:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 0 var(--ink), 0 10px 22px -10px rgba(168, 216, 38, 0.7);
+  }
+  .dispatch:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 0 var(--ink);
+  }
+  .dispatch .arrow {
+    font-family: 'Geist Mono', monospace;
+    font-weight: 500;
+    font-size: 14px;
+  }
+  .dispatch .cost {
+    font-family: 'Geist Mono', monospace;
+    font-size: 10.5px;
+    font-weight: 500;
+    opacity: .65;
+    border-left: 1px solid rgba(14,14,12,0.25);
+    padding-left: 10px;
+    margin-left: 2px;
+  }
+
+  /* Secondary buttons (used when mode is comment/ask) */
+  .btn-secondary {
+    padding: 9px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--ink);
+    background: var(--ink);
+    color: var(--paper);
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all .12s;
+  }
+  .btn-secondary:hover { background: var(--ink-2); }
+
+  /* ——— Tiny fake screenshot SVGs for variants (just for vibe) ——— */
+  .scr-bg-a { background: linear-gradient(135deg, #0E0E0C, #2a2a26); }
+  .scr-bg-b { background: linear-gradient(135deg, #FFF7F2, #FFE4D2); }
+  .scr-bg-c { background: linear-gradient(135deg, #ECF6FF, #C8DCFF); }
+
+  /* small responsive */
+  @media (max-width: 740px) {
+    .stage { padding: 32px 18px 140px; }
+    h1.title { font-size: 30px; }
+    .variant-grid { grid-template-columns: 1fr 1fr; }
+    .mode-bar { flex-wrap: wrap; }
+    .mode { flex: 1 1 100%; border-right: 0; border-bottom: 1px solid var(--line); }
+    .mode:last-child { border-bottom: 0; }
+    .composer-footer { flex-direction: column; align-items: stretch; }
+    .composer-footer .dispatch { justify-content: center; }
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+
+  <!-- Ticket header -->
+  <header class="ticket-head">
+    <div>
+      <div class="crumb">
+        <span>Planbooq</span><span class="sep">/</span>
+        <span>Web App</span><span class="sep">/</span>
+        <span class="id">PB-142</span>
+      </div>
+      <h1 class="title">
+        Redesign the marketing hero <em>so the variant grid is the headline.</em>
+      </h1>
+      <div class="meta-row">
+        <span class="pill status"><span class="dot"></span> In review</span>
+        <span class="pill label-ui"><span class="dot"></span> ui</span>
+        <span class="pill label-bug"><span class="dot"></span> design</span>
+        <span class="pill assignee"><span class="ava">JL</span> Jae Lee</span>
+        <span class="pill"><span style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--mute)">due 02 May</span></span>
+      </div>
+    </div>
+    <div class="head-actions">
+      <button class="icon-btn" title="Copy link" aria-label="Copy link">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"/></svg>
+      </button>
+      <button class="icon-btn" title="More" aria-label="More">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Activity section header + filters -->
+  <div class="activity-head">
+    <div class="section-eyebrow">
+      <h2>Activity</h2>
+      <span class="count">7 EVENTS · 3 VARIANTS PENDING</span>
+    </div>
+    <div class="filter-pills" role="tablist">
+      <button aria-pressed="true">All</button>
+      <button aria-pressed="false">Comments</button>
+      <button aria-pressed="false">AI</button>
+      <button aria-pressed="false">Agent runs</button>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <ol class="timeline" style="list-style:none; margin:0;">
+
+    <!-- 1. Created -->
+    <li class="event system">
+      <div class="marker"><div class="node"></div></div>
+      <div class="ev-line">
+        <span class="who">You</span>
+        <span>created the issue</span>
+        <span class="when">2 days ago</span>
+      </div>
+    </li>
+
+    <!-- 2. Comment -->
+    <li class="event user">
+      <div class="marker"><div class="node"></div></div>
+      <div class="ev-line">
+        <span class="who">Jae Lee</span>
+        <span>commented</span>
+        <span class="when">1d ago</span>
+      </div>
+      <div class="comment-card">
+        Reference Linear &amp; Vercel for the headline weight, but our angle is parallel previews — the hero <em>is</em> the variant grid. Don't ship a generic SaaS hero.
+        <div class="react-row">
+          <span class="react">🔥 2</span>
+          <span class="react">+</span>
+        </div>
+      </div>
+    </li>
+
+    <!-- 3. Ask AI -->
+    <li class="event ai">
+      <div class="marker"><div class="node"></div></div>
+      <div class="ev-line">
+        <span class="who" style="color:var(--ai)">Asked AI</span>
+        <span>· "what's the strongest pattern for previewing 3 variants above the fold?"</span>
+        <span class="when">23h ago</span>
+      </div>
+      <div class="ai-card">
+        <span class="ai-tag">⚡ AI · gpt-5</span>
+        Three patterns work for above-the-fold variant previews: <strong>(1) horizontal scroller</strong> — feels native, low friction; <strong>(2) staggered card stack</strong> — high visual impact, lower density; <strong>(3) explicit grid</strong> — clearest comparison, requires tight aspect ratios. Given your "pick, don't prompt" thesis, the grid wins — comparison is the action.
+      </div>
+    </li>
+
+    <!-- 4. Agent dispatched -->
+    <li class="event agent">
+      <div class="marker"><div class="node"></div></div>
+      <div class="ev-line">
+        <span class="who">Agent dispatched</span>
+        <span>· 3 workers · branch <code style="font-family:'Geist Mono',monospace;font-size:12px;background:var(--paper-2);padding:1px 5px;border-radius:3px;">pb-142/*</code></span>
+        <span class="when">14m ago</span>
+      </div>
+      <div class="agent-card">
+        <div class="head">
+          <span class="lbl"><span class="swirl"></span>Run · in progress · 2 of 3 ready</span>
+          <span class="lbl" style="color:var(--mute);font-weight:500">claude-opus-4.7 · ×3</span>
+        </div>
+        <div class="prompt">
+          "Redesign the hero. Make the variant grid the headline. No generic SaaS aesthetic. Try three different visual languages."
+        </div>
+        <div class="specs">
+          <span><strong>elapsed</strong> 13m 42s</span>
+          <span><strong>tokens</strong> 142.8k</span>
+          <span><strong>est cost</strong> $1.88</span>
+        </div>
+      </div>
+    </li>
+
+    <!-- 5. Variants ready -->
+    <li class="event variant variants-event">
+      <div class="marker"><div class="node"></div></div>
+      <div class="ev-line">
+        <span class="who">3 variants</span>
+        <span>· ready to review · pick one or remix</span>
+        <span class="when">just now</span>
+      </div>
+      <div class="variant-grid">
+        <div class="variant">
+          <div class="preview scr-bg-a">
+            <span class="badge">A · brutal</span>
+            <svg viewBox="0 0 320 200" preserveAspectRatio="none">
+              <rect x="20" y="22" width="160" height="14" fill="#C8FF2D"/>
+              <rect x="20" y="44" width="120" height="10" fill="#fff" opacity=".7"/>
+              <rect x="20" y="62" width="80" height="6" fill="#fff" opacity=".4"/>
+              <rect x="20" y="88" width="84" height="84" fill="#fff" opacity=".08" stroke="#C8FF2D" stroke-width="1"/>
+              <rect x="118" y="88" width="84" height="84" fill="#fff" opacity=".12"/>
+              <rect x="216" y="88" width="84" height="84" fill="#fff" opacity=".08"/>
+            </svg>
+          </div>
+          <div class="meta">
+            <div class="row1">
+              <span class="name">Variant A</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--mute);">2m 18s</span>
+            </div>
+            <div class="stats">
+              <span class="add">+482</span>
+              <span class="del">−214</span>
+              <span>· 11 files</span>
+            </div>
+            <div class="pick">
+              <button>Preview</button>
+              <button class="primary">Pick →</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="variant">
+          <div class="preview scr-bg-b">
+            <span class="badge" style="background:rgba(255,255,255,.85);color:var(--ink)">B · editorial</span>
+            <svg viewBox="0 0 320 200" preserveAspectRatio="none">
+              <text x="20" y="58" font-family="serif" font-style="italic" font-size="28" fill="#0E0E0C">Pick one.</text>
+              <rect x="20" y="80" width="180" height="6" fill="#0E0E0C" opacity=".3"/>
+              <rect x="20" y="110" width="84" height="60" fill="#0E0E0C" opacity=".06" stroke="#0E0E0C" stroke-opacity=".3" stroke-width="1"/>
+              <rect x="118" y="110" width="84" height="60" fill="#FF6B3D" opacity=".4"/>
+              <rect x="216" y="110" width="84" height="60" fill="#0E0E0C" opacity=".06" stroke="#0E0E0C" stroke-opacity=".3" stroke-width="1"/>
+            </svg>
+          </div>
+          <div class="meta">
+            <div class="row1">
+              <span class="name">Variant B</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--mute);">3m 04s</span>
+            </div>
+            <div class="stats">
+              <span class="add">+612</span>
+              <span class="del">−214</span>
+              <span>· 14 files</span>
+            </div>
+            <div class="pick">
+              <button>Preview</button>
+              <button class="primary">Pick →</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="variant" style="opacity:.7;cursor:default;">
+          <div class="preview" style="background:var(--paper-2);display:flex;align-items:center;justify-content:center;">
+            <div style="display:flex;gap:6px;align-items:center;">
+              <span style="width:8px;height:8px;border-radius:50%;background:var(--mute-2);animation:pulse 1.6s infinite;"></span>
+              <span style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--mute);letter-spacing:.05em;">RENDERING…</span>
+            </div>
+          </div>
+          <div class="meta">
+            <div class="row1">
+              <span class="name" style="color:var(--mute)">Variant C</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--mute);">~40s</span>
+            </div>
+            <div class="stats">
+              <span>building preview…</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </li>
+
+  </ol>
+
+  <!-- Composer -->
+  <div class="composer-wrap">
+    <div class="composer">
+      <!-- Mode segmented control -->
+      <div class="mode-bar" role="tablist">
+        <button class="mode primary" aria-pressed="true" data-mode="agent">
+          <span class="mode-label">
+            <span class="icon" style="background:var(--signal);">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+            </span>
+            Run agent
+          </span>
+          <span class="mode-sub">Spawn parallel variants — branch, preview, screenshots</span>
+        </button>
+        <button class="mode" aria-pressed="false" data-mode="comment">
+          <span class="mode-label">
+            <span class="icon">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </span>
+            Comment
+          </span>
+          <span class="mode-sub">Notes for collaborators &amp; future you</span>
+        </button>
+        <button class="mode" aria-pressed="false" data-mode="ask">
+          <span class="mode-label">
+            <span class="icon" style="background:#FFE4D2;color:var(--ai);">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .9-1 1.7"/><circle cx="12" cy="17" r="0.6" fill="currentColor"/></svg>
+            </span>
+            Ask AI
+          </span>
+          <span class="mode-sub">Question without changing code — chat about the ticket</span>
+        </button>
+      </div>
+
+      <!-- Body (currently in run-agent mode) -->
+      <div class="composer-body">
+        <div class="field-label">
+          <span class="lead">Describe what to <em>build.</em></span>
+          <span class="hint"><kbd>⌘</kbd> <kbd>↵</kbd> to dispatch</span>
+        </div>
+        <textarea class="composer-input" placeholder="e.g. Make the hero grid feel like a museum wall — heavy serif, museum-card captions under each variant. Mobile: stack with deep shadows."></textarea>
+        <div class="suggest-row">
+          <button class="suggest">tighten the variant card spacing</button>
+          <button class="suggest">try a serif-led editorial direction</button>
+          <button class="suggest">use #C8FF2D as the only accent</button>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="composer-footer">
+        <div class="controls">
+          <div class="stepper" title="Number of variants to spawn">
+            <button>−</button>
+            <span class="val"><small>×</small>3</span>
+            <button>+</button>
+          </div>
+          <button class="ctrl">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+            <strong>opus-4.7</strong> <span class="k">model</span>
+          </button>
+          <button class="ctrl">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v18M18 3v18M3 6h18M3 18h18"/></svg>
+            <strong>main</strong> <span class="k">base</span>
+          </button>
+          <button class="ctrl" title="Attach context">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15.5a4.5 4.5 0 0 1-7.7 3.2L4.5 10a3 3 0 1 1 4.2-4.2l8 8a1.5 1.5 0 0 1-2.1 2.1L7.7 8"/></svg>
+            <span class="k">attach</span>
+          </button>
+        </div>
+        <button class="dispatch" title="⌘↵">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+          Dispatch ×3 <span class="arrow">→</span>
+          <span class="cost">~$1.90</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Mode switching — light interactivity to demo the design
+  const modes = document.querySelectorAll('.mode');
+  const lead = document.querySelector('.field-label .lead');
+  const ta = document.querySelector('.composer-input');
+  const footer = document.querySelector('.composer-footer');
+  const dispatch = footer.querySelector('.dispatch');
+  const controls = footer.querySelector('.controls');
+  const suggestRow = document.querySelector('.suggest-row');
+
+  const modeConfig = {
+    agent: {
+      lead: 'Describe what to <em>build.</em>',
+      placeholder: 'e.g. Make the hero grid feel like a museum wall — heavy serif, museum-card captions under each variant.',
+      cta: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>Dispatch ×3 <span class="arrow">→</span><span class="cost">~$1.90</span>`,
+      ctaClass: 'dispatch',
+      showSuggest: true,
+      showControls: true,
+    },
+    comment: {
+      lead: 'Leave a <em>comment.</em>',
+      placeholder: 'Markdown supported. @mention to notify someone.',
+      cta: 'Post comment',
+      ctaClass: 'btn-secondary',
+      showSuggest: false,
+      showControls: false,
+    },
+    ask: {
+      lead: 'Ask <em>AI.</em> No code changes.',
+      placeholder: 'e.g. What\'s the cleanest way to lay out 3 variants on mobile?',
+      cta: 'Ask →',
+      ctaClass: 'btn-secondary',
+      showSuggest: false,
+      showControls: false,
+    },
+  };
+
+  modes.forEach(btn => {
+    btn.addEventListener('click', () => {
+      modes.forEach(b => b.setAttribute('aria-pressed', 'false'));
+      btn.setAttribute('aria-pressed', 'true');
+      const cfg = modeConfig[btn.dataset.mode];
+      lead.innerHTML = cfg.lead;
+      ta.placeholder = cfg.placeholder;
+      suggestRow.style.display = cfg.showSuggest ? 'flex' : 'none';
+      controls.style.display = cfg.showControls ? 'flex' : 'none';
+      dispatch.outerHTML = `<button class="${cfg.ctaClass}">${cfg.cta}</button>`;
+      // re-bind reference
+      window._d = document.querySelector('.composer-footer button:last-child');
+    });
+  });
+</script>
+
+</body>
+</html>
