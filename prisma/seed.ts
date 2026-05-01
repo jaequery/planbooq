@@ -11,7 +11,7 @@ const prisma = new PrismaClient({ adapter });
 
 const DEFAULT_STATUSES = [
   { key: "backlog", name: "Backlog", color: "#94a3b8", position: 1 },
-  { key: "planning", name: "Planning", color: "#a78bfa", position: 2 },
+  { key: "todo", name: "Todo", color: "#64748b", position: 2 },
   { key: "building", name: "Building", color: "#f59e0b", position: 3 },
   { key: "review", name: "Review", color: "#3b82f6", position: 4 },
   { key: "completed", name: "Completed", color: "#22c55e", position: 5 },
@@ -25,7 +25,7 @@ type SeedTicket = {
 
 const SIDE_TICKETS: SeedTicket[] = [
   { statusKey: "backlog", title: "Try out a tiny CLI for bulk-archiving tickets" },
-  { statusKey: "planning", title: "Sketch a 'focus mode' that hides everything but in-progress" },
+  { statusKey: "todo", title: "Sketch a 'focus mode' that hides everything but in-progress" },
   { statusKey: "building", title: "Prototype embed-anywhere ticket card" },
   { statusKey: "review", title: "Compare DnD libs: dnd-kit vs framer Reorder" },
   {
@@ -45,12 +45,12 @@ const SEED_TICKETS: SeedTicket[] = [
     title: "Add taste-vs-logic detection to ticket capture",
   },
   {
-    statusKey: "planning",
+    statusKey: "todo",
     title: "Design variant-picker hot-or-not UI",
     description: "Side-by-side previews, one-click winner select.",
   },
   {
-    statusKey: "planning",
+    statusKey: "todo",
     title: "Spec live preview URL routing per variant",
   },
   {
