@@ -28,11 +28,7 @@ export const ticketCreated = inngest.createFunction(
     });
 
     await step.run("maybe-run-openrouter", async () => {
-      const ws = await prisma.workspace.findUnique({
-        where: { id: data.workspaceId },
-        select: { openrouterKeyCiphertext: true },
-      });
-      if (!ws?.openrouterKeyCiphertext) return { ran: false };
+      if (!process.env.OPENROUTER_API_KEY) return { ran: false };
 
       const ticket = await prisma.ticket.findUnique({
         where: { id: data.ticketId },

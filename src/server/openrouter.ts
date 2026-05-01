@@ -1,22 +1,5 @@
 import "server-only";
-import { decryptSecret } from "@/lib/crypto";
 import { logger } from "@/lib/logger";
-import { prisma } from "@/server/db";
-
-export const OPENROUTER_KEY_PREFIX = "sk-or-";
-
-export function isValidOpenRouterKeyShape(key: string): boolean {
-  return key.startsWith(OPENROUTER_KEY_PREFIX) && key.length >= 20;
-}
-
-export async function getOpenRouterApiKey(workspaceId: string): Promise<string | null> {
-  const ws = await prisma.workspace.findUnique({
-    where: { id: workspaceId },
-    select: { openrouterKeyCiphertext: true },
-  });
-  if (!ws?.openrouterKeyCiphertext) return null;
-  return decryptSecret(ws.openrouterKeyCiphertext);
-}
 
 type OpenRouterRunResult = { ok: true; reply: string } | { ok: false; error: string };
 
@@ -26,7 +9,7 @@ export async function runOpenRouterForTicket(args: {
   title: string;
   description: string | null;
 }): Promise<OpenRouterRunResult> {
-  const apiKey = await getOpenRouterApiKey(args.workspaceId);
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return { ok: false, error: "no_key" };
 
   const prompt = args.description ? `Title: ${args.title}\n\n${args.description}` : args.title;
