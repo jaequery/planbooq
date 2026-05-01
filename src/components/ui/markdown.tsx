@@ -45,17 +45,26 @@ export function Markdown({ children, className }: Props): React.ReactElement {
               {linkChildren}
             </a>
           ),
-          img: ({ node: _node, src, alt, ...rest }) => (
-            <img
-              src={src}
-              alt={alt ?? ""}
-              loading="lazy"
-              decoding="async"
-              referrerPolicy="no-referrer"
-              className="max-w-full h-auto rounded border border-border"
-              {...rest}
-            />
-          ),
+          img: ({ node: _node, src, alt, ...rest }) => {
+            if (typeof src !== "string" || src.length === 0) {
+              return (
+                <span className="text-[12px] italic text-muted-foreground">
+                  {alt ?? "uploading…"}
+                </span>
+              );
+            }
+            return (
+              <img
+                src={src}
+                alt={alt ?? ""}
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
+                className="max-w-full h-auto rounded border border-border"
+                {...rest}
+              />
+            );
+          },
         }}
       >
         {children}
