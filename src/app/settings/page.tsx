@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { Suspense } from "react";
 import { ApiKeysClient } from "@/components/settings/api-keys-client";
 import { AppearancePicker } from "@/components/settings/appearance-picker";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
@@ -35,26 +36,28 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
         <h1 className="text-xl font-semibold">Settings</h1>
         <p className="text-sm text-muted-foreground">Manage your workspace preferences.</p>
       </header>
-      <SettingsTabs
-        appearance={
-          <section className="flex flex-col gap-3">
-            <div>
-              <h2 className="text-sm font-medium">Theme</h2>
-              <p className="text-sm text-muted-foreground">
-                Choose how Planbooq looks. System matches your device setting.
-              </p>
-            </div>
-            <AppearancePicker />
-          </section>
-        }
-        apiKeys={
-          <ApiKeysClient
-            workspaceId={membership.workspaceId}
-            workspaceName={membership.workspace.name}
-            initialKeys={keys}
-          />
-        }
-      />
+      <Suspense fallback={null}>
+        <SettingsTabs
+          appearance={
+            <section className="flex flex-col gap-3">
+              <div>
+                <h2 className="text-sm font-medium">Theme</h2>
+                <p className="text-sm text-muted-foreground">
+                  Choose how Planbooq looks. System matches your device setting.
+                </p>
+              </div>
+              <AppearancePicker />
+            </section>
+          }
+          apiKeys={
+            <ApiKeysClient
+              workspaceId={membership.workspaceId}
+              workspaceName={membership.workspace.name}
+              initialKeys={keys}
+            />
+          }
+        />
+      </Suspense>
     </div>
   );
 }
