@@ -87,15 +87,13 @@ function ImageUploadTextarea({
   };
 
   const replaceToken = (token: string, replacement: string): void => {
-    const el = textareaRef.current;
-    const current = typeof value === "string" ? value : (el?.value ?? "");
+    const current = textareaRef.current?.value ?? "";
     if (!current.includes(token)) return;
     dispatchValue(current.replace(token, replacement));
   };
 
   const removeToken = (token: string): void => {
-    const el = textareaRef.current;
-    const current = typeof value === "string" ? value : (el?.value ?? "");
+    const current = textareaRef.current?.value ?? "";
     if (!current.includes(token)) return;
     dispatchValue(current.replace(token, ""));
   };
