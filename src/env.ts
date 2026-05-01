@@ -1,10 +1,10 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
-// INNGEST_REQUIRED is an explicit prod-deploy flag so that local `pnpm build`
-// (which runs in NODE_ENV=production) doesn't crash when the keys are absent.
-// Set INNGEST_REQUIRED=true on real production deploys to enforce signing.
-const inngestRequired = process.env.INNGEST_REQUIRED === "true";
+// Inngest keys are required unless the SDK is running in dev mode.
+// Set INNGEST_DEV=1 locally (and via `pnpm inngest`); leave it unset on every
+// real deploy so missing keys fail fast at env-validation time.
+const inngestRequired = process.env.INNGEST_DEV !== "1";
 
 export const env = createEnv({
   server: {
@@ -16,7 +16,6 @@ export const env = createEnv({
     GITHUB_SECRET: z.string().min(1),
     GITHUB_WEBHOOK_SECRET: z.string().min(1),
     ABLY_API_KEY: z.string().optional().default(""),
-    INNGEST_REQUIRED: z.string().optional().default(""),
     INNGEST_EVENT_KEY: z
       .string()
       .optional()
@@ -25,7 +24,8 @@ export const env = createEnv({
         if (inngestRequired && (!val || val.length === 0)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "INNGEST_EVENT_KEY is required when INNGEST_REQUIRED=true",
+            message:
+              "INNGEST_EVENT_KEY is required (set INNGEST_DEV=1 for local dev)",
           });
         }
       }),
@@ -37,7 +37,8 @@ export const env = createEnv({
         if (inngestRequired && (!val || val.length === 0)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "INNGEST_SIGNING_KEY is required when INNGEST_REQUIRED=true",
+            message:
+              "INNGEST_SIGNING_KEY is required (set INNGEST_DEV=1 for local dev)",
           });
         }
       }),
@@ -52,7 +53,6 @@ export const env = createEnv({
     GITHUB_SECRET: process.env.GITHUB_SECRET,
     GITHUB_WEBHOOK_SECRET: process.env.GITHUB_WEBHOOK_SECRET,
     ABLY_API_KEY: process.env.ABLY_API_KEY,
-    INNGEST_REQUIRED: process.env.INNGEST_REQUIRED,
     INNGEST_EVENT_KEY: process.env.INNGEST_EVENT_KEY,
     INNGEST_SIGNING_KEY: process.env.INNGEST_SIGNING_KEY,
   },

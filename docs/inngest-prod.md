@@ -10,17 +10,16 @@ gaps below.
 Set these in **Vercel → Project → Settings → Environment Variables** for the
 Production environment (and Preview if you want previews to publish events):
 
-| Variable                | Value                                                                 |
-|-------------------------|-----------------------------------------------------------------------|
-| `INNGEST_EVENT_KEY`     | From Inngest Cloud → your env → **Event Keys**.                       |
-| `INNGEST_SIGNING_KEY`   | From Inngest Cloud → your env → **Signing Key**.                      |
-| `INNGEST_REQUIRED`      | `true` — fails the build if the keys above are missing.               |
+| Variable              | Value                                            |
+|-----------------------|--------------------------------------------------|
+| `INNGEST_EVENT_KEY`   | From Inngest Cloud → your env → **Event Keys**.  |
+| `INNGEST_SIGNING_KEY` | From Inngest Cloud → your env → **Signing Key**. |
 
-Do **not** set `INNGEST_DEV` in production. It is for `pnpm inngest` local dev
-only.
-
-`INNGEST_REQUIRED=true` is enforced by `src/env.ts` and turns silent
-misconfiguration into a hard build failure — set it on every real deploy.
+Do **not** set `INNGEST_DEV` in production. It is the only escape hatch from
+the env-validation gate in `src/env.ts`, which requires both keys above
+unless `INNGEST_DEV=1`. Leaving `INNGEST_DEV` unset on real deploys is what
+turns missing keys into a hard build failure instead of a silent runtime
+breakage.
 
 ## 2. Register the endpoint with Inngest Cloud
 
