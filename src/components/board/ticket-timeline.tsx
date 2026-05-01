@@ -7,8 +7,8 @@ import { toast } from "sonner";
 import { createComment, deleteComment, listTicketComments } from "@/actions/comment";
 import { AssigneeAvatar } from "@/components/board/assignee-picker";
 import { Button } from "@/components/ui/button";
+import { ImageUploadTextarea } from "@/components/ui/image-upload-textarea";
 import { Markdown } from "@/components/ui/markdown";
-import { Textarea } from "@/components/ui/textarea";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
 import type { AblyChannelEvent } from "@/lib/types";
 import type { CommentWithAuthor } from "@/server/services/comments";
@@ -244,7 +244,8 @@ export function TicketTimeline({
       )}
 
       <div className="space-y-2 pt-2">
-        <Textarea
+        <ImageUploadTextarea
+          workspaceId={workspaceId}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -253,6 +254,7 @@ export function TicketTimeline({
               submit();
             }
           }}
+          onUploadError={(message) => toast.error(`Image upload failed: ${message}`)}
           placeholder="Leave a comment…"
           rows={3}
           maxLength={10_000}

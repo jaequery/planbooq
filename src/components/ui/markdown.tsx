@@ -45,6 +45,17 @@ export function Markdown({ children, className }: Props): React.ReactElement {
               {linkChildren}
             </a>
           ),
+          img: ({ node: _node, src, alt, ...rest }) => (
+            <img
+              src={src}
+              alt={alt ?? ""}
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              className="max-w-full h-auto rounded border border-border"
+              {...rest}
+            />
+          ),
         }}
       >
         {children}

@@ -22,13 +22,14 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts         Account[]
-  sessions         Session[]
-  memberships      Member[]
-  createdTickets   Ticket[]  @relation("TicketCreatedBy")
-  assignedTickets  Ticket[]  @relation("TicketAssignee")
-  apiKeys          ApiKey[]
-  comments         Comment[] @relation("CommentAuthor")
+  accounts        Account[]
+  sessions        Session[]
+  memberships     Member[]
+  createdTickets  Ticket[]     @relation("TicketCreatedBy")
+  assignedTickets Ticket[]     @relation("TicketAssignee")
+  apiKeys         ApiKey[]
+  comments        Comment[]    @relation("CommentAuthor")
+  attachments     Attachment[] @relation("AttachmentUploader")
 }
 
 model ApiKey {
@@ -96,19 +97,20 @@ enum Role {
 }
 
 model Workspace {
-  id                      String   @id @default(cuid())
-  slug                    String   @unique
-  name                    String
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members  Member[]
-  statuses Status[]
-  tickets  Ticket[]
-  projects Project[]
-  labels   Label[]
-  apiKeys  ApiKey[]
-  comments Comment[]
+  members     Member[]
+  statuses    Status[]
+  tickets     Ticket[]
+  projects    Project[]
+  labels      Label[]
+  apiKeys     ApiKey[]
+  comments    Comment[]
+  attachments Attachment[]
 }
 
 model Project {
@@ -234,3 +236,18 @@ model Comment {
   @@index([authorId])
 }
 
+model Attachment {
+  id          String   @id @default(cuid())
+  workspaceId String
+  uploaderId  String
+  mimeType    String
+  size        Int
+  data        Bytes
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  uploader  User      @relation("AttachmentUploader", fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([uploaderId])
+}
