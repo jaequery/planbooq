@@ -30,28 +30,20 @@ function sortPreviews(items: TicketPreview[]): TicketPreview[] {
 export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.ReactElement {
   const [items, setItems] = useState<TicketPreview[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    setError(false);
     fetch(`/api/v1/tickets/${ticketId}/previews`, { credentials: "same-origin" })
       .then(async (res) => {
         if (!res.ok) throw new Error(`status_${res.status}`);
         return res.json() as Promise<{ ok: boolean; data: { items: TicketPreview[] } }>;
       })
       .then((body) => {
-        if (!alive) return;
-        if (!body.ok) {
-          setError(true);
-          return;
-        }
+        if (!alive || !body.ok) return;
         setItems(sortPreviews(body.data.items));
       })
-      .catch(() => {
-        if (alive) setError(true);
-      })
+      .catch(() => {})
       .finally(() => {
         if (alive) setLoading(false);
       });
@@ -92,10 +84,6 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
       <span className="text-[12px] text-muted-foreground">Previews</span>
       {loading ? (
         <div className="h-[120px] w-full animate-pulse rounded-md bg-muted" />
-      ) : error ? (
-        <div className="text-[12px] text-red-600 dark:text-red-400">
-          Couldn&apos;t load previews.
-        </div>
       ) : items.length === 0 ? (
         <div className="text-[12px] text-muted-foreground">No previews yet.</div>
       ) : (
