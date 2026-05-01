@@ -23,6 +23,9 @@ export async function GET(
       "Content-Type": attachment.mimeType,
       "Content-Length": String(attachment.size),
       "Cache-Control": "private, max-age=31536000, immutable",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Disposition": "inline",
+      "Content-Security-Policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
     },
   });
 }

@@ -9,6 +9,11 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
+  const contentLength = Number(req.headers.get("content-length") ?? "0");
+  if (contentLength > ATTACHMENT_LIMITS.maxSizeBytes + 64 * 1024) {
+    return NextResponse.json({ ok: false, error: "file_too_large" }, { status: 413 });
+  }
+
   let form: FormData;
   try {
     form = await req.formData();
