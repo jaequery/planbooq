@@ -54,27 +54,7 @@ async function ensurePersonalWorkspace(userId: string): Promise<void> {
     select: { workspaceId: true },
   });
 
-  if (existing) {
-    // Idempotent: ensure the workspace has at least one project.
-    const projectCount = await prisma.project.count({
-      where: { workspaceId: existing.workspaceId },
-    });
-    if (projectCount === 0) {
-      await prisma.project.create({
-        data: {
-          workspaceId: existing.workspaceId,
-          slug: "untitled",
-          name: "Untitled",
-          color: "#6366f1",
-          position: 1,
-        },
-      });
-      logger.info("workspace.project.bootstrapped", {
-        workspaceId: existing.workspaceId,
-      });
-    }
-    return;
-  }
+  if (existing) return;
 
   const slug = `u-${userId.slice(0, 10).toLowerCase()}`;
 
@@ -92,14 +72,6 @@ async function ensurePersonalWorkspace(userId: string): Promise<void> {
           color: s.color,
           position: s.position,
         })),
-      },
-      projects: {
-        create: {
-          slug: "untitled",
-          name: "Untitled",
-          color: "#6366f1",
-          position: 1,
-        },
       },
     },
   });
