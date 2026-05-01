@@ -30,6 +30,7 @@ model User {
   apiKeys         ApiKey[]
   comments        Comment[]    @relation("CommentAuthor")
   attachments     Attachment[] @relation("AttachmentUploader")
+  ticketPreviews  TicketPreview[] @relation("TicketPreviewCreator")
 }
 
 model ApiKey {
@@ -195,6 +196,7 @@ model Ticket {
   assignee  User?     @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   labels    Label[]   @relation("TicketLabels")
   comments  Comment[]
+  previews  TicketPreview[]
 
   @@index([workspaceId, statusId, position])
   @@index([projectId, statusId, position])
@@ -247,7 +249,25 @@ model Attachment {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   uploader  User      @relation("AttachmentUploader", fields: [uploaderId], references: [id], onDelete: Cascade)
+  previews  TicketPreview[]
 
   @@index([workspaceId, createdAt])
   @@index([uploaderId])
+}
+
+model TicketPreview {
+  id           String   @id @default(cuid())
+  ticketId     String
+  attachmentId String
+  label        String?
+  position     Int
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  ticket     Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  attachment Attachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+  createdBy  User?      @relation("TicketPreviewCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, position])
+  @@index([attachmentId])
 }

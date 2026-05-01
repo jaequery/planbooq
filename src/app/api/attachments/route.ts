@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { logger } from "@/lib/logger";
 import { auth } from "@/server/auth";
-import { ATTACHMENT_LIMITS, createAttachment } from "@/server/services/attachment";
+import {
+  ATTACHMENT_LIMITS,
+  createAttachment,
+  getMaxSizeForMime,
+} from "@/server/services/attachment";
 
 export async function POST(req: Request): Promise<NextResponse> {
   const session = await auth();
@@ -9,8 +13,9 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
+  // Pre-check uses the largest allowed cap (video); per-mime cap enforced in service layer.
   const contentLength = Number(req.headers.get("content-length") ?? "0");
-  if (contentLength > ATTACHMENT_LIMITS.maxSizeBytes + 64 * 1024) {
+  if (contentLength > ATTACHMENT_LIMITS.maxVideoSizeBytes + 64 * 1024) {
     return NextResponse.json({ ok: false, error: "file_too_large" }, { status: 413 });
   }
 
@@ -30,10 +35,11 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (typeof workspaceId !== "string" || workspaceId.length === 0) {
     return NextResponse.json({ ok: false, error: "missing_workspaceId" }, { status: 400 });
   }
-  if (!ATTACHMENT_LIMITS.allowedMimeTypes.includes(file.type)) {
+  const cap = getMaxSizeForMime(file.type);
+  if (cap === null) {
     return NextResponse.json({ ok: false, error: "unsupported_mime_type" }, { status: 400 });
   }
-  if (file.size <= 0 || file.size > ATTACHMENT_LIMITS.maxSizeBytes) {
+  if (file.size <= 0 || file.size > cap) {
     return NextResponse.json({ ok: false, error: "file_too_large" }, { status: 400 });
   }
 
