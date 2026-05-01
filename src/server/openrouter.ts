@@ -1,6 +1,15 @@
 import "server-only";
 import { logger } from "@/lib/logger";
 
+/**
+ * Resolves the OpenRouter API key for a workspace. Today this only consults
+ * the process env (BYOK per-workspace storage is TBD). Accepts workspaceId
+ * for forwards-compatibility.
+ */
+export async function getOpenRouterApiKey(_workspaceId: string): Promise<string | null> {
+  return process.env.OPENROUTER_API_KEY ?? null;
+}
+
 type OpenRouterRunResult = { ok: true; reply: string } | { ok: false; error: string };
 
 export async function getOpenRouterApiKey(_workspaceId: string): Promise<string | null> {

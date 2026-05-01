@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AiPanel } from "@/components/ai-panel/ai-panel";
+import { AiPanelProvider } from "@/components/ai-panel/ai-panel-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
@@ -29,7 +31,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <AiPanelProvider>
+            <div style={{ paddingBottom: "var(--ai-panel-height, 48px)" }}>{children}</div>
+            <AiPanel />
+          </AiPanelProvider>
           <Toaster />
         </ThemeProvider>
       </body>

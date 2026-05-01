@@ -40,8 +40,7 @@ function tolerantAdapter(): Adapter {
           scope: account.scope ?? null,
           token_type: account.token_type ?? null,
           id_token: account.id_token ?? null,
-          session_state:
-            typeof account.session_state === "string" ? account.session_state : null,
+          session_state: typeof account.session_state === "string" ? account.session_state : null,
         },
       });
     },
