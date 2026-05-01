@@ -5,10 +5,10 @@ const IV_LEN = 12;
 const KEY_LEN = 32;
 
 function getKey(): Buffer {
-  const hex = process.env.OPENROUTER_KEY_ENCRYPTION_SECRET;
-  if (!hex) throw new Error("OPENROUTER_KEY_ENCRYPTION_SECRET_missing");
+  const hex = process.env.OPENROUTER_API_KEY;
+  if (!hex) throw new Error("OPENROUTER_API_KEY_missing");
   const buf = Buffer.from(hex, "hex");
-  if (buf.length !== KEY_LEN) throw new Error("OPENROUTER_KEY_ENCRYPTION_SECRET_invalid_length");
+  if (buf.length !== KEY_LEN) throw new Error("OPENROUTER_API_KEY_invalid_length");
   return buf;
 }
 

@@ -41,7 +41,7 @@ export const env = createEnv({
           });
         }
       }),
-    OPENROUTER_KEY_ENCRYPTION_SECRET: z
+    OPENROUTER_API_KEY: z
       .string()
       .regex(/^[0-9a-fA-F]{64}$/, "must be 32-byte hex (64 chars)")
       .optional(),
@@ -59,7 +59,7 @@ export const env = createEnv({
     INNGEST_REQUIRED: process.env.INNGEST_REQUIRED,
     INNGEST_EVENT_KEY: process.env.INNGEST_EVENT_KEY,
     INNGEST_SIGNING_KEY: process.env.INNGEST_SIGNING_KEY,
-    OPENROUTER_KEY_ENCRYPTION_SECRET: process.env.OPENROUTER_KEY_ENCRYPTION_SECRET,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
   },
   emptyStringAsUndefined: false,
   skipValidation: process.env.SKIP_ENV_VALIDATION === "1",
