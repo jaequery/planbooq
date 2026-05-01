@@ -86,7 +86,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         }
         return;
       }
-      if (event.projectId !== currentProjectId) return;
+      if (!("projectId" in event) || event.projectId !== currentProjectId) return;
       if (event.name === "ticket.moved") {
         setStatuses((prev) => {
           let moving: Ticket | null = null;

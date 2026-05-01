@@ -121,6 +121,24 @@ export type AblyChannelEvent =
       commentId: string;
       by: string;
     }
-  ;
+  | {
+      name: "ticket.preview.added";
+      workspaceId: string;
+      ticketId: string;
+      previewId: string;
+      attachmentId: string;
+      url: string;
+      mimeType: string;
+      label: string | null;
+      position: number;
+      by: string;
+    }
+  | {
+      name: "ticket.preview.removed";
+      workspaceId: string;
+      ticketId: string;
+      previewId: string;
+      by: string;
+    };
 
 export type ServerActionResult<T> = { ok: true; data: T } | { ok: false; error: string };

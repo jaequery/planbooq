@@ -89,6 +89,7 @@ export function mapErrorToStatus(code: string): number {
     case "invalid_project":
     case "invalid_status":
     case "comment_not_found":
+    case "preview_not_found":
       return 404;
     case "rate_limited":
       return 429;
