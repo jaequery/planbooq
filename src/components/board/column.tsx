@@ -2,23 +2,20 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { NewTicketDialog } from "@/components/board/new-ticket-dialog";
 import type { StatusOption } from "@/components/board/status-picker";
 import { TicketCard } from "@/components/board/ticket-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { StatusWithTickets, Ticket, TicketWithRelations } from "@/lib/types";
+import type { StatusWithTickets, TicketWithRelations } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
   status: StatusWithTickets;
   statuses: ReadonlyArray<StatusOption>;
   tickets?: TicketWithRelations[];
-  projectId: string;
   projectName: string;
   projectColor: string;
   projectSlug: string;
   currentUserId: string;
-  onTicketCreated: (ticket: Ticket) => void;
   onTicketUpdated: (ticket: TicketWithRelations) => void;
   onTicketArchived: (ticketId: string) => void;
   onTicketDeleted: (ticketId: string) => void;
@@ -29,12 +26,10 @@ export function Column({
   status,
   statuses,
   tickets = status.tickets,
-  projectId,
   projectName,
   projectColor,
   projectSlug,
   currentUserId,
-  onTicketCreated,
   onTicketUpdated,
   onTicketArchived,
   onTicketDeleted,
@@ -53,7 +48,7 @@ export function Column({
         isCompact ? "w-[160px]" : "w-[300px]",
       )}
     >
-      <div className="flex items-center justify-between px-1 pb-2">
+      <div className="flex items-center px-1 pb-2">
         <div className={cn("flex items-center gap-2", isCompact && "opacity-70")}>
           <span
             aria-hidden
@@ -67,13 +62,6 @@ export function Column({
             {tickets.length}
           </span>
         </div>
-        <NewTicketDialog
-          projectId={projectId}
-          statusId={status.id}
-          statusName={status.name}
-          onCreated={onTicketCreated}
-          compact
-        />
       </div>
       <div
         ref={setNodeRef}
