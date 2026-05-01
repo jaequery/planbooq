@@ -20,20 +20,6 @@ type Props = {
   workspaceId: string;
 };
 
-type PreviewAddedEvent = {
-  name: "ticket.preview.added";
-  ticketId: string;
-  workspaceId: string;
-  preview: TicketPreview;
-};
-
-type PreviewRemovedEvent = {
-  name: "ticket.preview.removed";
-  ticketId: string;
-  workspaceId: string;
-  previewId: string;
-};
-
 function sortPreviews(items: TicketPreview[]): TicketPreview[] {
   return [...items].sort((a, b) => {
     if (a.position !== b.position) return a.position - b.position;
@@ -76,20 +62,24 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
 
   const handleEvent = useCallback(
     (event: AblyChannelEvent) => {
-      const e = event as unknown as { name: string };
-      if (e.name === "ticket.preview.added") {
-        const added = event as unknown as PreviewAddedEvent;
-        if (added.ticketId !== ticketId) return;
-        setItems((prev) => {
-          if (prev.some((p) => p.id === added.preview.id)) return prev;
-          return sortPreviews([...prev, added.preview]);
-        });
+      if (event.name === "ticket.preview.added" && event.ticketId === ticketId) {
+        const added: TicketPreview = {
+          id: event.previewId,
+          attachmentId: event.attachmentId,
+          url: event.url,
+          mimeType: event.mimeType,
+          size: 0,
+          label: event.label,
+          position: event.position,
+          createdAt: new Date().toISOString(),
+        };
+        setItems((prev) =>
+          prev.some((p) => p.id === added.id) ? prev : sortPreviews([...prev, added]),
+        );
         return;
       }
-      if (e.name === "ticket.preview.removed") {
-        const removed = event as unknown as PreviewRemovedEvent;
-        if (removed.ticketId !== ticketId) return;
-        setItems((prev) => prev.filter((p) => p.id !== removed.previewId));
+      if (event.name === "ticket.preview.removed" && event.ticketId === ticketId) {
+        setItems((prev) => prev.filter((p) => p.id !== event.previewId));
       }
     },
     [ticketId],
