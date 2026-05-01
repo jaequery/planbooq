@@ -17,9 +17,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ImageUploadTextarea } from "@/components/ui/image-upload-textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import type { Ticket } from "@/lib/types";
 
 const Schema = z.object({
@@ -30,6 +30,7 @@ const Schema = z.object({
 type FormValues = z.infer<typeof Schema>;
 
 type Props = {
+  workspaceId: string;
   projectId: string;
   statusId: string;
   statusName: string;
@@ -38,6 +39,7 @@ type Props = {
 };
 
 export function NewTicketDialog({
+  workspaceId,
   projectId,
   statusId,
   statusName,
@@ -119,11 +121,14 @@ export function NewTicketDialog({
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="description">Description</Label>
-            <Textarea
+            <ImageUploadTextarea
               id="description"
+              workspaceId={workspaceId}
               placeholder="Optional context, acceptance criteria, links…"
               rows={4}
-              {...form.register("description")}
+              value={form.watch("description") ?? ""}
+              onChange={(e) => form.setValue("description", e.target.value, { shouldDirty: true })}
+              onUploadError={(message) => toast.error(`Image upload failed: ${message}`)}
             />
           </div>
           <DialogFooter>

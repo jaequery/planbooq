@@ -14,9 +14,9 @@ import { TicketActionsMenu } from "@/components/board/ticket-actions-menu";
 import { TicketTimeline } from "@/components/board/ticket-timeline";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { ImageUploadTextarea } from "@/components/ui/image-upload-textarea";
 import { Input } from "@/components/ui/input";
 import { Markdown } from "@/components/ui/markdown";
-import { Textarea } from "@/components/ui/textarea";
 import { formatTicketIdentifier } from "@/lib/ticket-identifier";
 import type { Priority, TicketAssignee, TicketLabel, TicketWithRelations } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -442,7 +442,8 @@ export function TicketDetailDialog({
 
               <div className="mt-4">
                 {isEditingDescription ? (
-                  <Textarea
+                  <ImageUploadTextarea
+                    workspaceId={ticket.workspaceId}
                     autoFocus
                     value={descriptionDraft}
                     onChange={(e) => setDescriptionDraft(e.target.value)}
@@ -456,6 +457,7 @@ export function TicketDetailDialog({
                         commitDescription();
                       }
                     }}
+                    onUploadError={(message) => toast.error(`Image upload failed: ${message}`)}
                     placeholder="Add description…"
                     aria-label="Ticket description"
                     className="min-h-[140px] border-0 bg-transparent p-0 text-[14px] leading-relaxed shadow-none focus-visible:ring-0 md:text-[14px]"
@@ -569,74 +571,69 @@ export function TicketDetailDialog({
                 />
               ) : ticket.prUrl ? (
                 <>
-                  {showPrStatus && prStatus
-                    ? (() => {
-                        const badge = describeStatusBadge(prStatus);
-                        const disabledReason = describeMergeDisabledReason(prStatus);
-                        const disabled =
-                          isFetchingStatus || mergePending || disabledReason !== null;
-                        return (
-                          <div className="grid grid-cols-2 gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              asChild
-                              className="h-9 justify-center text-[13px] font-medium"
-                            >
-                              <a
-                                href={ticket.prUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title={ticket.prUrl}
-                              >
-                                <GitPullRequest className="mr-1.5 h-4 w-4" aria-hidden />
-                                View PR
-                              </a>
-                            </Button>
-                            <Button
-                              type="button"
-                              onClick={handleMerge}
-                              disabled={disabled}
-                              title={
-                                mergePending
-                                  ? "Merging…"
-                                  : (disabledReason ?? "Merge this PR")
-                              }
-                              className="h-9 justify-center text-[13px] font-medium"
-                            >
-                              <GitMerge className="mr-1.5 h-4 w-4" aria-hidden />
-                              {mergePending
-                                ? "Merging…"
-                                : badge.tone === "merged"
-                                  ? "Merged"
-                                  : "Merge"}
-                            </Button>
-                          </div>
-                        );
-                      })()
-                    : (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          asChild
-                          className="h-9 w-full justify-center text-[13px] font-medium"
-                        >
-                          <a
-                            href={ticket.prUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title={ticket.prUrl}
+                  {showPrStatus && prStatus ? (
+                    (() => {
+                      const badge = describeStatusBadge(prStatus);
+                      const disabledReason = describeMergeDisabledReason(prStatus);
+                      const disabled = isFetchingStatus || mergePending || disabledReason !== null;
+                      return (
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            asChild
+                            className="h-9 justify-center text-[13px] font-medium"
                           >
-                            <GitPullRequest className="mr-1.5 h-4 w-4" aria-hidden />
-                            View PR
-                            {showPrStatus && prStatusReason ? (
-                              <span className="ml-2 text-[11px] text-muted-foreground">
-                                {describeReasonBadge(prStatusReason)}
-                              </span>
-                            ) : null}
-                          </a>
-                        </Button>
-                      )}
+                            <a
+                              href={ticket.prUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={ticket.prUrl}
+                            >
+                              <GitPullRequest className="mr-1.5 h-4 w-4" aria-hidden />
+                              View PR
+                            </a>
+                          </Button>
+                          <Button
+                            type="button"
+                            onClick={handleMerge}
+                            disabled={disabled}
+                            title={mergePending ? "Merging…" : (disabledReason ?? "Merge this PR")}
+                            className="h-9 justify-center text-[13px] font-medium"
+                          >
+                            <GitMerge className="mr-1.5 h-4 w-4" aria-hidden />
+                            {mergePending
+                              ? "Merging…"
+                              : badge.tone === "merged"
+                                ? "Merged"
+                                : "Merge"}
+                          </Button>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      asChild
+                      className="h-9 w-full justify-center text-[13px] font-medium"
+                    >
+                      <a
+                        href={ticket.prUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={ticket.prUrl}
+                      >
+                        <GitPullRequest className="mr-1.5 h-4 w-4" aria-hidden />
+                        View PR
+                        {showPrStatus && prStatusReason ? (
+                          <span className="ml-2 text-[11px] text-muted-foreground">
+                            {describeReasonBadge(prStatusReason)}
+                          </span>
+                        ) : null}
+                      </a>
+                    </Button>
+                  )}
                 </>
               ) : (
                 <button
@@ -648,9 +645,7 @@ export function TicketDetailDialog({
                 </button>
               )}
               {mergeError ? (
-                <div className="text-[12px] text-red-600 dark:text-red-400">
-                  {mergeError}
-                </div>
+                <div className="text-[12px] text-red-600 dark:text-red-400">{mergeError}</div>
               ) : null}
             </div>
           </aside>
