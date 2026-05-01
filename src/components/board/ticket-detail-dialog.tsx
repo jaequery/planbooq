@@ -1,9 +1,10 @@
 "use client";
 
 import { formatDistanceToNowStrict } from "date-fns";
-import { GitPullRequest, X } from "lucide-react";
-import { useEffect, useState, useTransition } from "react";
+import { GitMerge, GitPullRequest, X } from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
+import { getPullRequestStatus, mergePullRequest } from "@/actions/github-pr";
 import { updateTicket } from "@/actions/ticket";
 import { AssigneeAvatar, AssigneePicker } from "@/components/board/assignee-picker";
 import { DueDatePicker } from "@/components/board/due-date-picker";
@@ -19,6 +20,7 @@ import { Markdown } from "@/components/ui/markdown";
 import { Textarea } from "@/components/ui/textarea";
 import type { Priority, TicketAssignee, TicketLabel, TicketWithRelations } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import type { PrStatus } from "@/server/services/github-pr";
 
 type Props = {
   ticket: TicketWithRelations;
@@ -32,6 +34,67 @@ type Props = {
   projectSlug?: string;
   currentUserId: string | null;
 };
+
+type PrStatusReason =
+  | "no-pr-url"
+  | "not-github"
+  | "no-token"
+  | "missing-scope"
+  | "not-found"
+  | "rate-limited"
+  | "error";
+
+function isGitHubPrUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    return u.hostname === "github.com" && /^\/[^/]+\/[^/]+\/pull\/\d+/.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function describeStatusBadge(status: PrStatus): {
+  label: string;
+  tone: "merged" | "neutral" | "warn";
+} {
+  if (status.merged) return { label: "Merged", tone: "merged" };
+  if (status.state === "closed") return { label: "Closed", tone: "neutral" };
+  if (status.draft) return { label: "Draft", tone: "neutral" };
+  if (status.mergeable === false) return { label: "Conflicts", tone: "warn" };
+  if (status.mergeable === null) return { label: "Checking…", tone: "neutral" };
+  if (status.mergeableState === "blocked") return { label: "Blocked", tone: "warn" };
+  if (status.mergeableState === "behind") return { label: "Behind base", tone: "warn" };
+  return { label: "Open", tone: "neutral" };
+}
+
+function describeReasonBadge(reason: PrStatusReason): string {
+  switch (reason) {
+    case "missing-scope":
+    case "no-token":
+      return "Auth needed";
+    case "not-found":
+      return "Not found";
+    case "rate-limited":
+      return "Rate limited";
+    case "error":
+      return "Error";
+    default:
+      return "Unavailable";
+  }
+}
+
+function describeMergeDisabledReason(status: PrStatus): string | null {
+  if (status.merged) return "PR already merged";
+  if (status.state === "closed") return "PR is closed";
+  if (status.draft) return "PR is in draft";
+  if (status.mergeable === false) return "PR has conflicts";
+  if (status.mergeable === null) return "Mergeability still computing";
+  if (status.mergeableState === "blocked") return "Merge blocked by branch protection";
+  if (status.mergeableState === "dirty") return "PR has conflicts";
+  if (status.mergeableState === "behind") return "PR is behind the base branch";
+  return null;
+}
 
 function ActivityAvatar(): React.ReactElement {
   return <div aria-hidden className="h-5 w-5 shrink-0 rounded-full bg-muted-foreground/30" />;
@@ -64,6 +127,121 @@ export function TicketDetailDialog({
   );
   const [prUrlDraft, setPrUrlDraft] = useState(ticket.prUrl ?? "");
   const [isEditingPrUrl, setIsEditingPrUrl] = useState(false);
+  const [prStatus, setPrStatus] = useState<PrStatus | null>(null);
+  const [prStatusReason, setPrStatusReason] = useState<PrStatusReason | null>(null);
+  const [isFetchingStatus, startStatusTransition] = useTransition();
+  const [mergePending, startMergeTransition] = useTransition();
+  const [mergeError, setMergeError] = useState<React.ReactNode | null>(null);
+
+  const ticketPrUrl = ticket.prUrl;
+  const showPrStatus = open && !isEditingPrUrl && isGitHubPrUrl(ticketPrUrl);
+
+  const loadStatus = useCallback((): void => {
+    startStatusTransition(async () => {
+      const result = await getPullRequestStatus(ticket.id);
+      if (!result.ok) {
+        setPrStatus(null);
+        setPrStatusReason("error");
+        return;
+      }
+      if (result.data.status === null) {
+        setPrStatus(null);
+        setPrStatusReason(result.data.reason);
+        return;
+      }
+      setPrStatus(result.data.status);
+      setPrStatusReason(null);
+    });
+  }, [ticket.id]);
+
+  useEffect(() => {
+    if (!showPrStatus) {
+      setPrStatus(null);
+      setPrStatusReason(null);
+      setMergeError(null);
+      return;
+    }
+    let cancelled = false;
+    startStatusTransition(async () => {
+      const result = await getPullRequestStatus(ticket.id);
+      if (cancelled) return;
+      if (!result.ok) {
+        setPrStatus(null);
+        setPrStatusReason("error");
+        return;
+      }
+      if (result.data.status === null) {
+        setPrStatus(null);
+        setPrStatusReason(result.data.reason);
+        return;
+      }
+      setPrStatus(result.data.status);
+      setPrStatusReason(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [showPrStatus, ticket.id, ticketPrUrl]);
+
+  const handleMerge = (): void => {
+    setMergeError(null);
+    startMergeTransition(async () => {
+      const result = await mergePullRequest(ticket.id);
+      if (!result.ok) {
+        toast.error(result.error);
+        setMergeError("Merge failed. Try again.");
+        return;
+      }
+      if (result.data.merged === true) {
+        toast.success("PR merged. Ticket will move to Completed shortly.");
+        loadStatus();
+        return;
+      }
+      const { reason, message } = result.data;
+      let inline: React.ReactNode;
+      let toastMsg: string;
+      switch (reason) {
+        case "missing-scope":
+          toastMsg = "Re-authorize GitHub to enable merging from Planbooq.";
+          inline = (
+            <span>
+              Re-authorize GitHub to enable merging from Planbooq.{" "}
+              <a href="/api/auth/signin/github" className="underline">
+                Re-authorize
+              </a>
+            </span>
+          );
+          break;
+        case "no-token":
+          toastMsg = "Connect your GitHub account to merge from Planbooq.";
+          inline = toastMsg;
+          break;
+        case "not-mergeable":
+          toastMsg = `GitHub refused the merge: ${message ?? "not mergeable"}`;
+          inline = toastMsg;
+          break;
+        case "conflict":
+          toastMsg = "PR is out of date with the base branch.";
+          inline = toastMsg;
+          break;
+        case "rate-limited":
+          toastMsg = "GitHub rate limit hit. Try again in a moment.";
+          inline = toastMsg;
+          break;
+        case "no-pr-url":
+        case "not-github":
+          toastMsg = message ?? "Merge failed.";
+          inline = toastMsg;
+          break;
+        default:
+          toastMsg = message ?? "Merge failed.";
+          inline = toastMsg;
+          break;
+      }
+      toast.error(toastMsg);
+      setMergeError(inline);
+    });
+  };
 
   useEffect(() => {
     if (!isEditingTitle) setTitleDraft(ticket.title);
@@ -389,63 +567,131 @@ export function TicketDetailDialog({
                 overdue={isOverdue}
               />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">PR</span>
-              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[13px]">
-                <GitPullRequest
-                  className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-                  aria-hidden
-                />
-                {isEditingPrUrl ? (
-                  <Input
-                    autoFocus
-                    value={prUrlDraft}
-                    onChange={(e) => setPrUrlDraft(e.target.value)}
-                    onBlur={commitPrUrl}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") {
-                        e.preventDefault();
-                        setPrUrlDraft(ticket.prUrl ?? "");
-                        setIsEditingPrUrl(false);
-                      } else if (e.key === "Enter") {
-                        e.preventDefault();
-                        commitPrUrl();
-                      }
-                    }}
-                    placeholder="https://github.com/.../pull/123"
-                    aria-label="PR URL"
-                    className="h-6 border-0 bg-transparent p-0 text-[13px] shadow-none focus-visible:ring-0"
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">PR</span>
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-2 py-1.5 text-[13px]">
+                  <GitPullRequest
+                    className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                    aria-hidden
                   />
-                ) : ticket.prUrl ? (
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <a
-                      href={ticket.prUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={ticket.prUrl}
-                      className="truncate text-foreground hover:underline"
-                    >
-                      {ticket.prUrl.replace(/^https?:\/\/(www\.)?github\.com\//, "")}
-                    </a>
+                  {isEditingPrUrl ? (
+                    <Input
+                      autoFocus
+                      value={prUrlDraft}
+                      onChange={(e) => setPrUrlDraft(e.target.value)}
+                      onBlur={commitPrUrl}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          setPrUrlDraft(ticket.prUrl ?? "");
+                          setIsEditingPrUrl(false);
+                        } else if (e.key === "Enter") {
+                          e.preventDefault();
+                          commitPrUrl();
+                        }
+                      }}
+                      placeholder="https://github.com/.../pull/123"
+                      aria-label="PR URL"
+                      className="h-6 border-0 bg-transparent p-0 text-[13px] shadow-none focus-visible:ring-0"
+                    />
+                  ) : ticket.prUrl ? (
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <a
+                        href={ticket.prUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={ticket.prUrl}
+                        className="truncate text-foreground hover:underline"
+                      >
+                        {ticket.prUrl.replace(/^https?:\/\/(www\.)?github\.com\//, "")}
+                      </a>
+                      {showPrStatus ? (
+                        <>
+                          {prStatus ? (
+                            (() => {
+                              const badge = describeStatusBadge(prStatus);
+                              const tone =
+                                badge.tone === "merged"
+                                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                                  : badge.tone === "warn"
+                                    ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                                    : "bg-muted text-muted-foreground";
+                              return (
+                                <span
+                                  className={cn(
+                                    "shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
+                                    tone,
+                                  )}
+                                >
+                                  {badge.label}
+                                </span>
+                              );
+                            })()
+                          ) : prStatusReason ? (
+                            <span
+                              className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+                              title={prStatusReason}
+                            >
+                              {describeReasonBadge(prStatusReason)}
+                            </span>
+                          ) : isFetchingStatus ? (
+                            <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                              Checking…
+                            </span>
+                          ) : null}
+                          {prStatus
+                            ? (() => {
+                                const disabledReason = describeMergeDisabledReason(prStatus);
+                                const disabled =
+                                  isFetchingStatus || mergePending || disabledReason !== null;
+                                return (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="default"
+                                    onClick={handleMerge}
+                                    disabled={disabled}
+                                    title={
+                                      mergePending
+                                        ? "Merging…"
+                                        : (disabledReason ?? "Merge this PR")
+                                    }
+                                    className="h-6 shrink-0 px-2 text-[11px]"
+                                  >
+                                    <GitMerge className="mr-1 h-3 w-3" aria-hidden />
+                                    {mergePending ? "Merging…" : "Merge PR"}
+                                  </Button>
+                                );
+                              })()
+                            : null}
+                        </>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingPrUrl(true)}
+                        className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground"
+                        aria-label="Edit PR URL"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  ) : (
                     <button
                       type="button"
                       onClick={() => setIsEditingPrUrl(true)}
-                      className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground"
-                      aria-label="Edit PR URL"
+                      className="flex-1 text-left text-muted-foreground hover:text-foreground"
                     >
-                      Edit
+                      Add PR link…
                     </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingPrUrl(true)}
-                    className="flex-1 text-left text-muted-foreground hover:text-foreground"
-                  >
-                    Add PR link…
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
+              {mergeError ? (
+                <div className="pl-[88px] pr-2 text-[12px] text-red-600 dark:text-red-400">
+                  {mergeError}
+                </div>
+              ) : null}
             </div>
           </aside>
         </div>

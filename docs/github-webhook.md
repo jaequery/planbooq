@@ -73,3 +73,28 @@ gh webhook forward --repo OWNER/REPO --events=pull_request \
   link is `Ticket.prUrl` only.
 - It does not act on closed-without-merge. Those tickets stay where they
   are.
+
+## Merge from Planbooq
+
+The ticket detail popup includes a **Merge PR** button that merges the
+linked GitHub PR directly from Planbooq. It uses the signed-in user's
+GitHub OAuth token (stored on their `Account` row) — there is no shared
+service account.
+
+Notes:
+
+- **Scope upgrade required.** Merging needs the full `repo` OAuth scope.
+  New sign-ins request `read:user user:email repo`. Existing users who
+  granted only `read:user user:email` will need to **sign out and sign
+  back in** to re-authorize and pick up the `repo` scope. Planbooq
+  detects the missing scope and surfaces a re-auth prompt in the popup
+  instead of attempting the merge.
+- **Squash only.** The merge method is hard-coded to `squash`. There is
+  no UI to pick merge / rebase / commit-message overrides — keep PR
+  titles clean.
+- **Ticket move is still webhook-driven.** A successful merge does not
+  itself move the ticket to `Completed`; GitHub fires
+  `pull_request.closed` + `merged: true` seconds later and the existing
+  webhook handler does the column move. This keeps a single source of
+  truth for "PR is merged" and works for merges done outside Planbooq
+  (CLI, GitHub UI, automerge) too.
