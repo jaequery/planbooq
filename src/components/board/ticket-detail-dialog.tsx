@@ -15,6 +15,7 @@ import { TicketComments } from "@/components/board/ticket-comments";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Markdown } from "@/components/ui/markdown";
 import { Textarea } from "@/components/ui/textarea";
 import type { Priority, TicketAssignee, TicketLabel, TicketWithRelations } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -34,53 +35,6 @@ type Props = {
 
 function ActivityAvatar(): React.ReactElement {
   return <div aria-hidden className="h-5 w-5 shrink-0 rounded-full bg-muted-foreground/30" />;
-}
-
-function renderDescription(text: string): React.ReactElement {
-  const lines = text.split("\n");
-  const blocks: React.ReactElement[] = [];
-  let bullets: string[] = [];
-  let paragraph: string[] = [];
-
-  const flushBullets = (key: string): void => {
-    if (bullets.length === 0) return;
-    blocks.push(
-      <ul key={`ul-${key}`} className="my-2 list-disc space-y-1 pl-5">
-        {bullets.map((b, i) => (
-          <li key={`${key}-${i}`}>{b}</li>
-        ))}
-      </ul>,
-    );
-    bullets = [];
-  };
-  const flushParagraph = (key: string): void => {
-    if (paragraph.length === 0) return;
-    blocks.push(
-      <p key={`p-${key}`} className="my-2 whitespace-pre-wrap leading-relaxed">
-        {paragraph.join("\n")}
-      </p>,
-    );
-    paragraph = [];
-  };
-
-  lines.forEach((raw, i) => {
-    const line = raw.trimEnd();
-    const bulletMatch = line.match(/^\s*[-*]\s+(.*)$/);
-    if (bulletMatch) {
-      flushParagraph(`${i}`);
-      bullets.push(bulletMatch[1] ?? "");
-    } else if (line.trim() === "") {
-      flushBullets(`${i}`);
-      flushParagraph(`${i}`);
-    } else {
-      flushBullets(`${i}`);
-      paragraph.push(line);
-    }
-  });
-  flushBullets("end");
-  flushParagraph("end");
-
-  return <div className="text-[14px] text-foreground">{blocks}</div>;
 }
 
 export function TicketDetailDialog({
@@ -344,7 +298,9 @@ export function TicketDetailDialog({
                     aria-label="Edit description"
                   >
                     {ticket.description ? (
-                      renderDescription(ticket.description)
+                      <Markdown className="text-[14px] text-foreground">
+                        {ticket.description}
+                      </Markdown>
                     ) : (
                       <span className="text-[14px]">Add description…</span>
                     )}
