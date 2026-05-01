@@ -41,10 +41,7 @@ export const env = createEnv({
           });
         }
       }),
-    OPENROUTER_API_KEY: z
-      .string()
-      .regex(/^[0-9a-fA-F]{64}$/, "must be 32-byte hex (64 chars)")
-      .optional(),
+    OPENROUTER_API_KEY: z.string().startsWith("sk-or-").optional(),
   },
   client: {},
   runtimeEnv: {
