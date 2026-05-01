@@ -60,7 +60,11 @@ export function NewTicketDialog({
         description: values.description?.trim() ? values.description : undefined,
       });
       if (!result.ok) {
-        toast.error(`Could not create ticket: ${result.error}`);
+        if (result.error === "duplicate_title") {
+          toast.error("A ticket with this title already exists in this project.");
+        } else {
+          toast.error(`Could not create ticket: ${result.error}`);
+        }
         return;
       }
       onCreated(result.data);
