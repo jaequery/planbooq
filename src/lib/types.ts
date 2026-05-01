@@ -122,6 +122,13 @@ export type AblyChannelEvent =
       by: string;
     }
   | {
+      name: "ai-panel.message.created";
+      workspaceId: string;
+      userId: string;
+      conversationId: string;
+      messageId: string;
+    }
+  | {
       name: "ai.message.created";
       workspaceId: string;
       projectId: string;
