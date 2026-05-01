@@ -111,6 +111,7 @@ model Workspace {
   labels   Label[]
   apiKeys  ApiKey[]
   comments Comment[]
+  aiMessages TicketAiMessage[]
 }
 
 model Project {
@@ -195,6 +196,7 @@ model Ticket {
   assignee  User?     @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   labels    Label[]   @relation("TicketLabels")
   comments  Comment[]
+  aiMessages TicketAiMessage[]
 
   @@index([workspaceId, statusId, position])
   @@index([projectId, statusId, position])
@@ -234,4 +236,21 @@ model Comment {
   @@index([ticketId, createdAt])
   @@index([workspaceId])
   @@index([authorId])
+}
+
+model TicketAiMessage {
+  id          String   @id @default(cuid())
+  ticketId    String
+  workspaceId String
+  role        String
+  body        String   @db.Text
+  authorId    String?
+  kind        String   @default("chat")
+  createdAt   DateTime @default(now())
+
+  ticket    Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@index([workspaceId])
 }
