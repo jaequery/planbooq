@@ -44,11 +44,17 @@ export function Column({
     id: status.id,
     data: { type: "column", statusId: status.id },
   });
+  const isCompact = tickets.length === 0 && !isFiltered;
 
   return (
-    <div className="flex h-full w-[300px] shrink-0 flex-col">
+    <div
+      className={cn(
+        "flex h-full shrink-0 flex-col transition-[width] duration-150",
+        isCompact ? "w-[160px]" : "w-[300px]",
+      )}
+    >
       <div className="flex items-center justify-between px-1 pb-2">
-        <div className="flex items-center gap-2">
+        <div className={cn("flex items-center gap-2", isCompact && "opacity-70")}>
           <span
             aria-hidden
             className="h-2 w-2 rounded-full"
@@ -72,37 +78,43 @@ export function Column({
       <div
         ref={setNodeRef}
         className={cn(
-          "flex min-h-0 flex-1 flex-col rounded-lg border border-border/40 bg-muted/30 transition-colors",
-          isOver && "border-border/80 bg-muted/50",
+          "flex min-h-0 flex-1 flex-col rounded-lg border border-dashed border-border/40 bg-muted/20 transition-colors",
+          !isCompact && "border-solid bg-muted/30",
+          isOver && "border-solid border-border/80 bg-muted/50",
         )}
       >
-        <ScrollArea className="flex-1">
-          <SortableContext items={tickets.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-            <div className="flex flex-col gap-1.5 p-2">
-              {tickets.length === 0 ? (
-                <div className="flex h-20 items-center justify-center rounded-md border border-dashed border-border/40 text-[12px] text-muted-foreground/70">
-                  {isFiltered ? "No matching tickets" : "No tickets yet"}
-                </div>
-              ) : (
-                tickets.map((ticket) => (
-                  <TicketCard
-                    key={ticket.id}
-                    ticket={ticket}
-                    onUpdated={onTicketUpdated}
-                    onArchived={onTicketArchived}
-                    onDeleted={onTicketDeleted}
-                    statusKey={status.key}
-                    statuses={statuses}
-                    projectName={projectName}
-                    projectColor={projectColor}
-                    projectSlug={projectSlug}
-                    currentUserId={currentUserId}
-                  />
-                ))
-              )}
-            </div>
-          </SortableContext>
-        </ScrollArea>
+        {isCompact ? null : (
+          <ScrollArea className="flex-1">
+            <SortableContext
+              items={tickets.map((t) => t.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="flex flex-col gap-1.5 p-2">
+                {tickets.length === 0 ? (
+                  <div className="flex h-20 items-center justify-center rounded-md border border-dashed border-border/40 text-[12px] text-muted-foreground/70">
+                    No matching tickets
+                  </div>
+                ) : (
+                  tickets.map((ticket) => (
+                    <TicketCard
+                      key={ticket.id}
+                      ticket={ticket}
+                      onUpdated={onTicketUpdated}
+                      onArchived={onTicketArchived}
+                      onDeleted={onTicketDeleted}
+                      statusKey={status.key}
+                      statuses={statuses}
+                      projectName={projectName}
+                      projectColor={projectColor}
+                      projectSlug={projectSlug}
+                      currentUserId={currentUserId}
+                    />
+                  ))
+                )}
+              </div>
+            </SortableContext>
+          </ScrollArea>
+        )}
       </div>
     </div>
   );
