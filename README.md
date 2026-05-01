@@ -101,7 +101,6 @@ Planbooq collapses all three into a single surface optimized for the *new* bottl
 | Status        | Meaning                                                  |
 | ------------- | -------------------------------------------------------- |
 | `backlog`     | Captured, not yet committed to.                          |
-| `planning`    | Scoping — agent or human shaping the work.               |
 | `todo`        | Scoped and ready. Queued for an agent to pick up.        |
 | `building`    | N variants generating in parallel.                       |
 | `review`      | Variants ready. Waiting on you to pick.                  |
