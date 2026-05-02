@@ -1,5 +1,6 @@
 import { logger } from "@/lib/logger";
 import { prisma } from "@/server/db";
+import { attachmentObjectKey, getAttachmentObject, putAttachmentObject } from "@/server/s3";
 
 const ALLOWED_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const ALLOWED_VIDEO_MIME_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
@@ -54,9 +55,33 @@ export async function createAttachment(
       uploaderId: userId,
       mimeType,
       size,
-      data: Uint8Array.from(data),
+      objectKey: "",
     },
     select: { id: true },
+  });
+
+  const objectKey = attachmentObjectKey(workspaceId, attachment.id);
+
+  try {
+    await putAttachmentObject({
+      key: objectKey,
+      body: data,
+      contentType: mimeType,
+      contentLength: size,
+    });
+  } catch (error) {
+    await prisma.attachment.delete({ where: { id: attachment.id } }).catch(() => {});
+    logger.error("attachment.upload.s3_failed", {
+      attachmentId: attachment.id,
+      workspaceId,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+    throw new Error("storage_failed");
+  }
+
+  await prisma.attachment.update({
+    where: { id: attachment.id },
+    data: { objectKey },
   });
 
   logger.info("attachment.created", {
@@ -65,20 +90,37 @@ export async function createAttachment(
     userId,
     mimeType,
     size,
+    objectKey,
   });
 
   return { id: attachment.id, url: `/api/attachments/${attachment.id}` };
 }
 
-export type AttachmentBytes = { mimeType: string; data: Buffer; size: number };
+export type AttachmentStream = {
+  mimeType: string;
+  size: number;
+  body: ReadableStream<Uint8Array>;
+};
+
+type AttachmentRow = { workspaceId: string; mimeType: string; size: number; objectKey: string };
+
+async function loadStream(row: AttachmentRow): Promise<AttachmentStream | null> {
+  const obj = await getAttachmentObject(row.objectKey);
+  if (!obj?.Body) return null;
+  return {
+    mimeType: row.mimeType,
+    size: row.size,
+    body: obj.Body.transformToWebStream(),
+  };
+}
 
 export async function getAttachment(
   userId: string,
   attachmentId: string,
-): Promise<AttachmentBytes | null> {
+): Promise<AttachmentStream | null> {
   const attachment = await prisma.attachment.findUnique({
     where: { id: attachmentId },
-    select: { workspaceId: true, mimeType: true, data: true, size: true },
+    select: { workspaceId: true, mimeType: true, size: true, objectKey: true },
   });
   if (!attachment) return null;
 
@@ -88,11 +130,7 @@ export async function getAttachment(
   });
   if (!member) return null;
 
-  return {
-    mimeType: attachment.mimeType,
-    data: Buffer.from(attachment.data),
-    size: attachment.size,
-  };
+  return loadStream(attachment);
 }
 
 export type AttachmentCaller = { userId: string; workspaceScope: string | null };
@@ -100,10 +138,10 @@ export type AttachmentCaller = { userId: string; workspaceScope: string | null }
 export async function getAttachmentForCaller(
   caller: AttachmentCaller,
   attachmentId: string,
-): Promise<AttachmentBytes | null> {
+): Promise<AttachmentStream | null> {
   const attachment = await prisma.attachment.findUnique({
     where: { id: attachmentId },
-    select: { workspaceId: true, mimeType: true, data: true, size: true },
+    select: { workspaceId: true, mimeType: true, size: true, objectKey: true },
   });
   if (!attachment) return null;
 
@@ -117,11 +155,7 @@ export async function getAttachmentForCaller(
   });
   if (!member) return null;
 
-  return {
-    mimeType: attachment.mimeType,
-    data: Buffer.from(attachment.data),
-    size: attachment.size,
-  };
+  return loadStream(attachment);
 }
 
 export const ATTACHMENT_LIMITS = {

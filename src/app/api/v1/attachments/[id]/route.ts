@@ -14,7 +14,7 @@ export async function GET(req: Request, ctx: Ctx): Promise<Response> {
   );
   if (!attachment) return jsonErr("not_found", 404);
 
-  return new Response(new Uint8Array(attachment.data), {
+  return new Response(attachment.body, {
     status: 200,
     headers: {
       "Content-Type": attachment.mimeType,
