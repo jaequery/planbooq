@@ -95,6 +95,35 @@ export async function getAttachment(
   };
 }
 
+export type AttachmentCaller = { userId: string; workspaceScope: string | null };
+
+export async function getAttachmentForCaller(
+  caller: AttachmentCaller,
+  attachmentId: string,
+): Promise<AttachmentBytes | null> {
+  const attachment = await prisma.attachment.findUnique({
+    where: { id: attachmentId },
+    select: { workspaceId: true, mimeType: true, data: true, size: true },
+  });
+  if (!attachment) return null;
+
+  if (caller.workspaceScope && caller.workspaceScope !== attachment.workspaceId) {
+    return null;
+  }
+
+  const member = await prisma.member.findFirst({
+    where: { workspaceId: attachment.workspaceId, userId: caller.userId },
+    select: { id: true },
+  });
+  if (!member) return null;
+
+  return {
+    mimeType: attachment.mimeType,
+    data: Buffer.from(attachment.data),
+    size: attachment.size,
+  };
+}
+
 export const ATTACHMENT_LIMITS = {
   maxSizeBytes: MAX_SIZE_BYTES,
   maxVideoSizeBytes: MAX_VIDEO_SIZE_BYTES,

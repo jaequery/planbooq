@@ -427,3 +427,30 @@ paths:
                         properties:
                           ticketId: { type: string }
         '404': { $ref: '#/components/responses/NotFound' }
+  /attachments/{attachmentId}:
+    parameters:
+      - { name: attachmentId, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Download an attachment's raw bytes
+      description: |
+        Mirrors `/api/attachments/{id}` for `pbq_live_…` callers. The
+        Content-Type response header is the stored mime type (one of
+        `image/png|jpeg|webp|gif`, `video/mp4|webm|quicktime`).
+        Workspace-scoped API keys return `404` for attachments outside
+        their scope (not `403`) to avoid leaking existence.
+      responses:
+        '200':
+          description: Raw attachment bytes
+          content:
+            image/*: { schema: { type: string, format: binary } }
+            video/*: { schema: { type: string, format: binary } }
+          headers:
+            Content-Type:
+              schema: { type: string }
+              description: Stored mime type
+            Cache-Control:
+              schema: { type: string, example: 'private, max-age=31536000, immutable' }
+            Content-Disposition:
+              schema: { type: string, example: 'inline' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }

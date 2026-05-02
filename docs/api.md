@@ -222,6 +222,36 @@ DELETE /v1/tickets/{ticketId}
 Hard delete — the ticket and its variants (when implemented) are
 removed permanently. Prefer `archive` for soft-removal flows.
 
+### Attachments
+
+Inline images and reference media uploaded against a ticket
+(`POST /v1/tickets/{ticketId}/previews`) or pasted into a comment
+are stored as `Attachment` rows and served as raw bytes by id. The
+session-only `/api/attachments/{id}` route already exists for the
+web UI; the v1 route below mirrors it for `pbq_live_…` callers so
+external automations (Claude skills, n8n, etc.) can hydrate
+description-embedded images without a browser session.
+
+```
+GET /v1/attachments/{attachmentId}
+→ 200 OK  (raw bytes, Content-Type set to the stored mime,
+            Content-Disposition: inline,
+            Cache-Control: private, max-age=31536000, immutable)
+```
+
+Workspace-scoped API keys are honored: a key bound to workspace `A`
+returns `404 not_found` (not `403`) for an attachment in workspace
+`B`, mirroring the membership check used by the session route. The
+caller must also be a `Member` of the attachment's workspace.
+
+Allowed mime types come from the upload service:
+`image/png`, `image/jpeg`, `image/webp`, `image/gif`, `video/mp4`,
+`video/webm`, `video/quicktime`. Image cap: 5 MB. Video cap: 25 MB.
+
+Errors: `unauthorized` (401), `not_found` (404 — used for both
+"missing" and "wrong workspace" so we don't leak existence across
+workspaces).
+
 ---
 
 ## Realtime (informational)
