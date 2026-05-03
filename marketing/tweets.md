@@ -95,3 +95,62 @@ the bottleneck in vibe coding isn't writing code anymore. it's deciding on AI ou
 **Char count:** 167
 **Why it baits:** Activates the "I am a serious builder, not a prompt monkey" identity. Anyone running Cursor/Lovable/Copilot reads this and has to decide whether to defend their workflow ("one good prompt is enough if you know what you're doing") or co-sign it ("yeah the single-shot loop is broken"). Both reactions are quote-tweets. The "typewriter with extra latency" image is sticky enough to get screenshotted, and "evaluate, not dictate" gives the QT-er a phrase to either reclaim or rebut — which is exactly the affordance that drives engagement instead of a flame war.
 
+## 5. Notes
+
+### Contrarian hook in use
+
+The primary tweet leans on one line: **"the bottleneck in vibe coding isn't writing code anymore. it's deciding on AI output."** The 2b manifesto sharpens it further with **"we don't specify taste. we recognize it."** Consensus in AI-builder discourse still treats prompt quality as the lever — better prompts, longer prompts, prompt libraries, prompt engineers. This claim says the prompt was never the bottleneck; the human review step is, and every tool optimizing for "write a better prompt" is solving last year's problem. When a reader agrees, they get to feel like they've been quietly noticing this for months and finally see it named.
+
+### Why this phrasing works
+
+- **"prompt → wait → 'almost' → re-prompt → ship something you settled for"** (primary tweet, echoed in 2e and Tweet 1 of the thread) — the arrow-chain mimics the actual texture of the loop, and "ship something you settled for" is the indictment line. It works because it doesn't blame the tool, it blames the outcome the reader already feels guilty about.
+- **"you don't prompt twice"** — four words, ends the primary tweet on a verb the reader has done a thousand times this week. The negation does the work; it implies a world where re-prompting is the failure mode, not the norm.
+- **"three tools built for three different eras stitched together with vibes"** (2a) — "stitched together with vibes" is the quotable slap. It earns its slot because "vibes" is the audience's own word turned back on their own stack; it lands as honest, not snide.
+- **"taste is recognizable, not specifiable. you know it when you click it."** (Tweet 2 of thread) — diagnosis → mechanism. The "click it" anchor turns an abstract claim into a physical gesture the reader has performed.
+- **"good prompts produce good output... they don't. good *picks* produce good output."** (Tweet 3) — the structural trick is the false-belief-then-flip; it baits the reader into agreeing with the cliche before yanking it. "That's not a workflow change. that's a category change" earns the size of the claim.
+- **"hostage situation with extra steps"** and **"typewriter with extra latency"** — same imagery family (a known-bad thing + "with extra [tech word]"). Repeatable enough to become a brand tic without being a catchphrase yet.
+- **"hot-or-not style"** (2c, README, thread tweet 5) — concrete, instantly visualizable, slightly self-deprecating. Communicates the picking interaction in three words without the founder having to ship a screenshot.
+- **What is *not* said:** no feature list, no pricing, no "AI agents" hand-waving, no comparison chart. The thread closer **"that's the bet we're building toward"** quietly admits variants aren't shipped yet — that restraint is the trust move. Builders forgive a thesis, not a demo lie.
+
+### Identities + feelings activated
+
+- **Identity:** the burned-out vibe coder who has run the prompt-reprompt loop for 90 minutes tonight · **Feeling:** "this is literally me, and now I can name it" · **Action:** quote-tweets Tweet 1 ("stockholm syndrome") with their own "almost but not quite" story.
+- **Identity:** the serious builder who wants leverage, not autocomplete · **Feeling:** "finally someone said the loop is the problem" · **Action:** quote-tweets the reply-bait ("typewriter with extra latency") to signal taste.
+- **Identity:** the tool-designer / latent-space-adjacent thinker who collects framing primitives · **Feeling:** "this couplet is going in my next thread" · **Action:** screenshots **"we don't specify taste. we recognize it."** and bookmarks the manifesto angle (2b).
+- **Identity:** the indie hacker watching the Lovable / Cursor / Linear stack for cracks · **Feeling:** "someone's actually going after the seam" · **Action:** replies to 2a naming their own stitched-together stack, asks for alpha.
+- **Identity:** the founder-on-X who has been muttering the tri-tool diagnosis privately · **Feeling:** "validated, and a little annoyed I didn't post it first" · **Action:** quote-tweets 2a with a co-sign and an addition, tagging one of the three named tools.
+
+### Do NOT say (jargon graveyard)
+
+The 10 mandatory bans, in order:
+- `AI-powered`
+- `10x`
+- `revolutionize` / `revolutionary` / `revolution`
+- `game-changer`
+- `next-gen` / `next-generation`
+- `supercharge`
+- `unleash`
+- `unlock`
+- `the future of`
+- `say goodbye to`
+
+Additional bans, vibe-coding-specific:
+- `ChatGPT for X` / `Cursor for X` / `Linear for X` (positions Planbooq as a derivative; the whole pitch is that the category is new).
+- `(thread)` or `🧵` markers (the thread itself should earn the read; explicit markers signal performative-thread energy).
+- `I built this in a weekend` (only true if it is true; the thesis here is multi-week and the schema admits variants aren't shipped — claiming weekend-build undercuts the manifesto).
+- `we're hiring` appended to the launch tweet (dilutes the call-to-action; do it in a separate tweet 48h later).
+- `agentic` (overused, means nothing right now to the audience that matters and signals bandwagon to the audience that matters even more).
+- `vibes-based` as self-description (own-goal — competitors are "stitched together with vibes," Planbooq is the surface that fixes it).
+- `disrupt` / `disruption` (consultant-speak; the thread already does the disruption work without naming it).
+- `seamless` / `frictionless` (every SaaS landing page; says nothing).
+- `democratize` (founder-cringe trigger word for this audience).
+- `let AI do the work for you` (insults the "serious builder" identity the reply-bait is built to activate).
+
+### Reply playbook (founder voice)
+
+- **Person agrees enthusiastically:** one-line co-sign that adds a detail they didn't have ("yeah — and the worst part is the loop trains you to lower your bar"), no thank-yous, no exclamation marks.
+- **Person disagrees politely or asks a hard question:** concede the strongest part of their point first, then sharpen the disagreement on a single mechanism — never on identity ("fair — single-shot works when the spec is tight. it falls apart when taste is the spec.").
+- **Well-known account quote-tweets:** reply to the QT, not the original; one sentence that extends *their* framing rather than restating yours, because the goal is the second QT from their orbit, not a thank-you.
+- **Lovable / Cursor / Linear team account engages:** zero defensiveness, zero retraction; treat them as peers shipping in the same era and name the specific seam Planbooq is targeting ("Linear's the one I respect most here — the gap is just that it has no shape for N candidate answers").
+- **Someone asks "how do I get access":** one line, low-friction, not a form ("DM 'alpha' — it's gated by hand right now, will get to you within a day").
+
