@@ -130,9 +130,7 @@ export function TicketTimeline({
         createdAt: updatedAt,
       });
     }
-    return [...activity, ...comments].sort(
-      (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-    );
+    return [...activity, ...comments].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }, [comments, createdAt, updatedAt, wasEdited]);
 
   const submit = (): void => {
@@ -194,9 +192,7 @@ export function TicketTimeline({
                   <ActivityAvatar />
                   <span className="text-foreground">{item.text}</span>
                   <span className="opacity-60">·</span>
-                  <span>
-                    {formatDistanceToNowStrict(item.createdAt, { addSuffix: false })} ago
-                  </span>
+                  <span>{formatDistanceToNowStrict(item.createdAt, { addSuffix: false })} ago</span>
                 </li>
               );
             }
