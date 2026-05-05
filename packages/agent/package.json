@@ -1,0 +1,16 @@
+{
+  "name": "@planbooq/agent",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "planbooq-agent": "./bin/planbooq-agent.mjs"
+  },
+  "scripts": {
+    "start": "node bin/planbooq-agent.mjs start",
+    "login": "node bin/planbooq-agent.mjs login"
+  },
+  "dependencies": {
+    "ably": "^2.21.0"
+  }
+}
