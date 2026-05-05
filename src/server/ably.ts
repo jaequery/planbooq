@@ -20,6 +20,39 @@ export function workspaceChannelName(workspaceId: string): string {
   return `workspace:${workspaceId}`;
 }
 
+export function agentChannelName(agentId: string): string {
+  return `agent:${agentId}`;
+}
+
+export async function createAgentTokenRequest(agentId: string): Promise<Ably.TokenRequest | null> {
+  const client = getClient();
+  if (!client) return null;
+  const channel = agentChannelName(agentId);
+  return client.auth.createTokenRequest({
+    clientId: `agent:${agentId}`,
+    capability: { [channel]: ["subscribe", "publish"] },
+  });
+}
+
+export async function publishAgentEvent(
+  agentId: string,
+  name: string,
+  data: Record<string, unknown>,
+): Promise<void> {
+  const client = getClient();
+  if (!client) return;
+  try {
+    const channel = client.channels.get(agentChannelName(agentId));
+    await channel.publish(name, data);
+  } catch (error) {
+    logger.error("ably.agent.publish.failed", {
+      agentId,
+      name,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 /**
  * Issues an Ably TokenRequest scoped to a specific workspace channel.
  * Caller MUST verify membership before calling.

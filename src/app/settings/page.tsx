@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
+import { AgentsClient } from "@/components/settings/agents-client";
 import { ApiKeysClient } from "@/components/settings/api-keys-client";
 import { AppearancePicker } from "@/components/settings/appearance-picker";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
@@ -15,6 +16,20 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
     select: { workspaceId: true, workspace: { select: { name: true, slug: true } } },
   });
   if (!membership) notFound();
+
+  const agents = await prisma.agent.findMany({
+    where: { workspaceId: membership.workspaceId, userId: session.user.id },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      hostname: true,
+      platform: true,
+      lastSeenAt: true,
+      createdAt: true,
+      revokedAt: true,
+    },
+  });
 
   const keys = await prisma.apiKey.findMany({
     where: { workspaceId: membership.workspaceId },
@@ -56,6 +71,7 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
               initialKeys={keys}
             />
           }
+          agents={<AgentsClient workspaceId={membership.workspaceId} initialAgents={agents} />}
         />
       </Suspense>
     </div>

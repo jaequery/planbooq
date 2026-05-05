@@ -4,25 +4,35 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Tabs as TabsPrimitive } from "radix-ui";
 import type * as React from "react";
 import { useCallback } from "react";
+import { useIsDesktop } from "@/lib/use-is-desktop";
 import { cn } from "@/lib/utils";
 
-type TabValue = "appearance" | "api-keys";
+type TabValue = "appearance" | "api-keys" | "agents";
 
-const TABS: { value: TabValue; label: string }[] = [
+const ALL_TABS: { value: TabValue; label: string }[] = [
   { value: "appearance", label: "Appearance" },
   { value: "api-keys", label: "API keys" },
+  { value: "agents", label: "Agents" },
 ];
 
 type Props = {
   appearance: React.ReactNode;
   apiKeys: React.ReactNode;
+  agents: React.ReactNode;
 };
 
-export function SettingsTabs({ appearance, apiKeys }: Props): React.ReactElement {
+export function SettingsTabs({ appearance, apiKeys, agents }: Props): React.ReactElement {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const isDesktop = useIsDesktop();
+  const TABS = isDesktop ? ALL_TABS.filter((t) => t.value !== "agents") : ALL_TABS;
   const param = searchParams.get("tab");
-  const active: TabValue = param === "api-keys" ? "api-keys" : "appearance";
+  const active: TabValue =
+    param === "api-keys"
+      ? "api-keys"
+      : param === "agents" && !isDesktop
+        ? "agents"
+        : "appearance";
 
   const onValueChange = useCallback(
     (value: string) => {
@@ -62,6 +72,11 @@ export function SettingsTabs({ appearance, apiKeys }: Props): React.ReactElement
       <TabsPrimitive.Content value="api-keys" className="focus-visible:outline-none">
         {apiKeys}
       </TabsPrimitive.Content>
+      {!isDesktop && (
+        <TabsPrimitive.Content value="agents" className="focus-visible:outline-none">
+          {agents}
+        </TabsPrimitive.Content>
+      )}
     </TabsPrimitive.Root>
   );
 }

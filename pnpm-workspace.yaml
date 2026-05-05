@@ -1,6 +1,13 @@
+packages:
+  - packages/*
+  - apps/*
+
 onlyBuiltDependencies:
   - '@prisma/engines'
+  - electron
   - esbuild
+  - fs-xattr
+  - macos-alias
   - msw
   - prisma
   - protobufjs

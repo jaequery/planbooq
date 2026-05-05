@@ -31,6 +31,8 @@ model User {
   comments        Comment[]    @relation("CommentAuthor")
   attachments     Attachment[] @relation("AttachmentUploader")
   ticketPreviews  TicketPreview[] @relation("TicketPreviewCreator")
+  agents          Agent[]
+  agentPairCodes  AgentPairCode[]
 }
 
 model ApiKey {
@@ -112,6 +114,7 @@ model Workspace {
   apiKeys     ApiKey[]
   comments    Comment[]
   attachments Attachment[]
+  agents      Agent[]
 }
 
 model Project {
@@ -197,6 +200,8 @@ model Ticket {
   labels    Label[]   @relation("TicketLabels")
   comments  Comment[]
   previews  TicketPreview[]
+  agentJobs AgentJob[]
+  activities TicketActivity[]
 
   @@index([workspaceId, statusId, position])
   @@index([projectId, statusId, position])
@@ -270,4 +275,97 @@ model TicketPreview {
 
   @@index([ticketId, position])
   @@index([attachmentId])
+}
+
+// -----------------------------
+// Local agent (Claude Code on user's machine)
+// -----------------------------
+
+model Agent {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  userId       String
+  name         String
+  tokenPrefix  String    @unique
+  tokenHash    String
+  hostname     String?
+  platform     String?
+  lastSeenAt   DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs      AgentJob[]
+
+  @@index([workspaceId])
+  @@index([userId])
+}
+
+model AgentPairCode {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  userId    String
+  claimedAt DateTime?
+  agentId   String?
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum AgentJobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+model AgentJob {
+  id          String         @id @default(cuid())
+  agentId     String
+  ticketId    String
+  prompt      String         @db.Text
+  status      AgentJobStatus @default(PENDING)
+  output      String         @default("") @db.Text
+  exitCode    Int?
+  error       String?        @db.Text
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  agent  Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  activities TicketActivity[]
+
+  @@index([agentId, status])
+  @@index([ticketId, createdAt])
+}
+
+enum TicketActivityKind {
+  PR_CREATED
+  COMMIT_PUSHED
+  TEST_RUN
+  BUILD
+  NOTE
+}
+
+model TicketActivity {
+  id          String             @id @default(cuid())
+  ticketId    String
+  workspaceId String
+  jobId       String?
+  kind        TicketActivityKind
+  payload     Json
+  createdAt   DateTime           @default(now())
+
+  ticket Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  job    AgentJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+  @@index([workspaceId, createdAt])
 }

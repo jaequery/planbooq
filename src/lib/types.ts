@@ -139,6 +139,18 @@ export type AblyChannelEvent =
       ticketId: string;
       previewId: string;
       by: string;
+    }
+  | {
+      name: "ticket.activity";
+      workspaceId: string;
+      ticketId: string;
+      activity: {
+        id: string;
+        kind: "PR_CREATED" | "COMMIT_PUSHED" | "TEST_RUN" | "BUILD" | "NOTE";
+        payload: Record<string, unknown>;
+        jobId: string | null;
+        createdAt: string;
+      };
     };
 
 export type ServerActionResult<T> = { ok: true; data: T } | { ok: false; error: string };

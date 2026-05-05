@@ -11,6 +11,8 @@ import { LabelPicker } from "@/components/board/label-picker";
 import { PriorityPicker } from "@/components/board/priority-picker";
 import { type StatusOption, StatusPicker } from "@/components/board/status-picker";
 import { TicketActionsMenu } from "@/components/board/ticket-actions-menu";
+import { TicketActivityFeed } from "@/components/board/ticket-activity-feed";
+import { TicketAgentPanel } from "@/components/board/ticket-agent-panel";
 import { TicketPreviewsPanel } from "@/components/board/ticket-previews-panel";
 import { TicketTimeline } from "@/components/board/ticket-timeline";
 import { Button } from "@/components/ui/button";
@@ -121,8 +123,6 @@ export function TicketDetailDialog({
   const [dueDate, setDueDate] = useState<Date | null>(
     ticket.dueDate ? new Date(ticket.dueDate) : null,
   );
-  const [prUrlDraft, setPrUrlDraft] = useState(ticket.prUrl ?? "");
-  const [isEditingPrUrl, setIsEditingPrUrl] = useState(false);
   const [prStatus, setPrStatus] = useState<PrStatus | null>(null);
   const [prStatusReason, setPrStatusReason] = useState<PrStatusReason | null>(null);
   const [isFetchingStatus, startStatusTransition] = useTransition();
@@ -130,7 +130,7 @@ export function TicketDetailDialog({
   const [mergeError, setMergeError] = useState<React.ReactNode | null>(null);
 
   const ticketPrUrl = ticket.prUrl;
-  const showPrStatus = open && !isEditingPrUrl && isGitHubPrUrl(ticketPrUrl);
+  const showPrStatus = open && isGitHubPrUrl(ticketPrUrl);
 
   const loadStatus = useCallback((): void => {
     startStatusTransition(async () => {
@@ -250,34 +250,6 @@ export function TicketDetailDialog({
     setLabels(ticket.labels ?? []);
     setDueDate(ticket.dueDate ? new Date(ticket.dueDate) : null);
   }, [ticket.priority, ticket.assignee, ticket.labels, ticket.dueDate]);
-
-  useEffect(() => {
-    if (!isEditingPrUrl) setPrUrlDraft(ticket.prUrl ?? "");
-  }, [ticket.prUrl, isEditingPrUrl]);
-
-  const commitPrUrl = (): void => {
-    setIsEditingPrUrl(false);
-    const original = ticket.prUrl ?? "";
-    const next = prUrlDraft.trim();
-    if (next === original) return;
-    if (next && !/^https?:\/\//i.test(next)) {
-      setPrUrlDraft(original);
-      toast.error("PR URL must start with http(s)://");
-      return;
-    }
-    startTransition(async () => {
-      const result = await updateTicket({
-        ticketId: ticket.id,
-        prUrl: next ? next : null,
-      });
-      if (!result.ok) {
-        setPrUrlDraft(original);
-        toast.error(`Could not update PR URL: ${result.error}`);
-        return;
-      }
-      onUpdated(result.data);
-    });
-  };
 
   useEffect(() => {
     if (!open) {
@@ -485,14 +457,13 @@ export function TicketDetailDialog({
               </div>
             </div>
 
-            <div className="mt-auto border-t border-border/60 px-8 py-6">
-              <TicketTimeline
+            <div className="mt-auto flex flex-col gap-4 border-t border-border/60 px-8 py-6">
+              <TicketActivityFeed ticketId={ticket.id} workspaceId={ticket.workspaceId} />
+              <TicketAgentPanel
                 ticketId={ticket.id}
                 workspaceId={ticket.workspaceId}
-                currentUserId={currentUserId}
-                createdAt={createdAt}
-                updatedAt={updatedAt}
-                wasEdited={wasEdited}
+                title={ticket.title}
+                description={ticket.description ?? null}
               />
             </div>
           </div>
@@ -550,27 +521,7 @@ export function TicketDetailDialog({
               />
             </div>
             <div className="flex flex-col gap-2">
-              {isEditingPrUrl ? (
-                <Input
-                  autoFocus
-                  value={prUrlDraft}
-                  onChange={(e) => setPrUrlDraft(e.target.value)}
-                  onBlur={commitPrUrl}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      setPrUrlDraft(ticket.prUrl ?? "");
-                      setIsEditingPrUrl(false);
-                    } else if (e.key === "Enter") {
-                      e.preventDefault();
-                      commitPrUrl();
-                    }
-                  }}
-                  placeholder="https://github.com/.../pull/123"
-                  aria-label="PR URL"
-                  className="h-9 text-[13px]"
-                />
-              ) : ticket.prUrl ? (
+              {ticket.prUrl ? (
                 <>
                   {showPrStatus && prStatus ? (
                     (() => {
@@ -636,20 +587,22 @@ export function TicketDetailDialog({
                     </Button>
                   )}
                 </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setIsEditingPrUrl(true)}
-                  className="text-left text-[13px] text-muted-foreground hover:text-foreground"
-                >
-                  Add PR link…
-                </button>
-              )}
+              ) : null}
               {mergeError ? (
                 <div className="text-[12px] text-red-600 dark:text-red-400">{mergeError}</div>
               ) : null}
             </div>
             <TicketPreviewsPanel ticketId={ticket.id} workspaceId={ticket.workspaceId} />
+            <div className="mt-4 border-t border-border/60 pt-4">
+              <TicketTimeline
+                ticketId={ticket.id}
+                workspaceId={ticket.workspaceId}
+                currentUserId={currentUserId}
+                createdAt={createdAt}
+                updatedAt={updatedAt}
+                wasEdited={wasEdited}
+              />
+            </div>
           </aside>
         </div>
       </DialogContent>
