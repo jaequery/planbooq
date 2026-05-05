@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { EmptyProjectsState } from "@/components/sidebar/empty-projects-state";
 import { Button } from "@/components/ui/button";
@@ -70,6 +71,11 @@ export default async function Home(): Promise<React.ReactElement> {
           Planbooq runs on top of your GitHub repos.
         </p>
       </div>
+      <footer className="absolute bottom-6 text-xs text-muted-foreground">
+        <Link href="/privacy" className="hover:text-foreground">
+          Privacy
+        </Link>
+      </footer>
     </main>
   );
 }
