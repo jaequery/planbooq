@@ -16,7 +16,11 @@
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset --force",
     "db:generate": "prisma generate",
-    "inngest": "npx inngest-cli@latest dev -u http://localhost:3636/api/inngest"
+    "inngest": "npx inngest-cli@latest dev -u http://localhost:3636/api/inngest",
+    "desktop:dev": "pnpm --filter @planbooq/desktop start",
+    "desktop:make": "pnpm --filter @planbooq/desktop make",
+    "desktop:publish": "pnpm --filter @planbooq/desktop publish",
+    "desktop:typecheck": "pnpm --filter @planbooq/desktop typecheck"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
