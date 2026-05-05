@@ -310,7 +310,7 @@ function DesktopPanel({ ticketId, projectId, title, description }: Props): React
     return (
       <div className="flex flex-col gap-3">
         <h3 className="text-sm font-medium">Claude Code</h3>
-        <div className="flex flex-col items-center gap-3 rounded border border-dashed bg-muted/10 px-6 py-8 text-center">
+        <div className="flex flex-col items-center gap-3 rounded-lg bg-muted/30 px-6 py-8 text-center">
           <Button size="sm" onClick={pickRepo}>
             <Folder className="size-4" />
             Choose Folder
@@ -350,7 +350,7 @@ function DesktopPanel({ ticketId, projectId, title, description }: Props): React
       {messages.length > 0 && (
         <div
           ref={scrollRef}
-          className="flex max-h-[420px] flex-col gap-3 overflow-y-auto rounded border bg-muted/10 p-3"
+          className="flex max-h-[420px] flex-col gap-3 overflow-y-auto rounded-lg bg-muted/20 p-3"
         >
           {messages.map((m) => (
             <div
@@ -392,7 +392,7 @@ function DesktopPanel({ ticketId, projectId, title, description }: Props): React
             sessionId ? "Reply to Claude…" : `Start a session — first message will include "${title}"`
           }
           rows={2}
-          className="min-h-[60px] flex-1 resize-y rounded border bg-background px-3 py-2 text-[13px]"
+          className="min-h-[60px] flex-1 resize-y rounded-lg bg-muted/40 px-3 py-2 text-[13px] outline-none focus:bg-muted/60"
         />
         <Button size="sm" onClick={send} disabled={busy || !input.trim()}>
           {busy ? (

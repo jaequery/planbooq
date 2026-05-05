@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { ImageUploadTextarea } from "@/components/ui/image-upload-textarea";
 import { Input } from "@/components/ui/input";
 import { Markdown } from "@/components/ui/markdown";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatTicketIdentifier } from "@/lib/ticket-identifier";
 import type { Priority, TicketAssignee, TicketLabel, TicketWithRelations } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -457,15 +458,46 @@ export function TicketDetailDialog({
               </div>
             </div>
 
-            <div className="mt-auto flex flex-col gap-4 border-t border-border/60 px-8 py-6">
-              <TicketActivityFeed ticketId={ticket.id} workspaceId={ticket.workspaceId} />
-              <TicketAgentPanel
-                ticketId={ticket.id}
-                workspaceId={ticket.workspaceId}
-                projectId={ticket.projectId}
-                title={ticket.title}
-                description={ticket.description ?? null}
-              />
+            <div className="mt-auto border-t border-border/60 px-8 py-6">
+              <Tabs defaultValue="agent">
+                <TabsList className="mb-4 h-auto justify-start gap-1 border-0 bg-transparent p-0">
+                  <TabsTrigger
+                    value="agent"
+                    className="-mb-0 h-7 rounded-full px-3 text-[12px] font-medium after:hidden data-[state=active]:bg-muted data-[state=active]:after:hidden"
+                  >
+                    Agent
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="activity"
+                    className="-mb-0 h-7 rounded-full px-3 text-[12px] font-medium after:hidden data-[state=active]:bg-muted data-[state=active]:after:hidden"
+                  >
+                    Activity
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="agent" className="focus-visible:outline-none">
+                  <TicketAgentPanel
+                    ticketId={ticket.id}
+                    workspaceId={ticket.workspaceId}
+                    projectId={ticket.projectId}
+                    title={ticket.title}
+                    description={ticket.description ?? null}
+                  />
+                </TabsContent>
+                <TabsContent
+                  value="activity"
+                  className="flex flex-col gap-6 focus-visible:outline-none"
+                >
+                  <TicketTimeline
+                    ticketId={ticket.id}
+                    workspaceId={ticket.workspaceId}
+                    currentUserId={currentUserId}
+                    createdAt={createdAt}
+                    updatedAt={updatedAt}
+                    wasEdited={wasEdited}
+                  />
+                  <TicketActivityFeed ticketId={ticket.id} workspaceId={ticket.workspaceId} />
+                </TabsContent>
+              </Tabs>
             </div>
           </div>
 
@@ -594,16 +626,6 @@ export function TicketDetailDialog({
               ) : null}
             </div>
             <TicketPreviewsPanel ticketId={ticket.id} workspaceId={ticket.workspaceId} />
-            <div className="mt-4 border-t border-border/60 pt-4">
-              <TicketTimeline
-                ticketId={ticket.id}
-                workspaceId={ticket.workspaceId}
-                currentUserId={currentUserId}
-                createdAt={createdAt}
-                updatedAt={updatedAt}
-                wasEdited={wasEdited}
-              />
-            </div>
           </aside>
         </div>
       </DialogContent>
