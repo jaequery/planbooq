@@ -23,6 +23,7 @@ type Agent = { id: string; name: string; hostname: string | null; revokedAt: Dat
 type Props = {
   ticketId: string;
   workspaceId: string;
+  projectId: string;
   title: string;
   description: string | null;
 };
@@ -32,8 +33,8 @@ export function TicketAgentPanel(props: Props): React.ReactElement {
   return isDesktop ? <DesktopPanel {...props} /> : <WebPanel {...props} />;
 }
 
-function repoKey(workspaceId: string): string {
-  return `planbooq:repoPath:${workspaceId}`;
+function repoKey(projectId: string): string {
+  return `planbooq:repoPath:project:${projectId}`;
 }
 
 function chatKey(ticketId: string): string {
@@ -66,7 +67,7 @@ type PersistedChat = {
   claudeSessionId: string | null;
 };
 
-function DesktopPanel({ ticketId, workspaceId, title, description }: Props): React.ReactElement {
+function DesktopPanel({ ticketId, projectId, title, description }: Props): React.ReactElement {
   const [repoPath, setRepoPath] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [worktreePath, setWorktreePath] = useState<string | null>(null);
@@ -79,8 +80,8 @@ function DesktopPanel({ ticketId, workspaceId, title, description }: Props): Rea
   const currentAssistantId = useRef<string | null>(null);
 
   useEffect(() => {
-    setRepoPath(localStorage.getItem(repoKey(workspaceId)));
-  }, [workspaceId]);
+    setRepoPath(localStorage.getItem(repoKey(projectId)));
+  }, [projectId]);
 
   // Hydrate persisted chat for this ticket.
   useEffect(() => {
@@ -204,7 +205,7 @@ function DesktopPanel({ ticketId, workspaceId, title, description }: Props): Rea
       if (result.error) toast.error(result.error);
       return null;
     }
-    localStorage.setItem(repoKey(workspaceId), result.path);
+    localStorage.setItem(repoKey(projectId), result.path);
     setRepoPath(result.path);
     return result.path;
   };
@@ -305,6 +306,21 @@ function DesktopPanel({ ticketId, workspaceId, title, description }: Props): Rea
     await bridge.agentStop({ sessionId });
   };
 
+  if (!repoPath) {
+    return (
+      <div className="flex flex-col items-center gap-3 rounded border border-dashed bg-muted/10 px-6 py-8 text-center">
+        <Button size="sm" onClick={pickRepo}>
+          <Folder className="size-4" />
+          Choose Folder
+        </Button>
+        <p className="max-w-sm text-[12px] text-muted-foreground">
+          Choose this project's folder so Claude has a repo to work in. The folder is remembered per
+          project.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -318,7 +334,7 @@ function DesktopPanel({ ticketId, workspaceId, title, description }: Props): Rea
         </h3>
         <Button size="sm" variant="outline" onClick={pickRepo} disabled={!!sessionId}>
           <Folder className="size-4" />
-          {repoPath ? repoPath.split("/").pop() : "Pick repo"}
+          {repoPath.split("/").pop()}
         </Button>
         {sessionId && (
           <Button size="sm" variant="outline" onClick={stop}>
@@ -370,17 +386,12 @@ function DesktopPanel({ ticketId, workspaceId, title, description }: Props): Rea
             }
           }}
           placeholder={
-            !repoPath
-              ? "Pick a project folder first…"
-              : sessionId
-                ? "Reply to Claude…"
-                : `Start a session — first message will include "${title}"`
+            sessionId ? "Reply to Claude…" : `Start a session — first message will include "${title}"`
           }
-          disabled={!repoPath}
           rows={2}
-          className="min-h-[60px] flex-1 resize-y rounded border bg-background px-3 py-2 text-[13px] disabled:opacity-50"
+          className="min-h-[60px] flex-1 resize-y rounded border bg-background px-3 py-2 text-[13px]"
         />
-        <Button size="sm" onClick={send} disabled={busy || !input.trim() || !repoPath}>
+        <Button size="sm" onClick={send} disabled={busy || !input.trim()}>
           {busy ? (
             <Loader2 className="size-4 animate-spin" />
           ) : sessionId ? (
@@ -391,11 +402,6 @@ function DesktopPanel({ ticketId, workspaceId, title, description }: Props): Rea
           {sessionId ? "Send" : "Start"}
         </Button>
       </div>
-      {!repoPath && (
-        <p className="text-[12px] text-muted-foreground">
-          Pick a project folder above — Claude needs a repo to work in before you can chat.
-        </p>
-      )}
     </div>
   );
 }

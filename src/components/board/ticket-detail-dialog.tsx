@@ -462,6 +462,7 @@ export function TicketDetailDialog({
               <TicketAgentPanel
                 ticketId={ticket.id}
                 workspaceId={ticket.workspaceId}
+                projectId={ticket.projectId}
                 title={ticket.title}
                 description={ticket.description ?? null}
               />
