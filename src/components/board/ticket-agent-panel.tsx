@@ -308,15 +308,18 @@ function DesktopPanel({ ticketId, projectId, title, description }: Props): React
 
   if (!repoPath) {
     return (
-      <div className="flex flex-col items-center gap-3 rounded border border-dashed bg-muted/10 px-6 py-8 text-center">
-        <Button size="sm" onClick={pickRepo}>
-          <Folder className="size-4" />
-          Choose Folder
-        </Button>
-        <p className="max-w-sm text-[12px] text-muted-foreground">
-          Choose this project's folder so Claude has a repo to work in. The folder is remembered per
-          project.
-        </p>
+      <div className="flex flex-col gap-3">
+        <h3 className="text-sm font-medium">Claude Code</h3>
+        <div className="flex flex-col items-center gap-3 rounded border border-dashed bg-muted/10 px-6 py-8 text-center">
+          <Button size="sm" onClick={pickRepo}>
+            <Folder className="size-4" />
+            Choose Folder
+          </Button>
+          <p className="max-w-sm text-[12px] text-muted-foreground">
+            Choose this project's folder so Claude Code has a repo to work in. The folder is
+            remembered per project.
+          </p>
+        </div>
       </div>
     );
   }
@@ -325,7 +328,7 @@ function DesktopPanel({ ticketId, projectId, title, description }: Props): React
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="mr-auto text-sm font-medium">
-          Chat with Claude
+          Claude Code
           {worktreePath && (
             <span className="ml-2 font-mono text-[11px] font-normal text-muted-foreground">
               {worktreePath.split("/").pop()}
