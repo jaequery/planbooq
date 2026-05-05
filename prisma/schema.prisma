@@ -126,6 +126,8 @@ model Project {
   description String?  @db.Text
   repoUrl     String?
   techStack   String?  @db.Text
+  githubRepoId    BigInt?
+  githubFullName  String?
   position    Float
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

@@ -1,13 +1,11 @@
 "use client";
 
-import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import { Loader2 } from "lucide-react";
+import { Loader2, Lock, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { z } from "zod";
-import { createProject } from "@/actions/project";
+import { createProjectFromRepo } from "@/actions/project";
+import { type GithubRepo, listGithubRepos } from "@/actions/github";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,47 +16,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
-const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const HEX_RE = /^#[0-9a-fA-F]{6}$/;
-
-const PRESET_COLORS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "#6366f1", label: "Indigo" },
-  { value: "#10b981", label: "Emerald" },
-  { value: "#f59e0b", label: "Amber" },
-  { value: "#ef4444", label: "Red" },
-  { value: "#8b5cf6", label: "Violet" },
-  { value: "#06b6d4", label: "Cyan" },
-  { value: "#ec4899", label: "Pink" },
-  { value: "#64748b", label: "Slate" },
-];
-
-const Schema = z.object({
-  name: z.string().min(1, "Name is required").max(80),
-  slug: z
-    .string()
-    .min(1, "Slug is required")
-    .max(60)
-    .regex(SLUG_RE, "Lowercase letters, numbers, hyphens"),
-  color: z.string().regex(HEX_RE, "Pick a color"),
-  description: z.string().max(2000).optional(),
-  repoUrl: z.union([z.literal(""), z.string().url("Must be a valid URL").max(500)]).optional(),
-  techStack: z.string().max(4000).optional(),
-});
-
-type FormValues = z.infer<typeof Schema>;
-
-function slugify(input: string): string {
-  return input
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
+function GithubIcon({ className }: { className?: string }): React.ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className={className} fill="currentColor">
+      <path d="M12 .5C5.7.5.5 5.7.5 12.1c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.6-3.9-1.6-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2.9-.3 2-.4 3-.4s2 .1 3 .4c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z" />
+    </svg>
+  );
 }
 
 type Props = {
@@ -66,56 +32,64 @@ type Props = {
   onOpenChange: (open: boolean) => void;
 };
 
+type LoadState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "needs_github" }
+  | { kind: "missing_scope" }
+  | { kind: "error"; message: string }
+  | { kind: "ready"; repos: GithubRepo[] };
+
 export function NewProjectDialog({ open, onOpenChange }: Props): React.ReactElement {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const slugTouchedRef = useRef(false);
+  const [state, setState] = useState<LoadState>({ kind: "idle" });
+  const [query, setQuery] = useState("");
+  const [creatingFor, setCreatingFor] = useState<string | null>(null);
+  const [_, startTransition] = useTransition();
 
-  const form = useForm<FormValues>({
-    resolver: standardSchemaResolver(Schema),
-    defaultValues: {
-      name: "",
-      slug: "",
-      color: PRESET_COLORS[0]?.value ?? "#6366f1",
-      description: "",
-      repoUrl: "",
-      techStack: "",
-    },
-  });
-
-  const nameValue = form.watch("name");
-  const colorValue = form.watch("color");
-
-  // Auto-derive slug from name unless user has manually edited slug.
-  useEffect(() => {
-    if (slugTouchedRef.current) return;
-    form.setValue("slug", slugify(nameValue), { shouldValidate: false });
-  }, [nameValue, form]);
-
-  // Reset state when dialog closes.
   useEffect(() => {
     if (!open) {
-      form.reset();
-      slugTouchedRef.current = false;
+      setState({ kind: "idle" });
+      setQuery("");
+      setCreatingFor(null);
+      return;
     }
-  }, [open, form]);
+    setState({ kind: "loading" });
+    void (async () => {
+      const result = await listGithubRepos();
+      if (result.ok) {
+        setState({ kind: "ready", repos: result.repos });
+        return;
+      }
+      if (result.error === "no_github") setState({ kind: "needs_github" });
+      else if (result.error === "missing_scope") setState({ kind: "missing_scope" });
+      else if (result.error === "rate_limited")
+        setState({ kind: "error", message: "GitHub rate limit hit — try again in a minute." });
+      else if (result.error === "unauthorized")
+        setState({ kind: "error", message: "Sign in to continue." });
+      else setState({ kind: "error", message: "Could not reach GitHub." });
+    })();
+  }, [open]);
 
-  const onSubmit = (values: FormValues): void => {
+  const filteredRepos =
+    state.kind === "ready"
+      ? state.repos.filter((r) => {
+          if (!query.trim()) return true;
+          const q = query.toLowerCase();
+          return (
+            r.fullName.toLowerCase().includes(q) ||
+            (r.description ?? "").toLowerCase().includes(q)
+          );
+        })
+      : [];
+
+  const handlePick = (repo: GithubRepo): void => {
+    setCreatingFor(repo.fullName);
     startTransition(async () => {
-      const result = await createProject({
-        name: values.name,
-        slug: values.slug,
-        color: values.color,
-        description: values.description?.trim() ? values.description : undefined,
-        repoUrl: values.repoUrl?.trim() ? values.repoUrl : undefined,
-        techStack: values.techStack?.trim() ? values.techStack : undefined,
-      });
+      const result = await createProjectFromRepo({ fullName: repo.fullName });
       if (!result.ok) {
-        if (result.error === "slug_taken") {
-          form.setError("slug", { type: "server", message: "Slug already taken" });
-          return;
-        }
         toast.error(`Could not create project: ${result.error}`);
+        setCreatingFor(null);
         return;
       }
       toast.success(`Created “${result.project.name}”`);
@@ -129,131 +103,111 @@ export function NewProjectDialog({ open, onOpenChange }: Props): React.ReactElem
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New project</DialogTitle>
+          <DialogTitle>New project from GitHub</DialogTitle>
           <DialogDescription>
-            Projects group tickets and give Claude Code context for your stack.
+            Pick a repository — Planbooq will pull the name, description, and primary language.
           </DialogDescription>
         </DialogHeader>
-        <form className="flex flex-col gap-4" onSubmit={form.handleSubmit(onSubmit)}>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="np-name">Name</Label>
-            <Input
-              id="np-name"
-              placeholder="My next big thing"
-              autoFocus
-              {...form.register("name")}
-            />
-            {form.formState.errors.name ? (
-              <p className="text-xs text-destructive">{form.formState.errors.name.message}</p>
-            ) : null}
-          </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="np-slug">Slug</Label>
-            <Input
-              id="np-slug"
-              placeholder="my-project"
-              {...form.register("slug", {
-                onChange: () => {
-                  slugTouchedRef.current = true;
-                },
-              })}
-            />
-            <p className="text-xs text-muted-foreground">
-              /p/<span className="font-mono">{form.watch("slug") || "<slug>"}</span>
-            </p>
-            {form.formState.errors.slug ? (
-              <p className="text-xs text-destructive">{form.formState.errors.slug.message}</p>
-            ) : null}
+        {state.kind === "loading" || state.kind === "idle" ? (
+          <div className="flex items-center justify-center py-12 text-muted-foreground">
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Loading your repositories…
           </div>
+        ) : null}
 
-          <div className="flex flex-col gap-2">
-            <Label>Color</Label>
-            <div className="flex flex-wrap gap-2">
-              {PRESET_COLORS.map((c) => {
-                const selected = colorValue.toLowerCase() === c.value.toLowerCase();
-                return (
-                  <button
-                    key={c.value}
-                    type="button"
-                    aria-label={c.label}
-                    aria-pressed={selected}
-                    onClick={() =>
-                      form.setValue("color", c.value, { shouldValidate: true, shouldDirty: true })
-                    }
-                    className={cn(
-                      "h-7 w-7 rounded-full transition-[box-shadow,transform] duration-[120ms] ease-out",
-                      "ring-offset-2 ring-offset-background hover:scale-105",
-                      selected ? "ring-2 ring-foreground" : "ring-0",
-                    )}
-                    style={{ backgroundColor: c.value }}
-                  />
-                );
-              })}
+        {state.kind === "needs_github" || state.kind === "missing_scope" ? (
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
+            <GithubIcon className="h-8 w-8 text-muted-foreground" />
+            <div className="text-sm text-muted-foreground">
+              {state.kind === "needs_github"
+                ? "Connect your GitHub account to choose a repository."
+                : "Planbooq needs the “repo” scope to read your repositories."}
             </div>
-            {form.formState.errors.color ? (
-              <p className="text-xs text-destructive">{form.formState.errors.color.message}</p>
-            ) : null}
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="np-description">Description</Label>
-            <Textarea
-              id="np-description"
-              placeholder="Optional — what is this project about?"
-              rows={3}
-              {...form.register("description")}
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="np-repo">Repository URL</Label>
-            <Input
-              id="np-repo"
-              placeholder="https://github.com/you/repo"
-              {...form.register("repoUrl")}
-            />
-            {form.formState.errors.repoUrl ? (
-              <p className="text-xs text-destructive">{form.formState.errors.repoUrl.message}</p>
-            ) : null}
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="np-tech">Tech stack</Label>
-            <p className="text-xs text-muted-foreground">
-              Used by AI agents when generating tickets. Describe your stack, conventions, libraries
-              to use/avoid, code style. Example: “Next.js 16 + Postgres + Prisma. Use shadcn for all
-              UI. Strict TypeScript. No CSS frameworks other than Tailwind v4.”
-            </p>
-            <Textarea
-              id="np-tech"
-              placeholder="Next.js 16 + Postgres + Prisma…"
-              rows={5}
-              {...form.register("techStack")}
-            />
-          </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => onOpenChange(false)}
-              disabled={pending}
-            >
-              Cancel
+            <Button asChild>
+              <a href="/api/auth/signin/github?callbackUrl=/">
+                <GithubIcon className="h-4 w-4" />
+                Connect GitHub
+              </a>
             </Button>
-            <Button type="submit" disabled={pending}>
-              {pending ? (
-                <>
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                  Creating…
-                </>
-              ) : (
-                "Create project"
-              )}
-            </Button>
-          </DialogFooter>
-        </form>
+          </div>
+        ) : null}
+
+        {state.kind === "error" ? (
+          <div className="py-8 text-center text-sm text-destructive">{state.message}</div>
+        ) : null}
+
+        {state.kind === "ready" ? (
+          <div className="flex flex-col gap-3">
+            <div className="relative">
+              <Search className="absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search repositories…"
+                className="pl-8"
+              />
+            </div>
+            <ScrollArea className="h-80 rounded-md border border-border/60">
+              <ul className="divide-y divide-border/60">
+                {filteredRepos.length === 0 ? (
+                  <li className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    No repositories match.
+                  </li>
+                ) : (
+                  filteredRepos.map((repo) => {
+                    const isCreating = creatingFor === repo.fullName;
+                    const disabled = creatingFor !== null;
+                    return (
+                      <li key={repo.id}>
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => handlePick(repo)}
+                          className={cn(
+                            "flex w-full flex-col items-start gap-1 px-3 py-2.5 text-left transition-colors",
+                            "hover:bg-foreground/[0.04] disabled:opacity-50 disabled:hover:bg-transparent",
+                          )}
+                        >
+                          <div className="flex w-full items-center gap-2 text-[13px]">
+                            <span className="font-medium text-foreground">{repo.fullName}</span>
+                            {repo.private ? (
+                              <Lock className="h-3 w-3 text-muted-foreground" />
+                            ) : null}
+                            {repo.language ? (
+                              <span className="ml-auto text-[11px] text-muted-foreground">
+                                {repo.language}
+                              </span>
+                            ) : null}
+                            {isCreating ? (
+                              <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" />
+                            ) : null}
+                          </div>
+                          {repo.description ? (
+                            <span className="line-clamp-1 text-[12px] text-muted-foreground">
+                              {repo.description}
+                            </span>
+                          ) : null}
+                        </button>
+                      </li>
+                    );
+                  })
+                )}
+              </ul>
+            </ScrollArea>
+          </div>
+        ) : null}
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={creatingFor !== null}
+          >
+            Cancel
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

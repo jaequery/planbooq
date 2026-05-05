@@ -23,7 +23,7 @@ export type TicketWithRelations = Ticket & {
 
 export type StatusWithTickets = Status & { tickets: TicketWithRelations[] };
 
-export type ProjectSummary = Pick<Project, "id" | "slug" | "name" | "color"> & {
+export type ProjectSummary = Pick<Project, "id" | "slug" | "name" | "color" | "description"> & {
   reviewCount?: number;
   buildingCount?: number;
 };

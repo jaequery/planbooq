@@ -135,10 +135,144 @@ export async function createProject(input: CreateProjectInput): Promise<CreatePr
   }
 }
 
+const CreateFromRepoSchema = z
+  .object({
+    fullName: z
+      .string()
+      .min(3)
+      .max(140)
+      .regex(/^[\w.-]+\/[\w.-]+$/, "invalid_full_name"),
+    color: z.string().regex(HEX_COLOR_RE, "invalid_color").optional(),
+  })
+  .strict();
+
+type CreateFromRepoInput = z.infer<typeof CreateFromRepoSchema>;
+
+function scopeHasRepo(scope: string | null | undefined): boolean {
+  if (!scope) return true;
+  const tokens = scope.split(/[\s,]+/).filter(Boolean);
+  return tokens.includes("repo");
+}
+
+export async function createProjectFromRepo(
+  input: CreateFromRepoInput,
+): Promise<CreateProjectResult> {
+  try {
+    const data = CreateFromRepoSchema.parse(input);
+    const userId = await requireUserId();
+
+    const account = await prisma.account.findFirst({
+      where: { userId, provider: "github" },
+      select: { access_token: true, scope: true },
+    });
+    if (!account?.access_token) return { ok: false, error: "no_github" };
+    if (!scopeHasRepo(account.scope)) return { ok: false, error: "missing_scope" };
+
+    const res = await fetch(`https://api.github.com/repos/${data.fullName}`, {
+      headers: {
+        Authorization: `Bearer ${account.access_token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "planbooq-app",
+      },
+      cache: "no-store",
+    });
+    if (!res.ok) return { ok: false, error: `github_${res.status}` };
+    const repo = (await res.json()) as {
+      id: number;
+      name: string;
+      full_name: string;
+      description: string | null;
+      html_url: string;
+      language: string | null;
+    };
+
+    const membership = await prisma.member.findFirst({
+      where: { userId },
+      select: { workspaceId: true },
+    });
+    if (!membership) return { ok: false, error: "no_workspace" };
+    const workspaceId = membership.workspaceId;
+
+    const baseSlug = slugify(repo.name) || `repo-${repo.id}`;
+    let slug = baseSlug;
+    for (let i = 1; i < 50; i++) {
+      const taken = await prisma.project.findUnique({
+        where: { workspaceId_slug: { workspaceId, slug } },
+        select: { id: true },
+      });
+      if (!taken) break;
+      slug = `${baseSlug}-${i + 1}`;
+    }
+
+    const last = await prisma.project.findFirst({
+      where: { workspaceId },
+      orderBy: { position: "desc" },
+      select: { position: true },
+    });
+    const position = (last?.position ?? 0) + 1;
+
+    const palette = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#64748b"];
+    const color = data.color ?? palette[Math.abs(repo.id) % palette.length]!;
+
+    const project = await prisma.project.create({
+      data: {
+        workspaceId,
+        slug,
+        name: repo.name,
+        color,
+        description: repo.description,
+        repoUrl: repo.html_url,
+        techStack: repo.language,
+        githubRepoId: BigInt(repo.id),
+        githubFullName: repo.full_name,
+        position,
+      },
+    });
+
+    revalidatePath(`/p/${project.slug}`);
+    revalidatePath("/");
+
+    try {
+      await publishWorkspaceEvent(workspaceId, {
+        name: "project.created",
+        workspaceId,
+        project: {
+          ...project,
+          githubRepoId: project.githubRepoId == null ? null : project.githubRepoId.toString(),
+        } as unknown as Project,
+        by: userId,
+      });
+    } catch (err) {
+      logger.warn("publishWorkspaceEvent.failed", {
+        event: "project.created",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    void inngest
+      .send({ name: "project/created", data: { projectId: project.id, workspaceId } })
+      .catch((error: unknown) => {
+        logger.warn("inngest.send.failed", {
+          name: "project/created",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+
+    return { ok: true, project };
+  } catch (error) {
+    logger.error("createProjectFromRepo.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
 const UpdateProjectSchema = z
   .object({
     id: z.string().min(1),
-    name: z.string().min(1).max(80),
+    name: z.string().min(1).max(80).optional(),
+    description: z.string().max(2000).nullable().optional(),
   })
   .strict();
 
@@ -167,9 +301,15 @@ export async function updateProject(input: UpdateProjectInput): Promise<UpdatePr
       return { ok: false, error: "forbidden" };
     }
 
+    const patch: { name?: string; description?: string | null } = {};
+    if (data.name !== undefined) patch.name = data.name;
+    if (data.description !== undefined) patch.description = data.description;
+    if (Object.keys(patch).length === 0) {
+      return { ok: false, error: "no_changes" };
+    }
     const updated = await prisma.project.update({
       where: { id: project.id },
-      data: { name: data.name },
+      data: patch,
     });
 
     revalidatePath(`/p/${updated.slug}`);

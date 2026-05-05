@@ -45,7 +45,7 @@ export default async function ProjectPage({ params }: Props): Promise<React.Reac
     prisma.project.findMany({
       where: { workspaceId: membership.workspaceId },
       orderBy: { position: "asc" },
-      select: { id: true, slug: true, name: true, color: true },
+      select: { id: true, slug: true, name: true, color: true, description: true },
     }),
   ]);
 

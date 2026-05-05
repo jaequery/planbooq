@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   projects: ReadonlyArray<ProjectSummary>;
-  workspaceLabel: string;
   workspaceId: string;
 };
 
@@ -24,7 +23,7 @@ const COUNT_AFFECTING_EVENTS: ReadonlySet<AblyChannelEvent["name"]> = new Set([
   "ticket.archived",
 ]);
 
-export function Sidebar({ projects, workspaceLabel, workspaceId }: Props): React.ReactElement {
+export function Sidebar({ projects, workspaceId }: Props): React.ReactElement {
   const [dialogOpen, setDialogOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
@@ -69,12 +68,7 @@ export function Sidebar({ projects, workspaceLabel, workspaceId }: Props): React
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-border/60 bg-muted/30">
-      <div className="flex h-12 shrink-0 items-center border-b border-border/60 px-4">
-        <span className="truncate text-[13px] font-semibold tracking-tight text-foreground/90">
-          {workspaceLabel}
-        </span>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col pt-12">
         <div className="px-3 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
           Projects
         </div>
@@ -125,6 +119,7 @@ export function Sidebar({ projects, workspaceLabel, workspaceId }: Props): React
                     <ProjectActionsMenu
                       projectId={project.id}
                       projectName={project.name}
+                      projectDescription={project.description ?? null}
                       onRenamed={() => router.refresh()}
                       onDeleted={() => handleProjectDeleted(project.slug)}
                     />
