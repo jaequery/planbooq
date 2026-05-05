@@ -327,14 +327,7 @@ function DesktopPanel({ ticketId, projectId, title, description }: Props): React
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="mr-auto text-sm font-medium">
-          Claude Code
-          {worktreePath && (
-            <span className="ml-2 font-mono text-[11px] font-normal text-muted-foreground">
-              {worktreePath.split("/").pop()}
-            </span>
-          )}
-        </h3>
+        <h3 className="mr-auto text-sm font-medium">Claude Code</h3>
         <Button size="sm" variant="outline" onClick={pickRepo} disabled={!!sessionId}>
           <Folder className="size-4" />
           {repoPath.split("/").pop()}

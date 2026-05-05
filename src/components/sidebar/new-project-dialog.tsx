@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Lock, Search } from "lucide-react";
+import { Folder, Loader2, Lock, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -16,8 +16,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { getDesktopBridge } from "@/lib/use-is-desktop";
+
+function repoKey(projectId: string): string {
+  return `planbooq:repoPath:project:${projectId}`;
+}
 
 function GithubIcon({ className }: { className?: string }): React.ReactElement {
   return (
@@ -32,19 +38,23 @@ type Props = {
   onOpenChange: (open: boolean) => void;
 };
 
+type CreatedProject = { id: string; slug: string; name: string };
+
 type LoadState =
   | { kind: "idle" }
   | { kind: "loading" }
   | { kind: "needs_github" }
   | { kind: "missing_scope" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; repos: GithubRepo[] };
+  | { kind: "ready"; repos: GithubRepo[] }
+  | { kind: "needs_folder"; project: CreatedProject };
 
 export function NewProjectDialog({ open, onOpenChange }: Props): React.ReactElement {
   const router = useRouter();
   const [state, setState] = useState<LoadState>({ kind: "idle" });
   const [query, setQuery] = useState("");
   const [creatingFor, setCreatingFor] = useState<string | null>(null);
+  const [folderPath, setFolderPath] = useState("");
   const [_, startTransition] = useTransition();
 
   useEffect(() => {
@@ -52,6 +62,7 @@ export function NewProjectDialog({ open, onOpenChange }: Props): React.ReactElem
       setState({ kind: "idle" });
       setQuery("");
       setCreatingFor(null);
+      setFolderPath("");
       return;
     }
     setState({ kind: "loading" });
@@ -93,19 +104,55 @@ export function NewProjectDialog({ open, onOpenChange }: Props): React.ReactElem
         return;
       }
       toast.success(`Created “${result.project.name}”`);
-      onOpenChange(false);
-      router.push(`/p/${result.project.slug}`);
-      router.refresh();
+      setCreatingFor(null);
+      setState({
+        kind: "needs_folder",
+        project: {
+          id: result.project.id,
+          slug: result.project.slug,
+          name: result.project.name,
+        },
+      });
     });
+  };
+
+  const goToProject = (slug: string): void => {
+    onOpenChange(false);
+    router.push(`/p/${slug}`);
+    router.refresh();
+  };
+
+  const handleBrowseFolder = async (): Promise<void> => {
+    const bridge = getDesktopBridge();
+    if (!bridge) {
+      toast.error("Folder picker is only available in the desktop app");
+      return;
+    }
+    const result = await bridge.pickRepoPath();
+    if (!result.ok || !result.path) {
+      if (result.error) toast.error(result.error);
+      return;
+    }
+    setFolderPath(result.path);
+  };
+
+  const handleSaveFolder = (project: CreatedProject): void => {
+    const trimmed = folderPath.trim();
+    if (trimmed) localStorage.setItem(repoKey(project.id), trimmed);
+    goToProject(project.slug);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New project from GitHub</DialogTitle>
+          <DialogTitle>
+            {state.kind === "needs_folder" ? "Choose local folder" : "New project from GitHub"}
+          </DialogTitle>
           <DialogDescription>
-            Pick a repository — Planbooq will pull the name, description, and primary language.
+            {state.kind === "needs_folder"
+              ? `Where is ${state.project.name} cloned on this machine? Claude Code uses this path to run in the right repo.`
+              : "Pick a repository — Planbooq will pull the name, description, and primary language."}
           </DialogDescription>
         </DialogHeader>
 
@@ -198,15 +245,52 @@ export function NewProjectDialog({ open, onOpenChange }: Props): React.ReactElem
           </div>
         ) : null}
 
+        {state.kind === "needs_folder" ? (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="np-folder">Local folder</Label>
+            <div className="flex gap-2">
+              <Input
+                id="np-folder"
+                value={folderPath}
+                onChange={(e) => setFolderPath(e.target.value)}
+                placeholder="/Users/you/code/my-project"
+                autoFocus
+              />
+              <Button type="button" variant="ghost" onClick={handleBrowseFolder}>
+                <Folder className="h-4 w-4" />
+                Browse
+              </Button>
+            </div>
+            <span className="text-[12px] text-muted-foreground">
+              Stored on this device. You can change it later in project settings.
+            </span>
+          </div>
+        ) : null}
+
         <DialogFooter>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            disabled={creatingFor !== null}
-          >
-            Cancel
-          </Button>
+          {state.kind === "needs_folder" ? (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => goToProject(state.project.slug)}
+              >
+                Skip
+              </Button>
+              <Button type="button" onClick={() => handleSaveFolder(state.project)}>
+                Save folder
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              disabled={creatingFor !== null}
+            >
+              Cancel
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
