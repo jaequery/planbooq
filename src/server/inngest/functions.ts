@@ -61,6 +61,8 @@ type WorkflowRunStartPayload = {
   workspaceId: string;
 };
 
+// Retained for any in-flight events from the prior stub implementation; the
+// runner now fires from the agent jobs PATCH endpoint instead.
 export const workflowRunStart = inngest.createFunction(
   {
     id: "workflow-run-start",

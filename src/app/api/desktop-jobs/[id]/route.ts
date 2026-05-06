@@ -3,6 +3,7 @@ import { z } from "zod";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { advanceWorkflowAfterJob } from "@/server/services/workflow-runner";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,6 +68,15 @@ export async function PATCH(
   }
 
   await prisma.agentJob.update({ where: { id }, data, select: { id: true } });
+
+  if (
+    job.workflowStepRunId &&
+    (parsed.data.status === "SUCCEEDED" ||
+      parsed.data.status === "FAILED" ||
+      parsed.data.status === "CANCELED")
+  ) {
+    await advanceWorkflowAfterJob({ jobId: id, status: parsed.data.status });
+  }
 
   // Fanout for cross-tab/cross-client liveness.
   if (job.workspaceId && (parsed.data.appendOutput || parsed.data.status)) {

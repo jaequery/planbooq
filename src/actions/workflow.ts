@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
-import { inngest } from "@/server/inngest/client";
+import { startWorkflowRun } from "@/server/services/workflow-runner";
 
 type Ok<T> = T extends Record<string, never> ? { ok: true } : { ok: true } & T;
 type Err = { ok: false; error: string };
@@ -551,10 +551,13 @@ export async function triggerWorkflowRun(
     select: { id: true },
   });
 
-  await inngest.send({
-    name: "workflow/run.start",
-    data: { runId: run.id, ticketId, workspaceId: ctx.workspaceId },
+  const started = await startWorkflowRun({
+    runId: run.id,
+    ticketId,
+    workspaceId: ctx.workspaceId,
+    userId: ctx.userId,
   });
+  if (!started.ok) return { ok: false, error: started.error };
 
   revalidatePath("/");
   return { ok: true, runId: run.id, stepCount: enabled.length };

@@ -363,6 +363,7 @@ model AgentJob {
   error       String?        @db.Text
   worktreePath     String?
   claudeSessionId  String?
+  workflowStepRunId String?
   startedAt   DateTime?
   finishedAt  DateTime?
   createdAt   DateTime       @default(now())
@@ -376,6 +377,7 @@ model AgentJob {
   @@index([ticketId, createdAt])
   @@index([ticketId, status])
   @@index([ticketId, kind, createdAt])
+  @@index([workflowStepRunId])
 }
 
 enum TicketActivityKind {

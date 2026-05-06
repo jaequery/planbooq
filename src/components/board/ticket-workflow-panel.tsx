@@ -8,7 +8,6 @@ import {
   disableTicketWorkflowOverride,
   enableTicketWorkflowOverride,
   getTicketWorkflow,
-  listWorkflowRuns,
   removeTicketStep,
   reorderTicketSteps,
   triggerWorkflowRun,
@@ -31,28 +30,12 @@ type WorkflowState = {
   }>;
 };
 
-type RunRow = {
-  id: string;
-  status: string;
-  createdAt: Date;
-  finishedAt: Date | null;
-  stepCount: number;
-  stepRuns: Array<{
-    id: string;
-    name: string;
-    position: number;
-    status: string;
-    finishedAt: Date | null;
-  }>;
-};
-
 export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.ReactElement {
   const [wf, setWf] = useState<WorkflowState | null>(null);
-  const [runs, setRuns] = useState<RunRow[]>([]);
   const [pending, start] = useTransition();
 
   async function refresh() {
-    const [a, b] = await Promise.all([getTicketWorkflow(ticketId), listWorkflowRuns(ticketId)]);
+    const a = await getTicketWorkflow(ticketId);
     if (a.ok) {
       setWf({
         hasOverride: a.hasOverride,
@@ -61,13 +44,10 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
         steps: a.steps,
       });
     }
-    if (b.ok) setRuns(b.runs);
   }
 
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, 4000);
-    return () => clearInterval(t);
   }, [ticketId]);
 
   if (!wf) {
@@ -214,32 +194,6 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
         </ul>
       )}
 
-      <div className="flex flex-col gap-2">
-        <h4 className="text-sm font-medium">Recent runs</h4>
-        {runs.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No runs yet.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {runs.map((r) => (
-              <li key={r.id} className="rounded-md border p-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{r.status}</span>
-                  <span className="text-muted-foreground">
-                    {new Date(r.createdAt).toLocaleString()}
-                  </span>
-                </div>
-                <ol className="mt-1 flex flex-col gap-0.5 text-muted-foreground">
-                  {r.stepRuns.map((sr) => (
-                    <li key={sr.id}>
-                      {sr.position + 1}. {sr.name} — {sr.status}
-                    </li>
-                  ))}
-                </ol>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
     </div>
   );
 }
