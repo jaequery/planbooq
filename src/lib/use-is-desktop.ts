@@ -51,6 +51,15 @@ type DesktopBridge = {
   }>;
   agentStop: (input: { sessionId: string }) => Promise<{ ok: boolean; error?: string }>;
   onAgentEvent: (cb: (e: AgentEvent) => void) => () => void;
+  readProjectFile?: (input: {
+    repoPath: string;
+    relPath: string;
+  }) => Promise<{ ok: boolean; content?: string; exists?: boolean; error?: string }>;
+  writeProjectFile?: (input: {
+    repoPath: string;
+    relPath: string;
+    content: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
 };
 
 declare global {

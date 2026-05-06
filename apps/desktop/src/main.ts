@@ -6,6 +6,7 @@ import { createTray, destroyTray } from "./lib/tray";
 import { startNotificationBridge, stopNotificationBridge } from "./lib/notifications";
 import { registerWorktreeIpc } from "./lib/worktree";
 import { registerAgentIpc } from "./lib/agent";
+import { registerFilesIpc } from "./lib/files";
 import { initAutoUpdater } from "./lib/updater";
 import { buildAppMenu } from "./lib/menu";
 
@@ -104,6 +105,7 @@ if (!gotLock) {
   registerDeepLinks(app, (url) => focusMain(url));
   registerWorktreeIpc();
   registerAgentIpc();
+  registerFilesIpc();
 
   app.whenReady().then(() => {
     Menu.setApplicationMenu(buildAppMenu(() => focusMain()));

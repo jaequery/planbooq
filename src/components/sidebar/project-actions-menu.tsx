@@ -64,6 +64,10 @@ export function ProjectActionsMenu({
   const [wfTemplates, setWfTemplates] = useState<Array<{ id: string; name: string }>>([]);
   const [wfTemplateId, setWfTemplateId] = useState<string>("");
   const [initialWfTemplateId, setInitialWfTemplateId] = useState<string>("");
+  const [designContent, setDesignContent] = useState<string>("");
+  const [initialDesignContent, setInitialDesignContent] = useState<string>("");
+  const [designAvailable, setDesignAvailable] = useState<boolean>(false);
+  const [designLoadError, setDesignLoadError] = useState<string | null>(null);
   const [settingsPending, startSettingsTransition] = useTransition();
   const [deletePending, startDeleteTransition] = useTransition();
   const [renamePending, startRenameTransition] = useTransition();
@@ -72,6 +76,9 @@ export function ProjectActionsMenu({
     if (settingsOpen) {
       setFolderPath(projectLocalPath ?? "");
       setDescription(projectDescription ?? "");
+      setDesignContent("");
+      setInitialDesignContent("");
+      setDesignLoadError(null);
       (async () => {
         const [templatesRes, defaultRes] = await Promise.all([
           listWorkflowTemplates(),
@@ -84,6 +91,28 @@ export function ProjectActionsMenu({
           const id = defaultRes.templateId ?? "";
           setWfTemplateId(id);
           setInitialWfTemplateId(id);
+        }
+
+        const bridge = getDesktopBridge();
+        const repo = projectLocalPath ?? "";
+        const supported = !!bridge?.readProjectFile;
+        setDesignAvailable(supported && !!repo);
+        if (supported && repo) {
+          // Try DESIGN.md first; fall back to design.md.
+          let content = "";
+          let loaded = false;
+          for (const rel of ["DESIGN.md", "design.md"]) {
+            const r = await bridge.readProjectFile?.({ repoPath: repo, relPath: rel });
+            if (r?.ok && r.exists) {
+              content = r.content ?? "";
+              loaded = true;
+              break;
+            }
+            if (r && !r.ok) setDesignLoadError(r.error ?? "read_failed");
+          }
+          if (!loaded) setDesignLoadError(null);
+          setDesignContent(content);
+          setInitialDesignContent(content);
         }
       })();
     }
@@ -124,6 +153,23 @@ export function ProjectActionsMenu({
         if (!result.ok) {
           toast.error(`Could not save settings: ${result.error}`);
           return;
+        }
+      }
+
+      if (designAvailable && designContent !== initialDesignContent) {
+        const bridge = getDesktopBridge();
+        const repo = folderPath.trim();
+        if (bridge?.writeProjectFile && repo) {
+          const r = await bridge.writeProjectFile({
+            repoPath: repo,
+            relPath: "DESIGN.md",
+            content: designContent,
+          });
+          if (!r.ok) {
+            toast.error(`Could not save DESIGN.md: ${r.error ?? "unknown"}`);
+            return;
+          }
+          setInitialDesignContent(designContent);
         }
       }
 
@@ -334,6 +380,37 @@ export function ProjectActionsMenu({
                 Tickets in this project use this workflow by default. Manage templates in Settings →
                 Workflows.
               </span>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="project-settings-design">DESIGN.md</Label>
+              {designAvailable ? (
+                <>
+                  <Textarea
+                    id="project-settings-design"
+                    value={designContent}
+                    onChange={(e) => setDesignContent(e.target.value)}
+                    placeholder={
+                      initialDesignContent === ""
+                        ? "No DESIGN.md yet — type to create one in the project root."
+                        : ""
+                    }
+                    rows={12}
+                    disabled={settingsPending}
+                    className="font-mono text-[12px]"
+                  />
+                  <span className="text-[12px] text-muted-foreground">
+                    Saved to <code>DESIGN.md</code> in the project folder. Used as design context
+                    for AI tasks.
+                    {designLoadError ? ` (last read error: ${designLoadError})` : ""}
+                  </span>
+                </>
+              ) : (
+                <span className="text-[12px] text-muted-foreground">
+                  {folderPath.trim()
+                    ? "Open Planbooq in the desktop app to view and edit DESIGN.md."
+                    : "Set a local project folder above to enable DESIGN.md editing."}
+                </span>
+              )}
             </div>
           </div>
           <DialogFooter>

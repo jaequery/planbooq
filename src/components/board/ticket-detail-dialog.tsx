@@ -467,63 +467,9 @@ export function TicketDetailDialog({
                 )}
               </div>
             </div>
-
-            <div className="mt-auto border-t border-border/60 px-8 py-6">
-              <Tabs defaultValue="agent">
-                <TabsList className="mb-4 h-auto justify-start gap-1 border-0 bg-transparent p-0">
-                  <TabsTrigger
-                    value="agent"
-                    className="-mb-0 h-7 rounded-full px-3 text-[12px] font-medium after:hidden data-[state=active]:bg-muted data-[state=active]:after:hidden"
-                  >
-                    Agent
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="workflow"
-                    className="-mb-0 h-7 rounded-full px-3 text-[12px] font-medium after:hidden data-[state=active]:bg-muted data-[state=active]:after:hidden"
-                  >
-                    Workflow
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="activity"
-                    className="-mb-0 h-7 rounded-full px-3 text-[12px] font-medium after:hidden data-[state=active]:bg-muted data-[state=active]:after:hidden"
-                  >
-                    Activity
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent value="agent" className="focus-visible:outline-none">
-                  <TicketAgentPanel
-                    ticketId={ticket.id}
-                    workspaceId={ticket.workspaceId}
-                    projectId={ticket.projectId}
-                    title={ticket.title}
-                    description={ticket.description ?? null}
-                    identifier={ticketIdLabel}
-                    statusKey={statuses.find((s) => s.id === ticket.statusId)?.key}
-                    autoRunAction={autoRunAction}
-                  />
-                </TabsContent>
-                <TabsContent value="workflow" className="focus-visible:outline-none">
-                  <TicketWorkflowPanel ticketId={ticket.id} />
-                </TabsContent>
-                <TabsContent
-                  value="activity"
-                  className="flex flex-col gap-6 focus-visible:outline-none"
-                >
-                  <TicketTimeline
-                    ticketId={ticket.id}
-                    workspaceId={ticket.workspaceId}
-                    currentUserId={currentUserId}
-                    createdAt={createdAt}
-                    updatedAt={updatedAt}
-                    wasEdited={wasEdited}
-                  />
-                  <TicketActivityFeed ticketId={ticket.id} workspaceId={ticket.workspaceId} />
-                </TabsContent>
-              </Tabs>
-            </div>
           </div>
 
-          <aside className="flex w-[280px] shrink-0 flex-col gap-1 overflow-y-auto border-l border-border px-4 py-6">
+          <aside className="flex w-[360px] shrink-0 flex-col gap-1 overflow-y-auto border-l border-border px-4 py-6">
             <div className="flex items-center gap-2">
               <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Status</span>
               <StatusPicker
@@ -665,6 +611,60 @@ export function TicketDetailDialog({
               ) : null}
             </div>
             <TicketPreviewsPanel ticketId={ticket.id} workspaceId={ticket.workspaceId} />
+
+            <div className="mt-4 border-t border-border/60 pt-4">
+              <Tabs defaultValue="agent">
+                <TabsList className="mb-4 h-auto justify-start gap-1 border-0 bg-transparent p-0">
+                  <TabsTrigger
+                    value="agent"
+                    className="-mb-0 h-7 rounded-full px-3 text-[12px] font-medium after:hidden data-[state=active]:bg-muted data-[state=active]:after:hidden"
+                  >
+                    Agent
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="workflow"
+                    className="-mb-0 h-7 rounded-full px-3 text-[12px] font-medium after:hidden data-[state=active]:bg-muted data-[state=active]:after:hidden"
+                  >
+                    Workflow
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="activity"
+                    className="-mb-0 h-7 rounded-full px-3 text-[12px] font-medium after:hidden data-[state=active]:bg-muted data-[state=active]:after:hidden"
+                  >
+                    Activity
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="agent" className="focus-visible:outline-none">
+                  <TicketAgentPanel
+                    ticketId={ticket.id}
+                    workspaceId={ticket.workspaceId}
+                    projectId={ticket.projectId}
+                    title={ticket.title}
+                    description={ticket.description ?? null}
+                    identifier={ticketIdLabel}
+                    statusKey={statuses.find((s) => s.id === ticket.statusId)?.key}
+                    autoRunAction={autoRunAction}
+                  />
+                </TabsContent>
+                <TabsContent value="workflow" className="focus-visible:outline-none">
+                  <TicketWorkflowPanel ticketId={ticket.id} />
+                </TabsContent>
+                <TabsContent
+                  value="activity"
+                  className="flex flex-col gap-6 focus-visible:outline-none"
+                >
+                  <TicketTimeline
+                    ticketId={ticket.id}
+                    workspaceId={ticket.workspaceId}
+                    currentUserId={currentUserId}
+                    createdAt={createdAt}
+                    updatedAt={updatedAt}
+                    wasEdited={wasEdited}
+                  />
+                  <TicketActivityFeed ticketId={ticket.id} workspaceId={ticket.workspaceId} />
+                </TabsContent>
+              </Tabs>
+            </div>
           </aside>
         </div>
       </DialogContent>

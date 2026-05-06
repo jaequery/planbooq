@@ -40,6 +40,10 @@ contextBridge.exposeInMainWorld("planbooq", {
   agentSend: (input: { sessionId: string; message: string }) =>
     ipcRenderer.invoke("planbooq:agent:send", input),
   agentStop: (input: { sessionId: string }) => ipcRenderer.invoke("planbooq:agent:stop", input),
+  readProjectFile: (input: { repoPath: string; relPath: string }) =>
+    ipcRenderer.invoke("planbooq:files:read", input),
+  writeProjectFile: (input: { repoPath: string; relPath: string; content: string }) =>
+    ipcRenderer.invoke("planbooq:files:write", input),
   onAgentEvent: (cb: (e: unknown) => void) => {
     const listener = (_: unknown, e: unknown) => cb(e);
     ipcRenderer.on("planbooq:agent:event", listener);
