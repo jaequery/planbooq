@@ -20,7 +20,9 @@
     "desktop": "pnpm --filter @planbooq/desktop start",
     "desktop:make": "pnpm --filter @planbooq/desktop make",
     "desktop:publish": "pnpm --filter @planbooq/desktop publish",
-    "desktop:typecheck": "pnpm --filter @planbooq/desktop typecheck"
+    "desktop:typecheck": "pnpm --filter @planbooq/desktop typecheck",
+    "pair": "node packages/agent/bin/planbooq-agent.mjs login",
+    "agent": "node packages/agent/bin/planbooq-agent.mjs start"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
