@@ -70,8 +70,7 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
                 : "No workflow"}
           </span>
           <span className="text-xs text-muted-foreground">
-            {enabledCount} step{enabledCount === 1 ? "" : "s"} will run · output streams to the
-            Agent tab
+            {enabledCount} step{enabledCount === 1 ? "" : "s"} will run in Claude Code below
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -123,14 +122,9 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
                     detail: { ticketId, prompts },
                   }),
                 );
-                window.dispatchEvent(
-                  new CustomEvent("planbooq:switch-ticket-tab", {
-                    detail: { ticketId, tab: "agent" },
-                  }),
-                );
                 void triggerWorkflowRun(ticketId).catch(() => {});
                 toast.success(
-                  `Running ${enabledSteps.length} step${enabledSteps.length === 1 ? "" : "s"} in Agent`,
+                  `Running ${enabledSteps.length} step${enabledSteps.length === 1 ? "" : "s"} below`,
                 );
               })
             }

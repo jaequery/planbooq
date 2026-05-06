@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { dispatchTicketToAgent, listAgents } from "@/actions/agents";
 import { mintAgentApiKey } from "@/actions/api-keys";
 import { getProjectLocalPath, updateProject } from "@/actions/project";
-import { TicketPlanRunner } from "@/components/ticket/ticket-plan-runner";
+import { TicketWorkflowPanel } from "@/components/board/ticket-workflow-panel";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
 import {
@@ -42,16 +42,7 @@ export function TicketAgentPanel(props: Props): React.ReactElement {
   const isDesktop = useIsDesktop();
   return (
     <div className="flex flex-col gap-4">
-      <TicketPlanRunner
-        ticketId={props.ticketId}
-        workspaceId={props.workspaceId}
-        projectId={props.projectId}
-        title={props.title}
-        description={props.description}
-        identifier={props.identifier}
-        statusKey={props.statusKey}
-        autoRun={props.autoRunAction}
-      />
+      <TicketWorkflowPanel ticketId={props.ticketId} />
       {isDesktop ? <DesktopPanel {...props} /> : <WebPanel {...props} />}
     </div>
   );

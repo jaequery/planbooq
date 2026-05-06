@@ -14,7 +14,6 @@ import { TicketActionsMenu } from "@/components/board/ticket-actions-menu";
 import { TicketActivityFeed } from "@/components/board/ticket-activity-feed";
 import { TicketAgentPanel } from "@/components/board/ticket-agent-panel";
 import { TicketPreviewsPanel } from "@/components/board/ticket-previews-panel";
-import { TicketWorkflowPanel } from "@/components/board/ticket-workflow-panel";
 import { TicketTimeline } from "@/components/board/ticket-timeline";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -41,7 +40,7 @@ type Props = {
   autoRunAction?: boolean;
 };
 
-type TicketTabValue = "agent" | "workflow" | "activity";
+type TicketTabValue = "activity";
 
 type PrStatusReason =
   | "no-pr-url"
@@ -118,18 +117,7 @@ export function TicketDetailDialog({
   autoRunAction,
 }: Props): React.ReactElement {
   const [, startTransition] = useTransition();
-  const [activeTab, setActiveTab] = useState<TicketTabValue>("agent");
-  useEffect(() => {
-    const onSwitch = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { ticketId?: string; tab?: string };
-      if (!detail || detail.ticketId !== ticket.id) return;
-      if (detail.tab === "agent" || detail.tab === "workflow" || detail.tab === "activity") {
-        setActiveTab(detail.tab);
-      }
-    };
-    window.addEventListener("planbooq:switch-ticket-tab", onSwitch);
-    return () => window.removeEventListener("planbooq:switch-ticket-tab", onSwitch);
-  }, [ticket.id]);
+  const [activeTab, setActiveTab] = useState<TicketTabValue>("activity");
   const [titleDraft, setTitleDraft] = useState(ticket.title);
   const [descriptionDraft, setDescriptionDraft] = useState(ticket.description ?? "");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -627,20 +615,21 @@ export function TicketDetailDialog({
             <TicketPreviewsPanel ticketId={ticket.id} workspaceId={ticket.workspaceId} />
 
             <div className="mt-4 border-t border-border/60 pt-4">
+              <TicketAgentPanel
+                ticketId={ticket.id}
+                workspaceId={ticket.workspaceId}
+                projectId={ticket.projectId}
+                title={ticket.title}
+                description={ticket.description ?? null}
+                identifier={ticketIdLabel}
+                statusKey={statuses.find((s) => s.id === ticket.statusId)?.key}
+                autoRunAction={autoRunAction}
+              />
+            </div>
+
+            <div className="mt-4 border-t border-border/60 pt-4">
               <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TicketTabValue)}>
                 <TabsList className="mb-4 h-auto justify-start gap-1 border-0 bg-transparent p-0">
-                  <TabsTrigger
-                    value="agent"
-                    className="-mb-0 h-7 rounded-full px-3 text-[12px] font-medium after:hidden data-[state=active]:bg-muted data-[state=active]:after:hidden"
-                  >
-                    Agent
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="workflow"
-                    className="-mb-0 h-7 rounded-full px-3 text-[12px] font-medium after:hidden data-[state=active]:bg-muted data-[state=active]:after:hidden"
-                  >
-                    Workflow
-                  </TabsTrigger>
                   <TabsTrigger
                     value="activity"
                     className="-mb-0 h-7 rounded-full px-3 text-[12px] font-medium after:hidden data-[state=active]:bg-muted data-[state=active]:after:hidden"
@@ -648,21 +637,6 @@ export function TicketDetailDialog({
                     Activity
                   </TabsTrigger>
                 </TabsList>
-                <TabsContent value="agent" className="focus-visible:outline-none">
-                  <TicketAgentPanel
-                    ticketId={ticket.id}
-                    workspaceId={ticket.workspaceId}
-                    projectId={ticket.projectId}
-                    title={ticket.title}
-                    description={ticket.description ?? null}
-                    identifier={ticketIdLabel}
-                    statusKey={statuses.find((s) => s.id === ticket.statusId)?.key}
-                    autoRunAction={autoRunAction}
-                  />
-                </TabsContent>
-                <TabsContent value="workflow" className="focus-visible:outline-none">
-                  <TicketWorkflowPanel ticketId={ticket.id} />
-                </TabsContent>
                 <TabsContent
                   value="activity"
                   className="flex flex-col gap-6 focus-visible:outline-none"
