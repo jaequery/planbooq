@@ -7,21 +7,28 @@ import { useCallback } from "react";
 import { useIsDesktop } from "@/lib/use-is-desktop";
 import { cn } from "@/lib/utils";
 
-type TabValue = "appearance" | "api-keys" | "agents";
+type TabValue = "appearance" | "api-keys" | "workflows" | "agents";
 
 const ALL_TABS: { value: TabValue; label: string }[] = [
   { value: "appearance", label: "Appearance" },
   { value: "api-keys", label: "API keys" },
+  { value: "workflows", label: "Workflows" },
   { value: "agents", label: "Agents" },
 ];
 
 type Props = {
   appearance: React.ReactNode;
   apiKeys: React.ReactNode;
+  workflows: React.ReactNode;
   agents: React.ReactNode;
 };
 
-export function SettingsTabs({ appearance, apiKeys, agents }: Props): React.ReactElement {
+export function SettingsTabs({
+  appearance,
+  apiKeys,
+  workflows,
+  agents,
+}: Props): React.ReactElement {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isDesktop = useIsDesktop();
@@ -30,9 +37,11 @@ export function SettingsTabs({ appearance, apiKeys, agents }: Props): React.Reac
   const active: TabValue =
     param === "api-keys"
       ? "api-keys"
-      : param === "agents" && !isDesktop
-        ? "agents"
-        : "appearance";
+      : param === "workflows"
+        ? "workflows"
+        : param === "agents" && !isDesktop
+          ? "agents"
+          : "appearance";
 
   const onValueChange = useCallback(
     (value: string) => {
@@ -71,6 +80,9 @@ export function SettingsTabs({ appearance, apiKeys, agents }: Props): React.Reac
       </TabsPrimitive.Content>
       <TabsPrimitive.Content value="api-keys" className="focus-visible:outline-none">
         {apiKeys}
+      </TabsPrimitive.Content>
+      <TabsPrimitive.Content value="workflows" className="focus-visible:outline-none">
+        {workflows}
       </TabsPrimitive.Content>
       {!isDesktop && (
         <TabsPrimitive.Content value="agents" className="focus-visible:outline-none">

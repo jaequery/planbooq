@@ -1,9 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
+import { listWorkflowTemplates } from "@/actions/workflow";
 import { AgentsClient } from "@/components/settings/agents-client";
 import { ApiKeysClient } from "@/components/settings/api-keys-client";
 import { AppearancePicker } from "@/components/settings/appearance-picker";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { WorkflowsClient } from "@/components/settings/workflows-client";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 
@@ -30,6 +32,9 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
       revokedAt: true,
     },
   });
+
+  const wfList = await listWorkflowTemplates();
+  const initialTemplates = wfList.ok ? wfList.templates : [];
 
   const keys = await prisma.apiKey.findMany({
     where: { workspaceId: membership.workspaceId },
@@ -71,6 +76,7 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
               initialKeys={keys}
             />
           }
+          workflows={<WorkflowsClient initialTemplates={initialTemplates} />}
           agents={<AgentsClient workspaceId={membership.workspaceId} initialAgents={agents} />}
         />
       </Suspense>

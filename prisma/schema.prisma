@@ -115,6 +115,7 @@ model Workspace {
   comments    Comment[]
   attachments Attachment[]
   agents      Agent[]
+  workflowTemplates WorkflowTemplate[]
 }
 
 model Project {
@@ -130,11 +131,13 @@ model Project {
   githubFullName  String?
   localPath   String?
   position    Float
+  defaultWorkflowTemplateId String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   tickets   Ticket[]
+  defaultWorkflowTemplate WorkflowTemplate? @relation("ProjectDefaultWorkflow", fields: [defaultWorkflowTemplateId], references: [id], onDelete: SetNull)
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, position])
@@ -208,6 +211,8 @@ model Ticket {
   activities TicketActivity[]
   plans     TicketPlan[] @relation("TicketPlans")
   activePlan TicketPlan? @relation("TicketActivePlan", fields: [activePlanId], references: [id], onDelete: SetNull)
+  workflowSteps WorkflowStep[]
+  workflowRuns  WorkflowRun[]
 
   @@index([workspaceId, statusId, position])
   @@index([projectId, statusId, position])
@@ -395,4 +400,86 @@ model TicketActivity {
 
   @@index([ticketId, createdAt])
   @@index([workspaceId, createdAt])
+}
+
+// -----------------------------
+// Workflows (per-ticket prompt pipelines)
+// -----------------------------
+
+model WorkflowTemplate {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?  @db.Text
+  isGlobal    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  steps     WorkflowStep[] @relation("TemplateSteps")
+  defaultForProjects Project[] @relation("ProjectDefaultWorkflow")
+
+  @@index([workspaceId])
+}
+
+model WorkflowStep {
+  id         String   @id @default(cuid())
+  templateId String?
+  ticketId   String?
+  name       String
+  prompt     String   @db.Text
+  position   Float
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  template WorkflowTemplate? @relation("TemplateSteps", fields: [templateId], references: [id], onDelete: Cascade)
+  ticket   Ticket?           @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([templateId, position])
+  @@index([ticketId, position])
+}
+
+enum WorkflowRunStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+model WorkflowRun {
+  id          String            @id @default(cuid())
+  ticketId    String
+  workspaceId String
+  templateId  String?
+  status      WorkflowRunStatus @default(PENDING)
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  error       String?           @db.Text
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  ticket   Ticket             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  stepRuns WorkflowStepRun[]
+
+  @@index([ticketId, createdAt])
+  @@index([workspaceId, createdAt])
+}
+
+model WorkflowStepRun {
+  id         String            @id @default(cuid())
+  runId      String
+  position   Int
+  name       String
+  prompt     String            @db.Text
+  status     WorkflowRunStatus @default(PENDING)
+  output     String            @default("") @db.Text
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime          @default(now())
+
+  run WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, position])
 }

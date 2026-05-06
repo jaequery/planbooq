@@ -14,6 +14,7 @@ import { TicketActionsMenu } from "@/components/board/ticket-actions-menu";
 import { TicketActivityFeed } from "@/components/board/ticket-activity-feed";
 import { TicketAgentPanel } from "@/components/board/ticket-agent-panel";
 import { TicketPreviewsPanel } from "@/components/board/ticket-previews-panel";
+import { TicketWorkflowPanel } from "@/components/board/ticket-workflow-panel";
 import { TicketTimeline } from "@/components/board/ticket-timeline";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -477,6 +478,12 @@ export function TicketDetailDialog({
                     Agent
                   </TabsTrigger>
                   <TabsTrigger
+                    value="workflow"
+                    className="-mb-0 h-7 rounded-full px-3 text-[12px] font-medium after:hidden data-[state=active]:bg-muted data-[state=active]:after:hidden"
+                  >
+                    Workflow
+                  </TabsTrigger>
+                  <TabsTrigger
                     value="activity"
                     className="-mb-0 h-7 rounded-full px-3 text-[12px] font-medium after:hidden data-[state=active]:bg-muted data-[state=active]:after:hidden"
                   >
@@ -494,6 +501,9 @@ export function TicketDetailDialog({
                     statusKey={statuses.find((s) => s.id === ticket.statusId)?.key}
                     autoRunAction={autoRunAction}
                   />
+                </TabsContent>
+                <TabsContent value="workflow" className="focus-visible:outline-none">
+                  <TicketWorkflowPanel ticketId={ticket.id} />
                 </TabsContent>
                 <TabsContent
                   value="activity"

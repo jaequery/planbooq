@@ -7,6 +7,11 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { deleteProject, updateProject } from "@/actions/project";
+import {
+  getProjectDefaultWorkflow,
+  listWorkflowTemplates,
+  setProjectDefaultWorkflow,
+} from "@/actions/workflow";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -56,6 +61,9 @@ export function ProjectActionsMenu({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [folderPath, setFolderPath] = useState("");
   const [description, setDescription] = useState(projectDescription ?? "");
+  const [wfTemplates, setWfTemplates] = useState<Array<{ id: string; name: string }>>([]);
+  const [wfTemplateId, setWfTemplateId] = useState<string>("");
+  const [initialWfTemplateId, setInitialWfTemplateId] = useState<string>("");
   const [settingsPending, startSettingsTransition] = useTransition();
   const [deletePending, startDeleteTransition] = useTransition();
   const [renamePending, startRenameTransition] = useTransition();
@@ -64,8 +72,22 @@ export function ProjectActionsMenu({
     if (settingsOpen) {
       setFolderPath(projectLocalPath ?? "");
       setDescription(projectDescription ?? "");
+      (async () => {
+        const [templatesRes, defaultRes] = await Promise.all([
+          listWorkflowTemplates(),
+          getProjectDefaultWorkflow(projectId),
+        ]);
+        if (templatesRes.ok) {
+          setWfTemplates(templatesRes.templates.map((t) => ({ id: t.id, name: t.name })));
+        }
+        if (defaultRes.ok) {
+          const id = defaultRes.templateId ?? "";
+          setWfTemplateId(id);
+          setInitialWfTemplateId(id);
+        }
+      })();
     }
-  }, [settingsOpen, projectLocalPath, projectDescription]);
+  }, [settingsOpen, projectId, projectLocalPath, projectDescription]);
 
   const handlePickFolder = async (): Promise<void> => {
     const bridge = getDesktopBridge();
@@ -101,6 +123,17 @@ export function ProjectActionsMenu({
         const result = await updateProject(patch);
         if (!result.ok) {
           toast.error(`Could not save settings: ${result.error}`);
+          return;
+        }
+      }
+
+      if (wfTemplateId !== initialWfTemplateId) {
+        const r = await setProjectDefaultWorkflow({
+          projectId,
+          templateId: wfTemplateId === "" ? null : wfTemplateId,
+        });
+        if (!r.ok) {
+          toast.error(`Could not save default workflow: ${r.error}`);
           return;
         }
       }
@@ -280,6 +313,27 @@ export function ProjectActionsMenu({
                 maxLength={2000}
                 disabled={settingsPending}
               />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="project-settings-workflow">Default workflow</Label>
+              <select
+                id="project-settings-workflow"
+                value={wfTemplateId}
+                onChange={(e) => setWfTemplateId(e.target.value)}
+                disabled={settingsPending}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="">— None —</option>
+                {wfTemplates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[12px] text-muted-foreground">
+                Tickets in this project use this workflow by default. Manage templates in Settings →
+                Workflows.
+              </span>
             </div>
           </div>
           <DialogFooter>
