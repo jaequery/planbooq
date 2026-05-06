@@ -128,6 +128,7 @@ model Project {
   techStack   String?  @db.Text
   githubRepoId    BigInt?
   githubFullName  String?
+  localPath   String?
   position    Float
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -189,6 +190,7 @@ model Ticket {
   dueDate     DateTime?
   position    Float
   prUrl       String?
+  activePlanId String?  @unique
   createdById String
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -204,6 +206,8 @@ model Ticket {
   previews  TicketPreview[]
   agentJobs AgentJob[]
   activities TicketActivity[]
+  plans     TicketPlan[] @relation("TicketPlans")
+  activePlan TicketPlan? @relation("TicketActivePlan", fields: [activePlanId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, statusId, position])
   @@index([projectId, statusId, position])
@@ -211,6 +215,19 @@ model Ticket {
   @@index([createdById])
   @@index([assigneeId])
   @@index([workspaceId, dueDate])
+}
+
+model TicketPlan {
+  id        String   @id @default(cuid())
+  ticketId  String
+  content   String   @db.Text
+  model     String?
+  createdAt DateTime @default(now())
+
+  ticket       Ticket  @relation("TicketPlans", fields: [ticketId], references: [id], onDelete: Cascade)
+  activeOnTicket Ticket? @relation("TicketActivePlan")
+
+  @@index([ticketId, createdAt])
 }
 
 model Label {
@@ -328,24 +345,32 @@ enum AgentJobStatus {
 
 model AgentJob {
   id          String         @id @default(cuid())
-  agentId     String
+  agentId     String?
   ticketId    String
+  workspaceId String?
+  userId      String?
+  source      String         @default("PAIRED")
+  kind        String         @default("CHAT")
   prompt      String         @db.Text
   status      AgentJobStatus @default(PENDING)
   output      String         @default("") @db.Text
   exitCode    Int?
   error       String?        @db.Text
+  worktreePath     String?
+  claudeSessionId  String?
   startedAt   DateTime?
   finishedAt  DateTime?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  agent  Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agent  Agent? @relation(fields: [agentId], references: [id], onDelete: Cascade)
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   activities TicketActivity[]
 
   @@index([agentId, status])
   @@index([ticketId, createdAt])
+  @@index([ticketId, status])
+  @@index([ticketId, kind, createdAt])
 }
 
 enum TicketActivityKind {

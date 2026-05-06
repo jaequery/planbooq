@@ -37,6 +37,7 @@ type Props = {
   projectColor: string;
   projectSlug?: string;
   currentUserId: string | null;
+  autoRunAction?: boolean;
 };
 
 type PrStatusReason =
@@ -111,6 +112,7 @@ export function TicketDetailDialog({
   projectColor,
   projectSlug,
   currentUserId,
+  autoRunAction,
 }: Props): React.ReactElement {
   const [, startTransition] = useTransition();
   const [titleDraft, setTitleDraft] = useState(ticket.title);
@@ -482,6 +484,8 @@ export function TicketDetailDialog({
                     title={ticket.title}
                     description={ticket.description ?? null}
                     identifier={ticketIdLabel}
+                    statusKey={statuses.find((s) => s.id === ticket.statusId)?.key}
+                    autoRunAction={autoRunAction}
                   />
                 </TabsContent>
                 <TabsContent

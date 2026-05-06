@@ -4,7 +4,7 @@ import { Folder, Loader2, Lock, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { createProjectFromRepo } from "@/actions/project";
+import { createProjectFromRepo, updateProject } from "@/actions/project";
 import { type GithubRepo, listGithubRepos } from "@/actions/github";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,10 +20,6 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { getDesktopBridge } from "@/lib/use-is-desktop";
-
-function repoKey(projectId: string): string {
-  return `planbooq:repoPath:project:${projectId}`;
-}
 
 function GithubIcon({ className }: { className?: string }): React.ReactElement {
   return (
@@ -138,8 +134,18 @@ export function NewProjectDialog({ open, onOpenChange }: Props): React.ReactElem
 
   const handleSaveFolder = (project: CreatedProject): void => {
     const trimmed = folderPath.trim();
-    if (trimmed) localStorage.setItem(repoKey(project.id), trimmed);
-    goToProject(project.slug);
+    if (!trimmed) {
+      goToProject(project.slug);
+      return;
+    }
+    startTransition(async () => {
+      const result = await updateProject({ id: project.id, localPath: trimmed });
+      if (!result.ok) {
+        toast.error(`Could not save folder: ${result.error}`);
+        return;
+      }
+      goToProject(project.slug);
+    });
   };
 
   return (

@@ -120,6 +120,7 @@ export function Sidebar({ projects, workspaceId }: Props): React.ReactElement {
                       projectId={project.id}
                       projectName={project.name}
                       projectDescription={project.description ?? null}
+                      projectLocalPath={project.localPath ?? null}
                       onRenamed={() => router.refresh()}
                       onDeleted={() => handleProjectDeleted(project.slug)}
                     />

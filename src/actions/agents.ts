@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import type { ServerActionResult } from "@/lib/types";
-import { publishAgentEvent } from "@/server/ably";
 import { generatePairCode } from "@/server/agent-auth";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { createAgentJobForTicket } from "@/server/services/agent-jobs";
 
 async function requireSessionUser(): Promise<string> {
   const session = await auth();
@@ -130,23 +130,13 @@ export async function dispatchTicketToAgent(
     const finalPrompt =
       prompt ?? [`# ${ticket.title}`, ticket.description ?? ""].filter(Boolean).join("\n\n").trim();
 
-    const job = await prisma.agentJob.create({
-      data: {
-        agentId: agent.id,
-        ticketId: ticket.id,
-        prompt: finalPrompt,
-        status: "PENDING",
-      },
-      select: { id: true },
-    });
-
-    await publishAgentEvent(agent.id, "job.dispatch", {
-      jobId: job.id,
+    const { jobId } = await createAgentJobForTicket({
+      agentId: agent.id,
       ticketId: ticket.id,
       prompt: finalPrompt,
     });
 
-    return { ok: true, data: { jobId: job.id } };
+    return { ok: true, data: { jobId } };
   } catch (e) {
     logger.error("dispatchTicketToAgent.failed", {
       error: e instanceof Error ? e.message : String(e),

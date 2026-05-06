@@ -23,7 +23,10 @@ export type TicketWithRelations = Ticket & {
 
 export type StatusWithTickets = Status & { tickets: TicketWithRelations[] };
 
-export type ProjectSummary = Pick<Project, "id" | "slug" | "name" | "color" | "description"> & {
+export type ProjectSummary = Pick<
+  Project,
+  "id" | "slug" | "name" | "color" | "description" | "localPath"
+> & {
   reviewCount?: number;
   buildingCount?: number;
 };
@@ -151,6 +154,15 @@ export type AblyChannelEvent =
         jobId: string | null;
         createdAt: string;
       };
+    }
+  | {
+      name: "agent.delta";
+      workspaceId: string;
+      ticketId: string;
+      jobId: string;
+      kind: "PLAN" | "EXECUTE" | "CHAT";
+      appendOutput?: string;
+      status?: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELED";
     };
 
 export type ServerActionResult<T> = { ok: true; data: T } | { ok: false; error: string };

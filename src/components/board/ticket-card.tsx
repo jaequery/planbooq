@@ -3,7 +3,16 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { formatDistanceToNowStrict } from "date-fns";
-import { AlertCircle, Archive, Clock3, FileText, MoreHorizontal, Pencil } from "lucide-react";
+import {
+  AlertCircle,
+  Archive,
+  Clock3,
+  FileText,
+  MoreHorizontal,
+  Pencil,
+  Play,
+  Sparkles,
+} from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { archiveTicket } from "@/actions/ticket";
@@ -30,6 +39,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useLiveAgent } from "@/lib/live-agents-context";
 import type { TicketWithRelations } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -64,7 +74,15 @@ export function TicketCard({
   currentUserId = null,
 }: Props): React.ReactElement {
   const [detailOpen, setDetailOpen] = useState(false);
+  const [autoRunOnOpen, setAutoRunOnOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const ticketStatusKey = statuses.find((s) => s.id === ticket.statusId)?.key;
+  const hoverAction =
+    ticketStatusKey === "backlog"
+      ? { label: "Plan", icon: Sparkles }
+      : ticketStatusKey === "todo"
+        ? { label: "Execute", icon: Play }
+        : null;
   const [pendingArchive, startArchiveTransition] = useTransition();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: ticket.id,
@@ -109,6 +127,15 @@ export function TicketCard({
   const labels = ticket.labels ?? [];
   const visibleLabels = labels.slice(0, 3);
   const hiddenLabelCount = labels.length - visibleLabels.length;
+  const liveAgent = useLiveAgent(ticket.id);
+  const isLive = liveAgent?.status === "RUNNING" || liveAgent?.status === "PENDING";
+  const liveKindLabel = liveAgent
+    ? liveAgent.kind === "PLAN"
+      ? "planning"
+      : liveAgent.kind === "EXECUTE"
+        ? "executing"
+        : "running"
+    : null;
 
   return (
     <>
@@ -167,6 +194,28 @@ export function TicketCard({
               className="mt-0.5"
             />
           ) : null}
+          {!isOverlay && hoverAction
+            ? (() => {
+                const HoverIcon = hoverAction.icon;
+                return (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="-mt-1 h-6 px-2 text-[11px] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                    onPointerDown={stopDragPropagation}
+                    onClick={(e) => {
+                      stopDragPropagation(e);
+                      setAutoRunOnOpen(true);
+                      setDetailOpen(true);
+                    }}
+                    aria-label={`${hoverAction.label} ${ticket.title}`}
+                  >
+                    <HoverIcon className="h-3 w-3" />
+                    {hoverAction.label}
+                  </Button>
+                );
+              })()
+            : null}
           {!isOverlay ? (
             <div>
               <DropdownMenu>
@@ -197,6 +246,24 @@ export function TicketCard({
             </div>
           ) : null}
         </div>
+        {!isOverlay && isLive ? (
+          <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="relative inline-flex h-2 w-2 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+            <span className="font-medium text-emerald-600 dark:text-emerald-400">
+              {liveKindLabel}
+            </span>
+            {liveAgent?.lastLine ? (
+              <span className="min-w-0 flex-1 truncate" title={liveAgent.lastLine}>
+                · {liveAgent.lastLine}
+              </span>
+            ) : (
+              <span className="text-muted-foreground/70">…</span>
+            )}
+          </div>
+        ) : null}
         {visibleLabels.length > 0 ? (
           <div className="mt-2 flex flex-wrap items-center gap-1">
             {visibleLabels.map((l) => (
@@ -249,7 +316,11 @@ export function TicketCard({
           <TicketDetailDialog
             ticket={ticket}
             open={detailOpen}
-            onOpenChange={setDetailOpen}
+            onOpenChange={(open) => {
+              setDetailOpen(open);
+              if (!open) setAutoRunOnOpen(false);
+            }}
+            autoRunAction={autoRunOnOpen}
             onUpdated={(updated) => onUpdated?.(updated)}
             onDeleted={(id) => onDeleted?.(id)}
             statuses={statuses}

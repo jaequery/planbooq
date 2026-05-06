@@ -6,8 +6,13 @@ import { toast } from "sonner";
 import { dispatchTicketToAgent, listAgents } from "@/actions/agents";
 import { mintAgentApiKey } from "@/actions/api-keys";
 import { getProjectLocalPath, updateProject } from "@/actions/project";
+import { TicketPlanRunner } from "@/components/ticket/ticket-plan-runner";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
+import {
+  registerAgentSession,
+  unregisterAgentSession,
+} from "@/lib/agent-session-manager";
 import { type AgentEvent, getDesktopBridge, useIsDesktop } from "@/lib/use-is-desktop";
 
 type Job = {
@@ -29,15 +34,27 @@ type Props = {
   title: string;
   description: string | null;
   identifier: string;
+  statusKey?: string;
+  autoRunAction?: boolean;
 };
 
 export function TicketAgentPanel(props: Props): React.ReactElement {
   const isDesktop = useIsDesktop();
-  return isDesktop ? <DesktopPanel {...props} /> : <WebPanel {...props} />;
-}
-
-function chatKey(ticketId: string): string {
-  return `planbooq:chat:${ticketId}`;
+  return (
+    <div className="flex flex-col gap-4">
+      <TicketPlanRunner
+        ticketId={props.ticketId}
+        workspaceId={props.workspaceId}
+        projectId={props.projectId}
+        title={props.title}
+        description={props.description}
+        identifier={props.identifier}
+        statusKey={props.statusKey}
+        autoRun={props.autoRunAction}
+      />
+      {isDesktop ? <DesktopPanel {...props} /> : <WebPanel {...props} />}
+    </div>
+  );
 }
 
 type ChatMsg =
@@ -60,11 +77,119 @@ type ParsedEvent = {
   event?: StreamInner;
 };
 
-type PersistedChat = {
-  messages: ChatMsg[];
-  worktreePath: string | null;
-  claudeSessionId: string | null;
-};
+type WireEvent =
+  | { kind: "agent"; line: string }
+  | { kind: "stderr"; line: string }
+  | { kind: "exit"; code: number }
+  | { kind: "user"; text: string };
+
+/**
+ * Applies a single wire-format event to a message list, mutating
+ * currentAssistantIdRef to track which assistant bubble is being streamed
+ * into. Used by both live event handler and the on-mount replay path so
+ * the rendering logic stays identical.
+ */
+function applyWireEvent(
+  ev: WireEvent,
+  msgs: ChatMsg[],
+  currentAssistantIdRef: { current: string | null },
+): { msgs: ChatMsg[]; claudeSessionId?: string | null; ended?: boolean } {
+  if (ev.kind === "user") {
+    return { msgs: [...msgs, { id: crypto.randomUUID(), role: "user", text: ev.text }] };
+  }
+  if (ev.kind === "exit") {
+    currentAssistantIdRef.current = null;
+    return {
+      msgs: [
+        ...msgs,
+        { id: crypto.randomUUID(), role: "system", text: `Session ended (exit ${ev.code})` },
+      ],
+      ended: true,
+    };
+  }
+  if (ev.kind === "stderr") {
+    if (/error|fatal|fail/i.test(ev.line)) {
+      return {
+        msgs: [...msgs, { id: crypto.randomUUID(), role: "system", text: ev.line.trim() }],
+      };
+    }
+    return { msgs };
+  }
+  // ev.kind === "agent"
+  let parsed: ParsedEvent | null = null;
+  try {
+    parsed = JSON.parse(ev.line) as ParsedEvent;
+  } catch {
+    return { msgs };
+  }
+  const append = (text: string, replace = false): ChatMsg[] => {
+    if (!text) return msgs;
+    const id = currentAssistantIdRef.current;
+    if (id && msgs.length > 0 && msgs[msgs.length - 1]!.id === id) {
+      const next = msgs.slice();
+      const last = next[next.length - 1]!;
+      next[next.length - 1] = {
+        ...last,
+        text: replace ? text : last.text + text,
+      } as ChatMsg;
+      return next;
+    }
+    const newId = crypto.randomUUID();
+    currentAssistantIdRef.current = newId;
+    return [...msgs, { id: newId, role: "assistant", text }];
+  };
+
+  if (parsed.type === "stream_event" && parsed.event) {
+    const inner = parsed.event;
+    if (inner.type === "content_block_delta" && inner.delta?.type === "text_delta") {
+      return { msgs: append(inner.delta.text ?? "") };
+    }
+    if (inner.type === "content_block_start" && inner.content_block?.type === "text") {
+      if (inner.content_block.text) return { msgs: append(inner.content_block.text) };
+      return { msgs };
+    }
+    if (inner.type === "message_stop") {
+      currentAssistantIdRef.current = null;
+      return { msgs };
+    }
+    return { msgs };
+  }
+  if (parsed.type === "assistant" && parsed.message) {
+    const blocks: AssistantBlock[] = parsed.message.content ?? [];
+    const text = blocks
+      .filter((b) => b.type === "text" && typeof b.text === "string")
+      .map((b) => b.text as string)
+      .join("");
+    if (text) return { msgs: append(text, currentAssistantIdRef.current !== null) };
+    return { msgs };
+  }
+  if (parsed.type === "system" && parsed.subtype === "init" && parsed.session_id) {
+    return { msgs, claudeSessionId: parsed.session_id };
+  }
+  if (parsed.type === "result") {
+    currentAssistantIdRef.current = null;
+    return { msgs, ended: true };
+  }
+  return { msgs };
+}
+
+function serializeWire(ev: WireEvent): string {
+  return `${JSON.stringify(ev)}\n`;
+}
+
+function parseStoredOutput(output: string): WireEvent[] {
+  const out: WireEvent[] = [];
+  for (const raw of output.split("\n")) {
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw) as WireEvent;
+      out.push(parsed);
+    } catch {
+      // skip
+    }
+  }
+  return out;
+}
 
 function DesktopPanel({
   ticketId,
@@ -78,12 +203,14 @@ function DesktopPanel({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [worktreePath, setWorktreePath] = useState<string | null>(null);
   const [claudeSessionId, setClaudeSessionId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
-  const [hydrated, setHydrated] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const currentAssistantId = useRef<string | null>(null);
+  const jobIdRef = useRef<string | null>(null);
+  jobIdRef.current = jobId;
 
   useEffect(() => {
     let cancelled = false;
@@ -98,113 +225,109 @@ function DesktopPanel({
     };
   }, [projectId]);
 
-  // Hydrate persisted chat for this ticket.
+  // Hydrate from server: replay the last desktop job's persisted JSONL into
+  // local message state. Survives page reloads.
   useEffect(() => {
-    setHydrated(false);
-    const raw = localStorage.getItem(chatKey(ticketId));
-    if (raw) {
-      try {
-        const persisted = JSON.parse(raw) as PersistedChat;
-        setMessages(persisted.messages ?? []);
-        setWorktreePath(persisted.worktreePath ?? null);
-        setClaudeSessionId(persisted.claudeSessionId ?? null);
-      } catch {}
-    } else {
-      setMessages([]);
-      setWorktreePath(null);
-      setClaudeSessionId(null);
-    }
+    let cancelled = false;
+    setMessages([]);
+    setWorktreePath(null);
+    setClaudeSessionId(null);
     setSessionId(null);
+    setJobId(null);
     setBusy(false);
     currentAssistantId.current = null;
-    setHydrated(true);
+
+    void (async () => {
+      try {
+        const res = await fetch(`/api/tickets/${ticketId}/desktop-jobs`, { cache: "no-store" });
+        const body = (await res.json()) as {
+          ok: boolean;
+          data: {
+            id: string;
+            status: string;
+            output: string;
+            worktreePath: string | null;
+            claudeSessionId: string | null;
+          } | null;
+        };
+        if (cancelled || !body.ok || !body.data) return;
+        const job = body.data;
+        const events = parseStoredOutput(job.output);
+        const cursor = { current: null as string | null };
+        let acc: ChatMsg[] = [];
+        let resolvedClaudeSession: string | null = null;
+        for (const ev of events) {
+          const r = applyWireEvent(ev, acc, cursor);
+          acc = r.msgs;
+          if (r.claudeSessionId !== undefined) resolvedClaudeSession = r.claudeSessionId;
+        }
+        currentAssistantId.current = cursor.current;
+        setMessages(acc);
+        setWorktreePath(job.worktreePath);
+        setClaudeSessionId(resolvedClaudeSession ?? job.claudeSessionId);
+        setJobId(job.id);
+        // Job is "active" only while running. If it's still RUNNING the server
+        // believes a session is in flight (e.g. user is mid-stream and just
+        // refreshed). The local Electron process is ours and will keep firing
+        // bridge events into this fresh listener.
+        if (job.status === "RUNNING") setBusy(true);
+      } catch {
+        // ignore — empty hydrate
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [ticketId]);
 
-  // Persist on changes (skip until hydrated to avoid clobbering with empty state).
-  useEffect(() => {
-    if (!hydrated) return;
-    if (messages.length === 0 && !worktreePath && !claudeSessionId) {
-      localStorage.removeItem(chatKey(ticketId));
-      return;
-    }
-    const persisted: PersistedChat = { messages, worktreePath, claudeSessionId };
-    localStorage.setItem(chatKey(ticketId), JSON.stringify(persisted));
-  }, [hydrated, ticketId, messages, worktreePath, claudeSessionId]);
+  const patchJob = (body: {
+    appendOutput?: string;
+    status?: "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELED";
+    exitCode?: number;
+    worktreePath?: string | null;
+    claudeSessionId?: string | null;
+  }): void => {
+    const id = jobIdRef.current;
+    if (!id) return;
+    void fetch(`/api/desktop-jobs/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch(() => undefined);
+  };
 
   useEffect(() => {
     const bridge = getDesktopBridge();
     if (!bridge || typeof bridge.onAgentEvent !== "function") return;
     return bridge.onAgentEvent((e: AgentEvent) => {
-      if (e.type === "exit") {
-        setBusy(false);
-        setSessionId(null);
-        setMessages((m) => [
-          ...m,
-          { id: crypto.randomUUID(), role: "system", text: `Session ended (exit ${e.code})` },
-        ]);
-        return;
-      }
-      if (e.type === "stderr") {
-        // stderr is mostly git progress; surface only if it looks like an error
-        if (/error|fatal|fail/i.test(e.line)) {
-          setMessages((m) => [
-            ...m,
-            { id: crypto.randomUUID(), role: "system", text: e.line.trim() },
-          ]);
-        }
-        return;
-      }
-      // e.type === "agent" — JSON line from claude --output-format stream-json
-      let parsed: ParsedEvent | null = null;
-      try {
-        parsed = JSON.parse(e.line) as ParsedEvent;
-      } catch {
-        return;
-      }
-      const appendAssistant = (text: string, replace = false) => {
-        if (!text) return;
-        setMessages((m) => {
-          const id = currentAssistantId.current;
-          if (id && m.length > 0 && m[m.length - 1]!.id === id) {
-            const next = m.slice();
-            const last = next[next.length - 1]!;
-            next[next.length - 1] = {
-              ...last,
-              text: replace ? text : last.text + text,
-            } as ChatMsg;
-            return next;
-          }
-          const newId = crypto.randomUUID();
-          currentAssistantId.current = newId;
-          return [...m, { id: newId, role: "assistant", text }];
-        });
-      };
+      const wire: WireEvent =
+        e.type === "exit"
+          ? { kind: "exit", code: e.code }
+          : e.type === "stderr"
+            ? { kind: "stderr", line: e.line }
+            : { kind: "agent", line: e.line };
 
-      if (parsed.type === "stream_event" && parsed.event) {
-        const ev = parsed.event;
-        if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") {
-          appendAssistant(ev.delta.text ?? "");
-        } else if (ev.type === "content_block_start" && ev.content_block?.type === "text") {
-          // Starts a new text block — reset accumulator boundary
-          if (ev.content_block.text) appendAssistant(ev.content_block.text);
-        } else if (ev.type === "message_stop") {
-          currentAssistantId.current = null;
+      // NB: persistence (PATCH /api/desktop-jobs/:id) for `wire` and exit
+      // status is done by the global AgentSessionManager — see
+      // src/lib/agent-session-manager.ts. Doing it here too would
+      // double-append. We still PATCH worktreePath / claudeSessionId locally
+      // because those don't come from bridge events.
+
+      setMessages((m) => {
+        const r = applyWireEvent(wire, m, currentAssistantId);
+        if (r.claudeSessionId !== undefined) {
+          setClaudeSessionId(r.claudeSessionId);
+          patchJob({ claudeSessionId: r.claudeSessionId });
         }
-      } else if (parsed.type === "assistant" && parsed.message) {
-        // Final assistant message arrives at end of turn. Replace the streamed
-        // bubble if we already have one for this turn so we don't duplicate.
-        const blocks: AssistantBlock[] = parsed.message.content ?? [];
-        const text = blocks
-          .filter((b) => b.type === "text" && typeof b.text === "string")
-          .map((b) => b.text as string)
-          .join("");
-        if (text) appendAssistant(text, currentAssistantId.current !== null);
-      } else if (parsed.type === "system" && parsed.subtype === "init" && parsed.session_id) {
-        setClaudeSessionId(parsed.session_id);
-      } else if (parsed.type === "result") {
-        currentAssistantId.current = null;
-        setBusy(false);
-      }
+        if (r.ended) {
+          setBusy(false);
+          if (wire.kind === "exit") {
+            setSessionId(null);
+          }
+        }
+        return r.msgs;
+      });
     });
   }, []);
 
@@ -246,6 +369,28 @@ function DesktopPanel({
       setMessages((m) => [...m, { id: crypto.randomUUID(), role: "user", text: message }]);
       setInput("");
 
+      // Open a server-side desktop job so this conversation is durable.
+      try {
+        const r = await fetch(`/api/tickets/${ticketId}/desktop-jobs`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: message,
+            worktreePath,
+            claudeSessionId,
+          }),
+        });
+        const body = (await r.json()) as { ok: boolean; data?: { jobId: string } };
+        if (body.ok && body.data) {
+          setJobId(body.data.jobId);
+          jobIdRef.current = body.data.jobId;
+          // Persist the user turn as the first wire event.
+          patchJob({ appendOutput: serializeWire({ kind: "user", text: message }) });
+        }
+      } catch {
+        // tolerate — local session still works, but won't survive refresh
+      }
+
       // Mint a fresh short-lived API token and pass it via env to claude. The
       // wrapper at ./.planbooq/pbq reads it from $PLANBOOQ_TOKEN — never on disk.
       let ticketCtx: Parameters<typeof bridge.agentStart>[0]["ticket"];
@@ -276,6 +421,13 @@ function DesktopPanel({
             return;
           }
           setSessionId(res.sessionId);
+          if (jobIdRef.current) {
+            registerAgentSession(res.sessionId, {
+              jobId: jobIdRef.current,
+              workspaceId,
+              ticketId,
+            });
+          }
           return;
         } catch (err) {
           toast.error(err instanceof Error ? err.message : "Resume failed");
@@ -321,11 +473,20 @@ function DesktopPanel({
       }
       setSessionId(res.sessionId);
       setWorktreePath(res.worktreePath ?? null);
+      patchJob({ worktreePath: res.worktreePath ?? null });
+      if (jobIdRef.current) {
+        registerAgentSession(res.sessionId, {
+          jobId: jobIdRef.current,
+          workspaceId,
+          ticketId,
+        });
+      }
       return;
     }
 
     setBusy(true);
     setMessages((m) => [...m, { id: crypto.randomUUID(), role: "user", text: message }]);
+    patchJob({ appendOutput: serializeWire({ kind: "user", text: message }) });
     setInput("");
     try {
       const res = await bridge.agentSend({ sessionId, message });
@@ -417,7 +578,9 @@ function DesktopPanel({
             }
           }}
           placeholder={
-            sessionId ? "Reply to Claude…" : `Start a session — first message will include "${title}"`
+            sessionId
+              ? "Reply to Claude…"
+              : `Start a session — first message will include "${title}"`
           }
           rows={2}
           className="min-h-[60px] flex-1 resize-y rounded-lg bg-muted/40 px-3 py-2 text-[13px] outline-none focus:bg-muted/60"

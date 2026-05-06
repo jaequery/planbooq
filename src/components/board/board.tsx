@@ -23,8 +23,25 @@ import { RealtimeIndicator } from "@/components/board/realtime-indicator";
 import { TicketCard } from "@/components/board/ticket-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LiveAgentsContext, type LiveAgentState } from "@/lib/live-agents-context";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
 import type { BoardData, StatusWithTickets, Ticket, TicketWithRelations } from "@/lib/types";
+
+/**
+ * Best-effort "last line" extraction for the live indicator. PLAN streams
+ * raw markdown so we just take the trimmed tail. EXECUTE/CHAT stream JSONL
+ * (one wire event per line) where text is buried in JSON; in that case we
+ * fall back to a generic "running" hint. Card UI truncates further.
+ */
+function extractTail(kind: "PLAN" | "EXECUTE" | "CHAT", text: string): string | null {
+  const trimmed = text.replace(/\s+$/u, "");
+  if (!trimmed) return null;
+  if (kind === "PLAN") {
+    const tail = trimmed.slice(-120);
+    return tail.replace(/[#*`_>\-]+/gu, " ").replace(/\s+/gu, " ").trim() || null;
+  }
+  return null;
+}
 
 type Props = { initialData: BoardData; currentUserId: string };
 
@@ -53,6 +70,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
   const [statuses, setStatuses] = useState<StatusWithTickets[]>(initialData.statuses);
   const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [liveAgents, setLiveAgents] = useState<ReadonlyMap<string, LiveAgentState>>(new Map());
   const currentProjectId = initialData.project.id;
 
   const allTickets = useMemo(() => {
@@ -72,6 +90,22 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         localClientIdRef.current !== null &&
         fromClientId === localClientIdRef.current
       ) {
+        return;
+      }
+      if (event.name === "agent.delta") {
+        setLiveAgents((prev) => {
+          const next = new Map(prev);
+          const cur = next.get(event.ticketId);
+          const status = event.status ?? cur?.status ?? "RUNNING";
+          const tail = event.appendOutput ? extractTail(event.kind, event.appendOutput) : null;
+          next.set(event.ticketId, {
+            jobId: event.jobId,
+            kind: event.kind,
+            status,
+            lastLine: tail ?? cur?.lastLine ?? null,
+          });
+          return next;
+        });
         return;
       }
       if (event.name === "project.created" || event.name === "project.updated") {
@@ -337,6 +371,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
   );
 
   return (
+    <LiveAgentsContext.Provider value={liveAgents}>
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-3 px-4 py-2">
         <div className="relative max-w-sm flex-1">
@@ -383,7 +418,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
             <Column
               key={status.id}
               status={status}
-              statuses={statuses.map((s) => ({ id: s.id, name: s.name, color: s.color }))}
+              statuses={statuses.map((s) => ({ id: s.id, name: s.name, color: s.color, key: s.key }))}
               tickets={status.tickets}
               projectName={initialData.project.name}
               projectColor={initialData.project.color}
@@ -401,5 +436,6 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         </DragOverlay>
       </DndContext>
     </div>
+    </LiveAgentsContext.Provider>
   );
 }

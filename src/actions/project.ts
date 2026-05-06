@@ -273,6 +273,7 @@ const UpdateProjectSchema = z
     id: z.string().min(1),
     name: z.string().min(1).max(80).optional(),
     description: z.string().max(2000).nullable().optional(),
+    localPath: z.string().max(1000).nullable().optional(),
   })
   .strict();
 
@@ -301,9 +302,10 @@ export async function updateProject(input: UpdateProjectInput): Promise<UpdatePr
       return { ok: false, error: "forbidden" };
     }
 
-    const patch: { name?: string; description?: string | null } = {};
+    const patch: { name?: string; description?: string | null; localPath?: string | null } = {};
     if (data.name !== undefined) patch.name = data.name;
     if (data.description !== undefined) patch.description = data.description;
+    if (data.localPath !== undefined) patch.localPath = data.localPath;
     if (Object.keys(patch).length === 0) {
       return { ok: false, error: "no_changes" };
     }
@@ -334,6 +336,29 @@ export async function updateProject(input: UpdateProjectInput): Promise<UpdatePr
     logger.error("updateProject.failed", {
       error: error instanceof Error ? error.message : String(error),
     });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
+type ProjectLocalPathResult =
+  | { ok: true; localPath: string | null }
+  | { ok: false; error: string };
+
+export async function getProjectLocalPath(projectId: string): Promise<ProjectLocalPathResult> {
+  try {
+    const userId = await requireUserId();
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { workspaceId: true, localPath: true },
+    });
+    if (!project) return { ok: false, error: "not_found" };
+    const member = await prisma.member.findFirst({
+      where: { userId, workspaceId: project.workspaceId },
+      select: { id: true },
+    });
+    if (!member) return { ok: false, error: "forbidden" };
+    return { ok: true, localPath: project.localPath };
+  } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "unknown" };
   }
 }

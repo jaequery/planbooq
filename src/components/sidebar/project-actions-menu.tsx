@@ -38,18 +38,16 @@ type Props = {
   projectId: string;
   projectName: string;
   projectDescription?: string | null;
+  projectLocalPath?: string | null;
   onRenamed: (name: string) => void;
   onDeleted: () => void;
 };
-
-function repoKey(projectId: string): string {
-  return `planbooq:repoPath:project:${projectId}`;
-}
 
 export function ProjectActionsMenu({
   projectId,
   projectName,
   projectDescription,
+  projectLocalPath,
   onRenamed,
   onDeleted,
 }: Props): React.ReactElement {
@@ -64,10 +62,10 @@ export function ProjectActionsMenu({
 
   useEffect(() => {
     if (settingsOpen) {
-      setFolderPath(localStorage.getItem(repoKey(projectId)) ?? "");
+      setFolderPath(projectLocalPath ?? "");
       setDescription(projectDescription ?? "");
     }
-  }, [settingsOpen, projectId, projectDescription]);
+  }, [settingsOpen, projectLocalPath, projectDescription]);
 
   const handlePickFolder = async (): Promise<void> => {
     const bridge = getDesktopBridge();
@@ -86,14 +84,21 @@ export function ProjectActionsMenu({
   const handleSaveSettings = (): void => {
     startSettingsTransition(async () => {
       const trimmedPath = folderPath.trim();
-      if (trimmedPath) localStorage.setItem(repoKey(projectId), trimmedPath);
-      else localStorage.removeItem(repoKey(projectId));
+      const nextPath = trimmedPath === "" ? null : trimmedPath;
+      const currentPath = projectLocalPath ?? null;
 
       const trimmedDesc = description.trim();
       const nextDesc = trimmedDesc === "" ? null : trimmedDesc;
       const currentDesc = projectDescription ?? null;
-      if (nextDesc !== currentDesc) {
-        const result = await updateProject({ id: projectId, description: nextDesc });
+
+      const patch: { id: string; description?: string | null; localPath?: string | null } = {
+        id: projectId,
+      };
+      if (nextDesc !== currentDesc) patch.description = nextDesc;
+      if (nextPath !== currentPath) patch.localPath = nextPath;
+
+      if (patch.description !== undefined || patch.localPath !== undefined) {
+        const result = await updateProject(patch);
         if (!result.ok) {
           toast.error(`Could not save settings: ${result.error}`);
           return;

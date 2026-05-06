@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-export type StatusOption = { id: string; name: string; color: string };
+export type StatusOption = { id: string; name: string; color: string; key?: string };
 
 type Props = {
   ticketId: string;

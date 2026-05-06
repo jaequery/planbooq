@@ -88,6 +88,59 @@ function parseDraftJson(content: string): TicketDraft | null {
   }
 }
 
+type PlanResult = { ok: true; content: string; model: string } | { ok: false; error: string };
+
+export async function generateTicketPlan(args: {
+  workspaceId: string;
+  title: string;
+  description: string | null;
+  projectContext?: string | null;
+}): Promise<PlanResult> {
+  const apiKey = await getOpenRouterApiKey(args.workspaceId);
+  if (!apiKey) return { ok: false, error: "no_key" };
+
+  const userPrompt = [
+    args.projectContext ? `Project context:\n${args.projectContext}` : null,
+    `Ticket title: ${args.title}`,
+    args.description ? `Ticket description:\n${args.description}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const model = "openrouter/auto";
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Title": "Planbooq",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a senior engineer turning a kanban ticket into a concrete implementation plan for a coding agent. Reply in markdown. Sections: ## Goal, ## Approach, ## Files to change, ## Acceptance criteria. Be specific but concise. No preamble, no closing remarks.",
+          },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { ok: false, error: `openrouter_${res.status}:${text.slice(0, 200)}` };
+    }
+    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = data.choices?.[0]?.message?.content?.trim() ?? "";
+    if (!content) return { ok: false, error: "empty_plan" };
+    return { ok: true, content, model };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "unknown" };
+  }
+}
+
 export async function generateTicketDraft(args: {
   workspaceId: string;
   prompt: string;

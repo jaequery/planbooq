@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { AgentSessionManagerMount } from "@/components/agent-session-manager-mount";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { UserMenu } from "@/components/user-menu";
 import { auth } from "@/server/auth";
@@ -33,7 +34,14 @@ export default async function ProjectLayout({
     prisma.project.findMany({
       where: { workspaceId: membership.workspaceId },
       orderBy: { position: "asc" },
-      select: { id: true, slug: true, name: true, color: true, description: true },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        color: true,
+        description: true,
+        localPath: true,
+      },
     }),
     prisma.status.findMany({
       where: {
@@ -71,6 +79,7 @@ export default async function ProjectLayout({
 
   return (
     <div className="flex h-screen min-h-0 bg-background">
+      <AgentSessionManagerMount />
       <Sidebar projects={allProjects} workspaceId={membership.workspaceId} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-4">

@@ -50,6 +50,8 @@ Usage:
   ./.planbooq/pbq get
   ./.planbooq/pbq update '{"description":"..."}'   # PATCH this ticket
   ./.planbooq/pbq comment '{"body":"..."}'         # add a comment
+  ./.planbooq/pbq ship '{"prUrl":"...","summary":"...","branch":"...","targetBranch":"..."}'
+  ./.planbooq/pbq error '{"reason":"...","where":"..."}'
   ./.planbooq/pbq raw <METHOD> <path-after-/api/v1> [json]
 Fields accepted by 'update': title, description, statusId, priority, assigneeId, dueAt
 EOF
@@ -73,6 +75,16 @@ case "$cmd" in
     [ -z "$1" ] && { echo "missing JSON body" >&2; exit 2; }
     curl -sS -X POST -H "$H_AUTH" -H "$H_JSON" -d "$1" \\
       "$PLANBOOQ_API/api/v1/tickets/$PLANBOOQ_TICKET_ID/comments"
+    ;;
+  ship)
+    [ -z "$1" ] && { echo "missing JSON body — need at least {\\"prUrl\\":\\"...\\"}" >&2; exit 2; }
+    curl -sS -X POST -H "$H_AUTH" -H "$H_JSON" -d "$1" \\
+      "$PLANBOOQ_API/api/v1/tickets/$PLANBOOQ_TICKET_ID/ship"
+    ;;
+  error)
+    [ -z "$1" ] && { echo "missing JSON body — need at least {\\"reason\\":\\"...\\"}" >&2; exit 2; }
+    curl -sS -X POST -H "$H_AUTH" -H "$H_JSON" -d "$1" \\
+      "$PLANBOOQ_API/api/v1/tickets/$PLANBOOQ_TICKET_ID/error"
     ;;
   raw)
     method="$1"; subpath="$2"; data="$3"
@@ -105,11 +117,63 @@ Use \`./.planbooq/pbq\` to read or mutate it via the Planbooq REST API:
 - \`./.planbooq/pbq update '{"description":"..."}'\` — PATCH fields
   (title, description, statusId, priority, assigneeId, dueAt)
 - \`./.planbooq/pbq comment '{"body":"..."}'\` — post a comment
+- \`./.planbooq/pbq ship '{...}'\` — open a PR is *not* part of this; \`ship\`
+  is the **post-PR** call that records the URL and moves the ticket to Review
+  (see "Shipping" below)
+- \`./.planbooq/pbq error '{"reason":"..."}'\` — surface a build failure;
+  ticket stays in Building, gets the \`error\` label, and a failure comment
 - \`./.planbooq/pbq raw GET tickets\` — generic call (path is appended to /api/v1/)
 
 The wrapper hard-codes the ticket id, base URL, and a 7-day API token, so you
 do not need to supply credentials. Prefer it over hand-rolling curl. Do not
 echo or log the contents of \`./.planbooq/pbq\`.
+
+## Shipping (when the work is done)
+
+When you've finished the work and are ready for human review, run THIS EXACT
+sequence — no improvisation, no skipping steps:
+
+1. **Detect the default branch.** \`gh repo view --json defaultBranchRef --jq .defaultBranchRef.name\`.
+   Cache as \`$BASE\`. If \`gh\` reports an error (no remote, not authenticated,
+   not a GitHub repo), call \`pbq error\` with \`where:"detect-base"\` and stop.
+2. **Stage + commit** all your changes. Use a clear, conventional commit
+   message — subject ≤ 72 chars, imperative mood. Body explains *why* the
+   change is needed. Multiple logical changes → multiple commits.
+3. **Push the working branch.** \`git push -u origin HEAD\`. If the remote
+   rejects (non-fast-forward, protected branch, auth), call \`pbq error\` with
+   \`where:"push"\` and stop.
+4. **Open the PR.** \`gh pr create --base "$BASE" --title "<short, ticket-style title>" --body "<body>"\`.
+   The body should:
+   - one-sentence summary of the change,
+   - bulleted "What changed" list (3–6 items max),
+   - any screenshots/asset links if relevant,
+   - end with \`Closes ticket: ${ctx.identifier}\`.
+   Capture the PR URL printed by \`gh\` — you'll need it for step 5.
+5. **Ship.** Call:
+   \`\`\`sh
+   ./.planbooq/pbq ship '{
+     "prUrl": "<URL from step 4>",
+     "summary": "<one-line summary>",
+     "branch": "<your branch name from \`git rev-parse --abbrev-ref HEAD\`>",
+     "targetBranch": "<$BASE>"
+   }'
+   \`\`\`
+   Optionally include numeric \`filesChanged\`, \`additions\`, \`deletions\` from
+   \`git diff --shortstat "$BASE"...HEAD\`.
+6. After \`pbq ship\` returns 200, you are **done**. The ticket has been moved
+   to Review with a meticulous comment summarising the PR. Do not write a
+   final report; the ticket comment IS the report.
+
+If anything in steps 1–4 fails (build error, type-check failure, push
+rejection, gh failure), call \`./.planbooq/pbq error '{"reason":"<one-paragraph what failed and what you tried>","where":"<step name: detect-base|commit|push|gh-pr-create>"}'\`
+**instead** of \`ship\`. Do NOT call \`ship\` after a failure.
+
+Hard rules:
+- Never merge the PR yourself — Planbooq leaves merging to a human reviewer.
+- Never push to the base branch.
+- Never modify the ticket's \`statusId\` directly with \`pbq update\` —
+  \`ship\` and \`error\` are the only correct status mutators in this flow.
+- Never call \`ship\` and \`error\` in the same session. Pick one terminal call.
 `;
   // Write as CLAUDE.local.md so we don't clobber a project's CLAUDE.md.
   await fs.writeFile(path.join(wtPath, "CLAUDE.local.md"), claudeMd);
