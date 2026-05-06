@@ -161,7 +161,7 @@ export function TicketDetailDialog({
       return;
     }
     let cancelled = false;
-    startStatusTransition(async () => {
+    const fetchOnce = async (): Promise<void> => {
       const result = await getPullRequestStatus(ticket.id);
       if (cancelled) return;
       if (!result.ok) {
@@ -176,9 +176,16 @@ export function TicketDetailDialog({
       }
       setPrStatus(result.data.status);
       setPrStatusReason(null);
+    };
+    startStatusTransition(() => {
+      void fetchOnce();
     });
+    const interval = setInterval(() => {
+      void fetchOnce();
+    }, 15000);
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, [showPrStatus, ticket.id, ticketPrUrl]);
 
@@ -566,8 +573,24 @@ export function TicketDetailDialog({
                       const badge = describeStatusBadge(prStatus);
                       const disabledReason = describeMergeDisabledReason(prStatus);
                       const disabled = isFetchingStatus || mergePending || disabledReason !== null;
+                      const badgeClass =
+                        badge.tone === "warn"
+                          ? "bg-destructive/10 text-destructive"
+                          : badge.tone === "merged"
+                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                            : "bg-muted text-muted-foreground";
                       return (
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[12px] text-muted-foreground">PR status</span>
+                            <span
+                              className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${badgeClass}`}
+                              title={disabledReason ?? undefined}
+                            >
+                              {badge.label}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
                           <Button
                             type="button"
                             variant="outline"
@@ -598,6 +621,7 @@ export function TicketDetailDialog({
                                 ? "Merged"
                                 : "Merge"}
                           </Button>
+                          </div>
                         </div>
                       );
                     })()
