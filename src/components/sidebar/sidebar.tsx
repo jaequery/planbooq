@@ -117,6 +117,7 @@ export function Sidebar({ projects, workspaceId }: Props): React.ReactElement {
                   </Link>
                   <div className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity duration-[120ms] ease-out group-hover/row:opacity-100 [&:has([data-state=open])]:opacity-100">
                     <ProjectActionsMenu
+                      workspaceId={workspaceId}
                       projectId={project.id}
                       projectName={project.name}
                       projectDescription={project.description ?? null}

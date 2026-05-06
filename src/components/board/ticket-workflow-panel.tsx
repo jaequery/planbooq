@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Play, RotateCcw, Settings2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, Play, RotateCcw, Settings2 } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
@@ -33,6 +33,7 @@ type WorkflowState = {
 export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.ReactElement {
   const [wf, setWf] = useState<WorkflowState | null>(null);
   const [pending, start] = useTransition();
+  const [confirmingReset, setConfirmingReset] = useState(false);
 
   async function refresh() {
     const a = await getTicketWorkflow(ticketId);
@@ -69,7 +70,8 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
                 : "No workflow"}
           </span>
           <span className="text-xs text-muted-foreground">
-            {enabledCount} step{enabledCount === 1 ? "" : "s"} will run
+            {enabledCount} step{enabledCount === 1 ? "" : "s"} will run · output streams to the
+            Agent tab
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -85,6 +87,7 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
                 })
               }
               disabled={pending}
+              title="Make a ticket-only copy of these steps you can edit freely"
             >
               <Settings2 className="size-4" />
               Customize
@@ -94,15 +97,9 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => {
-                if (!confirm("Drop the ticket override and use the project default?")) return;
-                start(async () => {
-                  const r = await disableTicketWorkflowOverride(ticketId);
-                  if (!r.ok) toast.error(r.error);
-                  await refresh();
-                });
-              }}
+              onClick={() => setConfirmingReset(true)}
               disabled={pending}
+              title="Delete custom steps and inherit the project default again"
             >
               <RotateCcw className="size-4" />
               Reset
@@ -126,9 +123,15 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
                     detail: { ticketId, prompts },
                   }),
                 );
-                // Fire-and-forget server record for audit; UI doesn't block on it.
+                window.dispatchEvent(
+                  new CustomEvent("planbooq:switch-ticket-tab", {
+                    detail: { ticketId, tab: "agent" },
+                  }),
+                );
                 void triggerWorkflowRun(ticketId).catch(() => {});
-                toast.success(`Queued ${enabledSteps.length} step${enabledSteps.length === 1 ? "" : "s"}`);
+                toast.success(
+                  `Running ${enabledSteps.length} step${enabledSteps.length === 1 ? "" : "s"} in Agent`,
+                );
               })
             }
             disabled={pending || enabledCount === 0}
@@ -138,6 +141,42 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
           </Button>
         </div>
       </header>
+
+      {confirmingReset && (
+        <div className="flex items-start justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
+          <span>
+            This deletes all {wf.steps.length} custom step{wf.steps.length === 1 ? "" : "s"} on this
+            ticket and falls back to the project default. This cannot be undone.
+          </span>
+          <div className="flex shrink-0 gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setConfirmingReset(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() =>
+                start(async () => {
+                  const r = await disableTicketWorkflowOverride(ticketId);
+                  if (!r.ok) toast.error(r.error);
+                  setConfirmingReset(false);
+                  await refresh();
+                })
+              }
+              disabled={pending}
+            >
+              Delete custom steps
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {wf.hasOverride && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/[0.06] p-2 text-[12px] text-amber-700 dark:text-amber-300">
+          This ticket uses a custom copy of its workflow steps. Changes to the project's default
+          template won't apply here — use Reset to drop back to the default.
+        </div>
+      )}
 
       {editable ? (
         <StepList
@@ -190,20 +229,47 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
       ) : (
         <ul className="flex flex-col gap-2">
           {wf.steps.map((s, i) => (
-            <li
-              key={`${s.position}-${s.name}`}
-              className={`flex items-center gap-3 rounded-md border bg-background px-3 py-2 text-sm ${
-                s.enabled ? "" : "opacity-50"
-              }`}
-            >
-              <span className="w-6 shrink-0 text-xs text-muted-foreground">{i + 1}.</span>
-              <span className="flex-1 truncate">{s.name}</span>
-              {!s.enabled && <span className="text-xs text-muted-foreground">disabled</span>}
-            </li>
+            <ReadOnlyStepRow key={`${s.position}-${s.name}`} step={s} index={i} />
           ))}
         </ul>
       )}
-
     </div>
+  );
+}
+
+function ReadOnlyStepRow({
+  step,
+  index,
+}: {
+  step: { name: string; prompt: string; enabled: boolean };
+  index: number;
+}): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  return (
+    <li
+      className={`flex flex-col gap-1 rounded-md border bg-background px-3 py-2 text-sm ${
+        step.enabled ? "" : "opacity-60"
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-3 text-left"
+      >
+        <span className="w-6 shrink-0 text-xs text-muted-foreground">{index + 1}.</span>
+        <span className="flex-1 truncate">{step.name}</span>
+        {!step.enabled && <span className="text-xs text-muted-foreground">disabled</span>}
+        {open ? (
+          <ChevronUp className="size-4 text-muted-foreground" />
+        ) : (
+          <ChevronDown className="size-4 text-muted-foreground" />
+        )}
+      </button>
+      {open && (
+        <pre className="whitespace-pre-wrap rounded bg-muted/40 p-2 text-[12px] text-muted-foreground">
+          {step.prompt}
+        </pre>
+      )}
+    </li>
   );
 }

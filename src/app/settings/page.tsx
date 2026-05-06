@@ -33,7 +33,7 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
     },
   });
 
-  const wfList = await listWorkflowTemplates();
+  const wfList = await listWorkflowTemplates({ workspaceId: membership.workspaceId });
   const initialTemplates = wfList.ok ? wfList.templates : [];
 
   const keys = await prisma.apiKey.findMany({
@@ -76,7 +76,12 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
               initialKeys={keys}
             />
           }
-          workflows={<WorkflowsClient initialTemplates={initialTemplates} />}
+          workflows={
+            <WorkflowsClient
+              workspaceId={membership.workspaceId}
+              initialTemplates={initialTemplates}
+            />
+          }
           agents={<AgentsClient workspaceId={membership.workspaceId} initialAgents={agents} />}
         />
       </Suspense>

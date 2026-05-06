@@ -41,6 +41,8 @@ type Props = {
   autoRunAction?: boolean;
 };
 
+type TicketTabValue = "agent" | "workflow" | "activity";
+
 type PrStatusReason =
   | "no-pr-url"
   | "not-github"
@@ -116,6 +118,18 @@ export function TicketDetailDialog({
   autoRunAction,
 }: Props): React.ReactElement {
   const [, startTransition] = useTransition();
+  const [activeTab, setActiveTab] = useState<TicketTabValue>("agent");
+  useEffect(() => {
+    const onSwitch = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { ticketId?: string; tab?: string };
+      if (!detail || detail.ticketId !== ticket.id) return;
+      if (detail.tab === "agent" || detail.tab === "workflow" || detail.tab === "activity") {
+        setActiveTab(detail.tab);
+      }
+    };
+    window.addEventListener("planbooq:switch-ticket-tab", onSwitch);
+    return () => window.removeEventListener("planbooq:switch-ticket-tab", onSwitch);
+  }, [ticket.id]);
   const [titleDraft, setTitleDraft] = useState(ticket.title);
   const [descriptionDraft, setDescriptionDraft] = useState(ticket.description ?? "");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -613,7 +627,7 @@ export function TicketDetailDialog({
             <TicketPreviewsPanel ticketId={ticket.id} workspaceId={ticket.workspaceId} />
 
             <div className="mt-4 border-t border-border/60 pt-4">
-              <Tabs defaultValue="agent">
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TicketTabValue)}>
                 <TabsList className="mb-4 h-auto justify-start gap-1 border-0 bg-transparent p-0">
                   <TabsTrigger
                     value="agent"

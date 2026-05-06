@@ -1,7 +1,7 @@
 "use client";
 
-import { ChevronDown, ChevronUp, GripVertical, Loader2, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState, useTransition } from "react";
+import { ChevronDown, ChevronUp, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
   addTemplateStep,
@@ -23,17 +23,25 @@ type TemplateRow = { id: string; name: string; description: string | null; stepC
 type Step = { id: string; name: string; prompt: string; position: number; enabled: boolean };
 type FullTemplate = { id: string; name: string; description: string | null; steps: Step[] };
 
-type Props = { initialTemplates: TemplateRow[] };
+type Props = { workspaceId: string; initialTemplates: TemplateRow[] };
 
-export function WorkflowsClient({ initialTemplates }: Props): React.ReactElement {
+export function WorkflowsClient({
+  workspaceId,
+  initialTemplates,
+}: Props): React.ReactElement {
   const [templates, setTemplates] = useState<TemplateRow[]>(initialTemplates);
   const [activeId, setActiveId] = useState<string | null>(initialTemplates[0]?.id ?? null);
   const [active, setActive] = useState<FullTemplate | null>(null);
   const [pending, start] = useTransition();
   const [creatingName, setCreatingName] = useState("");
+  const createInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (templates.length === 0) createInputRef.current?.focus();
+  }, [templates.length]);
 
   async function refreshList() {
-    const res = await listWorkflowTemplates();
+    const res = await listWorkflowTemplates({ workspaceId });
     if (res.ok) setTemplates(res.templates);
   }
 
@@ -52,7 +60,7 @@ export function WorkflowsClient({ initialTemplates }: Props): React.ReactElement
     const name = creatingName.trim();
     if (!name) return;
     start(async () => {
-      const res = await createWorkflowTemplate({ name });
+      const res = await createWorkflowTemplate({ workspaceId, name });
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -81,7 +89,10 @@ export function WorkflowsClient({ initialTemplates }: Props): React.ReactElement
       <aside className="flex flex-col gap-2">
         <div className="flex flex-col gap-1">
           {templates.length === 0 && (
-            <p className="text-sm text-muted-foreground">No templates yet.</p>
+            <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+              No workflow templates yet. Type a name below to create your first one — it becomes a
+              reusable list of AI instructions you can apply to any project or ticket.
+            </div>
           )}
           {templates.map((t) => (
             <button
@@ -101,6 +112,7 @@ export function WorkflowsClient({ initialTemplates }: Props): React.ReactElement
         </div>
         <div className="mt-2 flex gap-2">
           <Input
+            ref={createInputRef}
             placeholder="New template name"
             value={creatingName}
             onChange={(e) => setCreatingName(e.target.value)}
@@ -316,7 +328,7 @@ export function StepList({
             onChange={(e) => setNewName(e.target.value)}
           />
           <Textarea
-            placeholder="Prompt (what the AI should do for this step)"
+            placeholder="Instructions (what the AI should do for this step)"
             value={newPrompt}
             onChange={(e) => setNewPrompt(e.target.value)}
             rows={3}
@@ -364,7 +376,6 @@ function StepRow({
   return (
     <li className="flex flex-col gap-2 rounded-md border bg-background p-3">
       <div className="flex items-center gap-2">
-        <GripVertical className="size-4 shrink-0 text-muted-foreground" />
         <span className="w-6 shrink-0 text-xs text-muted-foreground">{index + 1}.</span>
         <Input
           value={name}
@@ -388,8 +399,13 @@ function StepRow({
         <Button size="icon" variant="ghost" onClick={onMoveDown} disabled={disableDown}>
           <ChevronDown className="size-4" />
         </Button>
-        <Button size="icon" variant="ghost" onClick={() => setOpen((v) => !v)}>
-          <span className="text-xs">{open ? "−" : "✎"}</span>
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={() => setOpen((v) => !v)}
+          title={open ? "Hide instructions" : "Edit instructions"}
+        >
+          {open ? <ChevronUp className="size-4" /> : <Pencil className="size-4" />}
         </Button>
         <Button size="icon" variant="ghost" onClick={onRemove}>
           <Trash2 className="size-4" />

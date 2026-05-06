@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAgent } from "@/server/agent-auth";
 import { prisma } from "@/server/db";
-import { advanceWorkflowAfterJob } from "@/server/services/workflow-runner";
 
 const PatchSchema = z
   .object({
@@ -58,20 +57,8 @@ export async function PATCH(
   const updated = await prisma.agentJob.update({
     where: { id },
     data,
-    select: { id: true, status: true, ticketId: true, workflowStepRunId: true },
+    select: { id: true, status: true, ticketId: true },
   });
-
-  if (
-    updated.workflowStepRunId &&
-    (parsed.data.status === "SUCCEEDED" ||
-      parsed.data.status === "FAILED" ||
-      parsed.data.status === "CANCELED")
-  ) {
-    await advanceWorkflowAfterJob({
-      jobId: updated.id,
-      status: parsed.data.status,
-    });
-  }
 
   return NextResponse.json({ ok: true, data: updated });
 }

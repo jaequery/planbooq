@@ -40,6 +40,7 @@ const RenameSchema = z.object({
 type RenameValues = z.infer<typeof RenameSchema>;
 
 type Props = {
+  workspaceId: string;
   projectId: string;
   projectName: string;
   projectDescription?: string | null;
@@ -49,6 +50,7 @@ type Props = {
 };
 
 export function ProjectActionsMenu({
+  workspaceId,
   projectId,
   projectName,
   projectDescription,
@@ -81,7 +83,7 @@ export function ProjectActionsMenu({
       setDesignLoadError(null);
       (async () => {
         const [templatesRes, defaultRes] = await Promise.all([
-          listWorkflowTemplates(),
+          listWorkflowTemplates({ workspaceId }),
           getProjectDefaultWorkflow(projectId),
         ]);
         if (templatesRes.ok) {
