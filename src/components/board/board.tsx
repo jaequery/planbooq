@@ -189,6 +189,37 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
     localClientIdRef.current = rtClientId;
   }, [rtClientId]);
 
+  // Local-first stand-in for GitHub webhooks: every 30s ask the server to
+  // walk Review-status tickets with a prUrl and ask GitHub whether the PR
+  // merged. Merged PRs trigger the same auto-complete path the webhook
+  // would, including the Ably `ticket.moved` fanout that this board's
+  // existing handler picks up. Skips while tab is hidden.
+  useEffect(() => {
+    const workspaceId = initialData.project.workspaceId;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = async (): Promise<void> => {
+      if (stopped || document.visibilityState !== "visible") {
+        timer = setTimeout(tick, 30_000);
+        return;
+      }
+      try {
+        await fetch(`/api/workspaces/${workspaceId}/poll-prs`, {
+          method: "POST",
+          cache: "no-store",
+        });
+      } catch {
+        // tolerated — next tick will retry
+      }
+      if (!stopped) timer = setTimeout(tick, 30_000);
+    };
+    timer = setTimeout(tick, 5_000);
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [initialData.project.workspaceId]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),

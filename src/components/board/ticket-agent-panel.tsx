@@ -256,21 +256,24 @@ function DesktopPanel({
         const cursor = { current: null as string | null };
         let acc: ChatMsg[] = [];
         let resolvedClaudeSession: string | null = null;
+        let endedInEvents = false;
         for (const ev of events) {
           const r = applyWireEvent(ev, acc, cursor);
           acc = r.msgs;
           if (r.claudeSessionId !== undefined) resolvedClaudeSession = r.claudeSessionId;
+          if (r.ended) endedInEvents = true;
         }
         currentAssistantId.current = cursor.current;
         setMessages(acc);
         setWorktreePath(job.worktreePath);
         setClaudeSessionId(resolvedClaudeSession ?? job.claudeSessionId);
         setJobId(job.id);
-        // Job is "active" only while running. If it's still RUNNING the server
-        // believes a session is in flight (e.g. user is mid-stream and just
-        // refreshed). The local Electron process is ours and will keep firing
-        // bridge events into this fresh listener.
-        if (job.status === "RUNNING") setBusy(true);
+        // Trust the persisted events over the DB status flag: if the wire log
+        // already contains a terminal `result` or `exit`, the underlying
+        // Claude process is idle (or gone) regardless of what the AgentJob
+        // row says. Otherwise honour the row's RUNNING.
+        if (job.status === "RUNNING" && !endedInEvents) setBusy(true);
+        else setBusy(false);
       } catch {
         // ignore — empty hydrate
       }
