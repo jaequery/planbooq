@@ -91,13 +91,14 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
           )}
           {wf.hasOverride && (
             <Button
-              size="icon"
+              size="sm"
               variant="ghost"
               onClick={() => setConfirmingReset(true)}
               disabled={pending}
-              title="Reset to project default"
+              title="Delete custom steps and use the project default again"
             >
               <RotateCcw className="size-4" />
+              Cancel
             </Button>
           )}
           <Button
@@ -163,8 +164,8 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
 
       {wf.hasOverride && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/[0.06] p-2 text-[12px] text-amber-700 dark:text-amber-300">
-          This ticket uses a custom copy of its workflow steps. Changes to the project's default
-          template won't apply here — use Reset to drop back to the default.
+          This ticket has its own copy of the workflow. Edits to the project default won't apply
+          here. Hit Cancel to discard this copy and inherit the default again.
         </div>
       )}
 
