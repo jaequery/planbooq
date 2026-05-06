@@ -531,12 +531,6 @@ function DesktopPanel({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="mr-auto text-sm font-medium">Claude Code</h3>
-        {sessionId && (
-          <Button size="sm" variant="outline" onClick={stop}>
-            <Square className="size-4" />
-            Stop
-          </Button>
-        )}
       </div>
 
       {messages.length > 0 && (
@@ -588,16 +582,17 @@ function DesktopPanel({
           rows={2}
           className="min-h-[60px] flex-1 resize-y rounded-lg bg-muted/40 px-3 py-2 text-[13px] outline-none focus:bg-muted/60"
         />
-        <Button size="sm" onClick={send} disabled={busy || !input.trim()}>
-          {busy ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : sessionId ? (
-            <Send className="size-4" />
-          ) : (
-            <Play className="size-4" />
-          )}
-          {sessionId ? "Send" : "Start"}
-        </Button>
+        {busy ? (
+          <Button size="sm" variant="outline" onClick={stop}>
+            <Square className="size-4" />
+            Stop
+          </Button>
+        ) : (
+          <Button size="sm" onClick={send} disabled={!input.trim()}>
+            {sessionId ? <Send className="size-4" /> : <Play className="size-4" />}
+            {sessionId ? "Send" : "Start"}
+          </Button>
+        )}
       </div>
     </div>
   );
