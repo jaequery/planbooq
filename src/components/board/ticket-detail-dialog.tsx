@@ -20,7 +20,6 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { ImageUploadTextarea } from "@/components/ui/image-upload-textarea";
 import { Input } from "@/components/ui/input";
 import { Markdown } from "@/components/ui/markdown";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatTicketIdentifier } from "@/lib/ticket-identifier";
 import type { Priority, TicketAssignee, TicketLabel, TicketWithRelations } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -39,8 +38,6 @@ type Props = {
   currentUserId: string | null;
   autoRunAction?: boolean;
 };
-
-type TicketTabValue = "activity";
 
 type PrStatusReason =
   | "no-pr-url"
@@ -117,7 +114,6 @@ export function TicketDetailDialog({
   autoRunAction,
 }: Props): React.ReactElement {
   const [, startTransition] = useTransition();
-  const [activeTab, setActiveTab] = useState<TicketTabValue>("activity");
   const [titleDraft, setTitleDraft] = useState(ticket.title);
   const [descriptionDraft, setDescriptionDraft] = useState(ticket.description ?? "");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -469,6 +465,19 @@ export function TicketDetailDialog({
                 )}
               </div>
             </div>
+
+            <div className="mt-6 border-t border-border/60 px-8 py-6">
+              <TicketAgentPanel
+                ticketId={ticket.id}
+                workspaceId={ticket.workspaceId}
+                projectId={ticket.projectId}
+                title={ticket.title}
+                description={ticket.description ?? null}
+                identifier={ticketIdLabel}
+                statusKey={statuses.find((s) => s.id === ticket.statusId)?.key}
+                autoRunAction={autoRunAction}
+              />
+            </div>
           </div>
 
           <aside className="flex w-[360px] shrink-0 flex-col gap-1 overflow-y-auto border-l border-border px-4 py-6">
@@ -614,44 +623,17 @@ export function TicketDetailDialog({
             </div>
             <TicketPreviewsPanel ticketId={ticket.id} workspaceId={ticket.workspaceId} />
 
-            <div className="mt-4 border-t border-border/60 pt-4">
-              <TicketAgentPanel
+            <div className="mt-4 flex flex-col gap-4 border-t border-border/60 pt-4">
+              <h3 className="text-[12px] font-medium text-muted-foreground">Activity</h3>
+              <TicketTimeline
                 ticketId={ticket.id}
                 workspaceId={ticket.workspaceId}
-                projectId={ticket.projectId}
-                title={ticket.title}
-                description={ticket.description ?? null}
-                identifier={ticketIdLabel}
-                statusKey={statuses.find((s) => s.id === ticket.statusId)?.key}
-                autoRunAction={autoRunAction}
+                currentUserId={currentUserId}
+                createdAt={createdAt}
+                updatedAt={updatedAt}
+                wasEdited={wasEdited}
               />
-            </div>
-
-            <div className="mt-4 border-t border-border/60 pt-4">
-              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TicketTabValue)}>
-                <TabsList className="mb-4 h-auto justify-start gap-1 border-0 bg-transparent p-0">
-                  <TabsTrigger
-                    value="activity"
-                    className="-mb-0 h-7 rounded-full px-3 text-[12px] font-medium after:hidden data-[state=active]:bg-muted data-[state=active]:after:hidden"
-                  >
-                    Activity
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent
-                  value="activity"
-                  className="flex flex-col gap-6 focus-visible:outline-none"
-                >
-                  <TicketTimeline
-                    ticketId={ticket.id}
-                    workspaceId={ticket.workspaceId}
-                    currentUserId={currentUserId}
-                    createdAt={createdAt}
-                    updatedAt={updatedAt}
-                    wasEdited={wasEdited}
-                  />
-                  <TicketActivityFeed ticketId={ticket.id} workspaceId={ticket.workspaceId} />
-                </TabsContent>
-              </Tabs>
+              <TicketActivityFeed ticketId={ticket.id} workspaceId={ticket.workspaceId} />
             </div>
           </aside>
         </div>

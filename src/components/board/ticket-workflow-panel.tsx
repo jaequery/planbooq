@@ -59,25 +59,23 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
   const editable = wf.hasOverride;
 
   return (
-    <div className="flex flex-col gap-5">
-      <header className="flex items-center justify-between gap-3">
-        <div className="flex flex-col">
-          <span className="text-sm font-medium">
+    <div className="flex flex-col gap-4">
+      <header className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="truncate text-sm font-medium">
             {wf.hasOverride
               ? "Custom workflow"
-              : wf.templateName
-                ? `Project default: ${wf.templateName}`
-                : "No workflow"}
+              : wf.templateName || "Workflow"}
           </span>
-          <span className="text-xs text-muted-foreground">
-            {enabledCount} step{enabledCount === 1 ? "" : "s"} will run in Claude Code below
+          <span className="shrink-0 text-[11px] text-muted-foreground">
+            {enabledCount}/{wf.steps.length}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1">
           {!wf.hasOverride && (
             <Button
-              size="sm"
-              variant="outline"
+              size="icon"
+              variant="ghost"
               onClick={() =>
                 start(async () => {
                   const r = await enableTicketWorkflowOverride(ticketId);
@@ -86,22 +84,20 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
                 })
               }
               disabled={pending}
-              title="Make a ticket-only copy of these steps you can edit freely"
+              title="Customize for this ticket"
             >
               <Settings2 className="size-4" />
-              Customize
             </Button>
           )}
           {wf.hasOverride && (
             <Button
-              size="sm"
+              size="icon"
               variant="ghost"
               onClick={() => setConfirmingReset(true)}
               disabled={pending}
-              title="Delete custom steps and inherit the project default again"
+              title="Reset to project default"
             >
               <RotateCcw className="size-4" />
-              Reset
             </Button>
           )}
           <Button
@@ -124,7 +120,7 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
                 );
                 void triggerWorkflowRun(ticketId).catch(() => {});
                 toast.success(
-                  `Running ${enabledSteps.length} step${enabledSteps.length === 1 ? "" : "s"} below`,
+                  `Running ${enabledSteps.length} step${enabledSteps.length === 1 ? "" : "s"}`,
                 );
               })
             }
