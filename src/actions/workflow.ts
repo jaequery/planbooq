@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
-import { startWorkflowRun } from "@/server/services/workflow-runner";
 
 type Ok<T> = T extends Record<string, never> ? { ok: true } : { ok: true } & T;
 type Err = { ok: false; error: string };
@@ -551,13 +550,9 @@ export async function triggerWorkflowRun(
     select: { id: true },
   });
 
-  const started = await startWorkflowRun({
-    runId: run.id,
-    ticketId,
-    workspaceId: ctx.workspaceId,
-    userId: ctx.userId,
-  });
-  if (!started.ok) return { ok: false, error: started.error };
+  // The actual step prompts are dispatched client-side through the existing
+  // Agent Chat (desktop bridge → Claude Code → desktop-jobs PATCH). This
+  // server record exists for audit only.
 
   revalidatePath("/");
   return { ok: true, runId: run.id, stepCount: enabled.length };

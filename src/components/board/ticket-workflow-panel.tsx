@@ -112,13 +112,23 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
             size="sm"
             onClick={() =>
               start(async () => {
-                const r = await triggerWorkflowRun(ticketId);
-                if (!r.ok) {
-                  toast.error(r.error === "no_steps" ? "Add at least one enabled step" : r.error);
+                const enabledSteps = wf.steps.filter((s) => s.enabled);
+                if (enabledSteps.length === 0) {
+                  toast.error("Add at least one enabled step");
                   return;
                 }
-                toast.success(`Workflow run queued (${r.stepCount} steps)`);
-                await refresh();
+                const prompts = enabledSteps.map(
+                  (s, i) =>
+                    `[Workflow ${i + 1}/${enabledSteps.length}: ${s.name}]\n${s.prompt}`,
+                );
+                window.dispatchEvent(
+                  new CustomEvent("planbooq:workflow-run", {
+                    detail: { ticketId, prompts },
+                  }),
+                );
+                // Fire-and-forget server record for audit; UI doesn't block on it.
+                void triggerWorkflowRun(ticketId).catch(() => {});
+                toast.success(`Queued ${enabledSteps.length} step${enabledSteps.length === 1 ? "" : "s"}`);
               })
             }
             disabled={pending || enabledCount === 0}

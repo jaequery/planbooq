@@ -211,6 +211,7 @@ function DesktopPanel({
   const currentAssistantId = useRef<string | null>(null);
   const jobIdRef = useRef<string | null>(null);
   jobIdRef.current = jobId;
+  const workflowQueueRef = useRef<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -352,10 +353,37 @@ function DesktopPanel({
     return result.path;
   };
 
-  const send = async () => {
+  const sendRef = useRef<((override?: string) => Promise<void>) | null>(null);
+
+  // Listen for workflow Run events: enqueue prompts, drain when idle.
+  useEffect(() => {
+    const onRun = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { ticketId?: string; prompts?: string[] };
+      if (!detail || detail.ticketId !== ticketId || !Array.isArray(detail.prompts)) return;
+      workflowQueueRef.current.push(...detail.prompts);
+      // Kick a drain attempt; further drains happen via the busy effect below.
+      if (!busy && sendRef.current) {
+        const next = workflowQueueRef.current.shift();
+        if (next) void sendRef.current(next);
+      }
+    };
+    window.addEventListener("planbooq:workflow-run", onRun);
+    return () => window.removeEventListener("planbooq:workflow-run", onRun);
+  }, [ticketId, busy]);
+
+  // Drain the queue whenever the agent goes idle.
+  useEffect(() => {
+    if (busy) return;
+    if (workflowQueueRef.current.length === 0) return;
+    const next = workflowQueueRef.current.shift();
+    if (!next || !sendRef.current) return;
+    void sendRef.current(next);
+  }, [busy]);
+
+  const send = async (override?: string) => {
     const bridge = getDesktopBridge();
     if (!bridge) return;
-    const message = input.trim();
+    const message = (override ?? input).trim();
     if (!message) return;
 
     if (typeof bridge.agentStart !== "function" || typeof bridge.agentSend !== "function") {
@@ -503,6 +531,8 @@ function DesktopPanel({
     }
   };
 
+  sendRef.current = send;
+
   const stop = async () => {
     const bridge = getDesktopBridge();
     if (!bridge || !sessionId) return;
@@ -588,7 +618,7 @@ function DesktopPanel({
             Stop
           </Button>
         ) : (
-          <Button size="sm" onClick={send} disabled={!input.trim()}>
+          <Button size="sm" onClick={() => send()} disabled={!input.trim()}>
             {sessionId ? <Send className="size-4" /> : <Play className="size-4" />}
             {sessionId ? "Send" : "Start"}
           </Button>
