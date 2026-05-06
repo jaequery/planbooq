@@ -13,10 +13,30 @@ contextBridge.exposeInMainWorld("planbooq", {
     ipcRenderer.invoke("planbooq:notifications:setToken", { token, channel }),
   setUnreadCount: (count: number) =>
     ipcRenderer.invoke("planbooq:tray:setUnread", count),
-  agentStart: (input: { repoPath: string; branch: string; firstMessage: string }) =>
-    ipcRenderer.invoke("planbooq:agent:start", input),
-  agentResume: (input: { worktreePath: string; claudeSessionId: string; message: string }) =>
-    ipcRenderer.invoke("planbooq:agent:resume", input),
+  agentStart: (input: {
+    repoPath: string;
+    branch: string;
+    firstMessage: string;
+    ticket?: {
+      ticketId: string;
+      identifier: string;
+      title: string;
+      apiBaseUrl: string;
+      apiToken: string;
+    };
+  }) => ipcRenderer.invoke("planbooq:agent:start", input),
+  agentResume: (input: {
+    worktreePath: string;
+    claudeSessionId: string;
+    message: string;
+    ticket?: {
+      ticketId: string;
+      identifier: string;
+      title: string;
+      apiBaseUrl: string;
+      apiToken: string;
+    };
+  }) => ipcRenderer.invoke("planbooq:agent:resume", input),
   agentSend: (input: { sessionId: string; message: string }) =>
     ipcRenderer.invoke("planbooq:agent:send", input),
   agentStop: (input: { sessionId: string }) => ipcRenderer.invoke("planbooq:agent:stop", input),

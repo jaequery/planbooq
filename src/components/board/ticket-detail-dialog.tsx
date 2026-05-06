@@ -481,6 +481,7 @@ export function TicketDetailDialog({
                     projectId={ticket.projectId}
                     title={ticket.title}
                     description={ticket.description ?? null}
+                    identifier={ticketIdLabel}
                   />
                 </TabsContent>
                 <TabsContent

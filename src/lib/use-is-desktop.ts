@@ -16,7 +16,18 @@ type DesktopBridge = {
   }>;
   pickRepoPath: () => Promise<{ ok: boolean; path?: string; error?: string }>;
   onWorktreeLog: (cb: (line: string) => void) => () => void;
-  agentStart: (input: { repoPath: string; branch: string; firstMessage: string }) => Promise<{
+  agentStart: (input: {
+    repoPath: string;
+    branch: string;
+    firstMessage: string;
+    ticket?: {
+      ticketId: string;
+      identifier: string;
+      title: string;
+      apiBaseUrl: string;
+      apiToken: string;
+    };
+  }) => Promise<{
     ok: boolean;
     error?: string;
     sessionId?: string;
@@ -26,6 +37,13 @@ type DesktopBridge = {
     worktreePath: string;
     claudeSessionId: string;
     message: string;
+    ticket?: {
+      ticketId: string;
+      identifier: string;
+      title: string;
+      apiBaseUrl: string;
+      apiToken: string;
+    };
   }) => Promise<{ ok: boolean; error?: string; sessionId?: string }>;
   agentSend: (input: { sessionId: string; message: string }) => Promise<{
     ok: boolean;

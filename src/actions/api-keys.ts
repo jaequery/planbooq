@@ -112,6 +112,41 @@ export async function createApiKey(
   }
 }
 
+const MintAgentSchema = z.object({ workspaceId: z.string().min(1) }).strict();
+
+// Mints a short-lived API key for a Claude Code session spawned from the desktop app.
+// Each spawn gets a fresh token so revoking one session doesn't break the others.
+export async function mintAgentApiKey(
+  input: z.infer<typeof MintAgentSchema>,
+): Promise<ServerActionResult<{ token: string; expiresAt: Date }>> {
+  try {
+    const { workspaceId } = MintAgentSchema.parse(input);
+    const userId = await requireSessionUser();
+    await requireMembership(workspaceId, userId);
+
+    const secret = randomBytes(16).toString("hex");
+    const token = `${KEY_PREFIX}${secret}`;
+    const prefix = token.slice(0, 16);
+    const hash = hashApiKey(token);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await prisma.apiKey.create({
+      data: {
+        workspaceId,
+        userId,
+        name: `Claude Code agent · ${new Date().toISOString().slice(0, 10)}`,
+        prefix,
+        hash,
+        expiresAt,
+      },
+    });
+    return { ok: true, data: { token, expiresAt } };
+  } catch (e) {
+    logger.error("mintAgentApiKey.failed", { error: e instanceof Error ? e.message : String(e) });
+    return { ok: false, error: e instanceof Error ? e.message : "unknown" };
+  }
+}
+
 const RevokeSchema = z.object({ keyId: z.string().min(1) }).strict();
 
 export async function revokeApiKey(

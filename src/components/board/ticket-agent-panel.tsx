@@ -4,6 +4,8 @@ import { Folder, Loader2, Play, Send, Square } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { dispatchTicketToAgent, listAgents } from "@/actions/agents";
+import { mintAgentApiKey } from "@/actions/api-keys";
+import { getProjectLocalPath, updateProject } from "@/actions/project";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
 import { type AgentEvent, getDesktopBridge, useIsDesktop } from "@/lib/use-is-desktop";
@@ -26,15 +28,12 @@ type Props = {
   projectId: string;
   title: string;
   description: string | null;
+  identifier: string;
 };
 
 export function TicketAgentPanel(props: Props): React.ReactElement {
   const isDesktop = useIsDesktop();
   return isDesktop ? <DesktopPanel {...props} /> : <WebPanel {...props} />;
-}
-
-function repoKey(projectId: string): string {
-  return `planbooq:repoPath:project:${projectId}`;
 }
 
 function chatKey(ticketId: string): string {
@@ -67,7 +66,14 @@ type PersistedChat = {
   claudeSessionId: string | null;
 };
 
-function DesktopPanel({ ticketId, projectId, title, description }: Props): React.ReactElement {
+function DesktopPanel({
+  ticketId,
+  workspaceId,
+  projectId,
+  title,
+  description,
+  identifier,
+}: Props): React.ReactElement {
   const [repoPath, setRepoPath] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [worktreePath, setWorktreePath] = useState<string | null>(null);
@@ -80,7 +86,16 @@ function DesktopPanel({ ticketId, projectId, title, description }: Props): React
   const currentAssistantId = useRef<string | null>(null);
 
   useEffect(() => {
-    setRepoPath(localStorage.getItem(repoKey(projectId)));
+    let cancelled = false;
+    setRepoPath(null);
+    void (async () => {
+      const result = await getProjectLocalPath(projectId);
+      if (cancelled) return;
+      if (result.ok) setRepoPath(result.localPath);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [projectId]);
 
   // Hydrate persisted chat for this ticket.
@@ -205,8 +220,9 @@ function DesktopPanel({ ticketId, projectId, title, description }: Props): React
       if (result.error) toast.error(result.error);
       return null;
     }
-    localStorage.setItem(repoKey(projectId), result.path);
     setRepoPath(result.path);
+    const saved = await updateProject({ id: projectId, localPath: result.path });
+    if (!saved.ok) toast.error(`Could not save folder: ${saved.error}`);
     return result.path;
   };
 
@@ -230,12 +246,29 @@ function DesktopPanel({ ticketId, projectId, title, description }: Props): React
       setMessages((m) => [...m, { id: crypto.randomUUID(), role: "user", text: message }]);
       setInput("");
 
+      // Mint a fresh short-lived API token and pass it via env to claude. The
+      // wrapper at ./.planbooq/pbq reads it from $PLANBOOQ_TOKEN — never on disk.
+      let ticketCtx: Parameters<typeof bridge.agentStart>[0]["ticket"];
+      try {
+        const minted = await mintAgentApiKey({ workspaceId });
+        if (minted.ok) {
+          ticketCtx = {
+            ticketId,
+            identifier,
+            title,
+            apiBaseUrl: window.location.origin,
+            apiToken: minted.data.token,
+          };
+        }
+      } catch {}
+
       if (canResume) {
         try {
           const res = await bridge.agentResume({
             worktreePath: worktreePath!,
             claudeSessionId: claudeSessionId!,
             message,
+            ticket: ticketCtx,
           });
           if (!res.ok || !res.sessionId) {
             toast.error(res.error ?? "Resume failed");
@@ -262,9 +295,15 @@ function DesktopPanel({ ticketId, projectId, title, description }: Props): React
         .join("\n\n")
         .trim();
       const branch = `pbq-${ticketId.slice(0, 8)}-${Date.now().toString(36)}`;
+
       let res: Awaited<ReturnType<typeof bridge.agentStart>>;
       try {
-        res = await bridge.agentStart({ repoPath: path, branch, firstMessage: seed });
+        res = await bridge.agentStart({
+          repoPath: path,
+          branch,
+          firstMessage: seed,
+          ticket: ticketCtx,
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("No handler registered")) {
