@@ -367,10 +367,6 @@ function DesktopPanel({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="mr-auto text-sm font-medium">Claude Code</h3>
-        <Button size="sm" variant="outline" onClick={pickRepo} disabled={!!sessionId}>
-          <Folder className="size-4" />
-          {repoPath.split("/").pop()}
-        </Button>
         {sessionId && (
           <Button size="sm" variant="outline" onClick={stop}>
             <Square className="size-4" />
