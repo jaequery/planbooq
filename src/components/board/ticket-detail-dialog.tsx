@@ -197,7 +197,17 @@ export function TicketDetailDialog({
         return;
       }
       if (result.data.merged === true) {
-        toast.success("PR merged. Ticket will move to Completed shortly.");
+        toast.success("PR merged.");
+        // Optimistically move the ticket to Completed so the board reflects
+        // the merge instantly. The server already moved it via
+        // autoCompleteTicketByPrUrl and an Ably ticket.moved is in flight;
+        // the echo just reconciles whatever we set here.
+        const completed = statuses.find(
+          (s) => s.key === "completed" || s.name.toLowerCase() === "completed",
+        );
+        if (completed && completed.id !== ticket.statusId) {
+          onUpdated({ ...ticket, statusId: completed.id });
+        }
         loadStatus();
         return;
       }
