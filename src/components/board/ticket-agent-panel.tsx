@@ -11,6 +11,7 @@ import { TicketWorkflowPanel } from "@/components/board/ticket-workflow-panel";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
 import {
+  getAgentSessionByTicket,
   registerAgentSession,
   unregisterAgentSession,
 } from "@/lib/agent-session-manager";
@@ -269,8 +270,21 @@ function DesktopPanel({
         // already contains a terminal `result` or `exit`, the underlying
         // Claude process is idle (or gone) regardless of what the AgentJob
         // row says. Otherwise honour the row's RUNNING.
-        if (job.status === "RUNNING" && !endedInEvents) setBusy(true);
-        else setBusy(false);
+        if (job.status === "RUNNING" && !endedInEvents) {
+          // Re-attach to a live session the previous dialog instance started,
+          // so Stop/Send work instead of being detached zombies. If no live
+          // session exists in this renderer, the underlying process is gone
+          // (or this is a different renderer); show the panel as idle.
+          const liveSid = getAgentSessionByTicket(ticketId);
+          if (liveSid) {
+            setSessionId(liveSid);
+            setBusy(true);
+          } else {
+            setBusy(false);
+          }
+        } else {
+          setBusy(false);
+        }
       } catch {
         // ignore — empty hydrate
       }

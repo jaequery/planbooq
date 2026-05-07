@@ -101,3 +101,16 @@ export function unregisterAgentSession(sessionId: string): void {
 export function isAgentSessionRegistered(sessionId: string): boolean {
   return sessions.has(sessionId);
 }
+
+/**
+ * Look up the live sessionId for a ticket, if any. Used by DesktopPanel on
+ * remount to re-attach Stop/Send to an in-flight session that the previous
+ * dialog instance started — without this, the panel would show "thinking…"
+ * with disabled controls (the zombie-window).
+ */
+export function getAgentSessionByTicket(ticketId: string): string | null {
+  for (const [sessionId, reg] of sessions) {
+    if (reg.ticketId === ticketId) return sessionId;
+  }
+  return null;
+}
