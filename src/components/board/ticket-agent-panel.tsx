@@ -208,6 +208,10 @@ function DesktopPanel({
   const currentAssistantId = useRef<string | null>(null);
   const jobIdRef = useRef<string | null>(null);
   jobIdRef.current = jobId;
+  // Mirror sessionId into a ref so the bridge subscription (mounted once
+  // with [] deps) can filter incoming events without resubscribing.
+  const sessionIdRef = useRef<string | null>(null);
+  sessionIdRef.current = sessionId;
   const workflowQueueRef = useRef<string[]>([]);
 
   useEffect(() => {
@@ -315,6 +319,10 @@ function DesktopPanel({
     const bridge = getDesktopBridge();
     if (!bridge || typeof bridge.onAgentEvent !== "function") return;
     return bridge.onAgentEvent((e: AgentEvent) => {
+      // The bridge broadcasts events for every active session in the app.
+      // Without this filter, a ticket's panel would render another ticket's
+      // streaming output and PATCH its claudeSessionId onto the wrong job.
+      if (e.sessionId !== sessionIdRef.current) return;
       const wire: WireEvent =
         e.type === "exit"
           ? { kind: "exit", code: e.code }
