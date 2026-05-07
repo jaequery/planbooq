@@ -6,6 +6,8 @@ import { z } from "zod";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { chooseStatusForWorkflowRun } from "@/server/openrouter";
+import { moveTicketToStatusKey } from "@/server/services/ticket-status";
 
 type Ok<T> = T extends Record<string, never> ? { ok: true } : { ok: true } & T;
 type Err = { ok: false; error: string };
@@ -607,6 +609,57 @@ export async function triggerWorkflowRun(
     },
     select: { id: true },
   });
+
+  // Ask an LLM which status the ticket should sit in while these steps run.
+  // We pass the ticket, the current status, the enabled workflow steps, and
+  // the workspace's available statuses; the model returns one of those keys.
+  // Best-effort — on any failure (no API key, network, unparseable) fall back
+  // to "building" if the ticket is currently in backlog/todo, otherwise leave
+  // it alone.
+  try {
+    const fullTicket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        workspaceId: true,
+        status: { select: { key: true } },
+      },
+    });
+    if (fullTicket) {
+      const statuses = await prisma.status.findMany({
+        where: { workspaceId: fullTicket.workspaceId },
+        orderBy: { position: "asc" },
+        select: { key: true, name: true },
+      });
+      const currentKey = fullTicket.status?.key ?? "";
+      let targetKey: string | null = null;
+      const choice = await chooseStatusForWorkflowRun({
+        workspaceId: fullTicket.workspaceId,
+        ticket: { title: fullTicket.title, description: fullTicket.description },
+        currentStatusKey: currentKey,
+        steps: enabled.map((s) => ({ name: s.name, prompt: s.prompt })),
+        availableStatuses: statuses,
+      });
+      if (choice.ok) {
+        targetKey = choice.statusKey;
+      } else if (currentKey === "backlog" || currentKey === "todo") {
+        // Deterministic fallback when the LLM is unavailable. Don't bump
+        // tickets out of review/completed automatically.
+        targetKey = statuses.some((s) => s.key === "building") ? "building" : null;
+      }
+      if (targetKey && targetKey !== currentKey) {
+        await moveTicketToStatusKey({
+          ticketId,
+          toStatusKey: targetKey,
+          byUserId: ctx.userId,
+        });
+      }
+    }
+  } catch {
+    // tolerated — the workflow run row is already persisted
+  }
 
   revalidatePath("/");
   return { ok: true, runId: run.id, stepCount: enabled.length };

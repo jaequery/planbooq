@@ -141,6 +141,93 @@ export async function generateTicketPlan(args: {
   }
 }
 
+type StatusChoice = { ok: true; statusKey: string; reason: string } | { ok: false; error: string };
+
+/**
+ * Pick the best target status for a ticket whose workflow run has just been
+ * triggered. The choice is made by an LLM given the ticket, the workflow
+ * steps about to run, and the available status keys for the workspace.
+ *
+ * Best-effort. Callers should fall back to a deterministic rule when this
+ * returns `{ ok: false }` (no key configured, network blip, unparseable).
+ */
+export async function chooseStatusForWorkflowRun(args: {
+  workspaceId: string;
+  ticket: { title: string; description: string | null };
+  currentStatusKey: string;
+  steps: Array<{ name: string; prompt: string }>;
+  availableStatuses: Array<{ key: string; name: string }>;
+}): Promise<StatusChoice> {
+  const apiKey = await getOpenRouterApiKey(args.workspaceId);
+  if (!apiKey) return { ok: false, error: "no_key" };
+
+  const allowed = args.availableStatuses.map((s) => s.key);
+  const userPrompt = [
+    `Ticket title: ${args.ticket.title}`,
+    args.ticket.description ? `Ticket description:\n${args.ticket.description}` : null,
+    `Current status: ${args.currentStatusKey}`,
+    `Available statuses: ${args.availableStatuses
+      .map((s) => `${s.key} (${s.name})`)
+      .join(", ")}`,
+    `Workflow steps about to run:\n${args.steps
+      .map((s, i) => `${i + 1}. ${s.name}\n   ${s.prompt.slice(0, 400)}`)
+      .join("\n")}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Title": "Planbooq",
+      },
+      body: JSON.stringify({
+        model: "openrouter/auto",
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              'You decide which kanban status best reflects the work happening on a ticket whose workflow steps are about to execute via Claude Code. Common keys: backlog (not started), todo (planned), building (work in progress), review (PR open / awaiting human check), completed (merged/done). Pick the single status that best describes the state the ticket should be in *while these steps run*. If steps clearly produce a PR / final review artifact, prefer "review" over "building". If the ticket is already in a later status (e.g. completed) and a re-run is starting fresh work, move it back to "building". Reply with strict JSON only: {"statusKey": one of the allowed keys, "reason": short string}. No prose, no fences.',
+          },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      return { ok: false, error: `openrouter_${res.status}` };
+    }
+    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = data.choices?.[0]?.message?.content?.trim() ?? "";
+    if (!content) return { ok: false, error: "empty" };
+    const stripped = content
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/```$/i, "")
+      .trim();
+    let parsed: { statusKey?: unknown; reason?: unknown };
+    try {
+      parsed = JSON.parse(stripped) as { statusKey?: unknown; reason?: unknown };
+    } catch {
+      return { ok: false, error: "unparseable" };
+    }
+    const key = typeof parsed.statusKey === "string" ? parsed.statusKey : "";
+    if (!allowed.includes(key)) return { ok: false, error: "invalid_key" };
+    const reason = typeof parsed.reason === "string" ? parsed.reason.slice(0, 200) : "";
+    logger.info("openrouter.status.chosen", {
+      workspaceId: args.workspaceId,
+      from: args.currentStatusKey,
+      to: key,
+      reason,
+    });
+    return { ok: true, statusKey: key, reason };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "unknown" };
+  }
+}
+
 export async function generateTicketDraft(args: {
   workspaceId: string;
   prompt: string;
