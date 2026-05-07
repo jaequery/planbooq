@@ -102,6 +102,34 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         archivedAt: { type: string, format: date-time, nullable: true }
+        identifier: { type: string, description: 'Human-readable id like "PROJ-AB12CD". Present on responses.' }
+        workflow:
+          allOf:
+            - $ref: '#/components/schemas/WorkflowResolved'
+          nullable: true
+          description: 'Resolved workflow for this ticket. Only included on single-ticket GET responses.'
+    WorkflowResolved:
+      type: object
+      properties:
+        hasOverride:
+          type: boolean
+          description: 'true if the ticket has its own workflow steps; false if it inherits from the project default.'
+        templateId: { type: string, nullable: true, description: 'Project default template id (when hasOverride is false).' }
+        templateName: { type: string, nullable: true }
+        steps:
+          type: array
+          items: { $ref: '#/components/schemas/WorkflowStep' }
+    WorkflowStep:
+      type: object
+      properties:
+        id: { type: string, nullable: true }
+        name: { type: string }
+        prompt: { type: string, description: 'Instructions the AI should follow for this step.' }
+        position: { type: number }
+        enabled: { type: boolean }
+        source:
+          type: string
+          enum: [ticket, template]
     TicketCreate:
       type: object
       required: [projectId, statusId, title]

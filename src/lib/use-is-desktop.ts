@@ -60,6 +60,10 @@ type DesktopBridge = {
     relPath: string;
     content: string;
   }) => Promise<{ ok: boolean; error?: string }>;
+  saveClipboardImage?: (input: {
+    dataBase64: string;
+    ext: string;
+  }) => Promise<{ ok: boolean; path?: string; error?: string }>;
 };
 
 declare global {

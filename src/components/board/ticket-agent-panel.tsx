@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { dispatchTicketToAgent, listAgents } from "@/actions/agents";
 import { mintAgentApiKey } from "@/actions/api-keys";
 import { getProjectLocalPath, updateProject } from "@/actions/project";
+import { getTicketWorkflow } from "@/actions/workflow";
 import { TicketWorkflowPanel } from "@/components/board/ticket-workflow-panel";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
@@ -42,7 +43,11 @@ export function TicketAgentPanel(props: Props): React.ReactElement {
   const isDesktop = useIsDesktop();
   return (
     <div className="flex flex-col gap-4">
-      <TicketWorkflowPanel ticketId={props.ticketId} />
+      <TicketWorkflowPanel
+        ticketId={props.ticketId}
+        workspaceId={props.workspaceId}
+        projectId={props.projectId}
+      />
       {isDesktop ? <DesktopPanel {...props} /> : <WebPanel {...props} />}
     </div>
   );
@@ -341,6 +346,7 @@ function DesktopPanel({
     setRepoPath(result.path);
     const saved = await updateProject({ id: projectId, localPath: result.path });
     if (!saved.ok) toast.error(`Could not save folder: ${saved.error}`);
+    window.dispatchEvent(new CustomEvent("planbooq:project-local-path-changed"));
     return result.path;
   };
 
@@ -464,7 +470,22 @@ function DesktopPanel({
         return;
       }
       const path = repoPath;
-      const seed = [`# ${title}`, description ?? "", "", message]
+      let workflowBlock = "";
+      try {
+        const wf = await getTicketWorkflow(ticketId);
+        if (wf.ok && wf.steps.length > 0) {
+          const label = wf.templateName
+            ? `Workflow: ${wf.templateName}`
+            : "Workflow";
+          const lines = wf.steps.map((s, i) => {
+            const tag = s.enabled ? "" : " (disabled)";
+            const body = s.prompt?.trim() ? `\n   ${s.prompt.trim().replace(/\n/g, "\n   ")}` : "";
+            return `${i + 1}. ${s.name}${tag}${body}`;
+          });
+          workflowBlock = `## ${label}\n${lines.join("\n")}`;
+        }
+      } catch {}
+      const seed = [`# ${title}`, description ?? "", workflowBlock, message]
         .filter((s) => s !== "")
         .join("\n\n")
         .trim();
@@ -594,6 +615,33 @@ function DesktopPanel({
               e.preventDefault();
               void send();
             }
+          }}
+          onPaste={(e) => {
+            const bridge = getDesktopBridge();
+            if (!bridge?.saveClipboardImage) return;
+            const items = Array.from(e.clipboardData?.items ?? []);
+            const imageItem = items.find((it) => it.kind === "file" && it.type.startsWith("image/"));
+            if (!imageItem) return;
+            const file = imageItem.getAsFile();
+            if (!file) return;
+            e.preventDefault();
+            const ext = (file.type.split("/")[1] ?? "png").split("+")[0]!;
+            void (async () => {
+              try {
+                const buf = new Uint8Array(await file.arrayBuffer());
+                let bin = "";
+                for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]!);
+                const dataBase64 = btoa(bin);
+                const r = await bridge.saveClipboardImage!({ dataBase64, ext });
+                if (!r.ok || !r.path) {
+                  toast.error(r.error ?? "Could not save image");
+                  return;
+                }
+                setInput((prev) => (prev ? `${prev.replace(/\s*$/, "")}\n${r.path}` : r.path!));
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : "Paste failed");
+              }
+            })();
           }}
           placeholder={
             sessionId

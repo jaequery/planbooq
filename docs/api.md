@@ -148,6 +148,25 @@ Returns `{ ok: true, data: { items: Ticket[], nextCursor: string | null } }`.
 GET /v1/tickets/{ticketId}
 ```
 
+Response is a `Ticket` augmented with:
+
+- `identifier`: human-readable id like `"PROJ-AB12CD"`.
+- `workflow`: the resolved workflow for this ticket (only on single-ticket GET):
+  ```json
+  {
+    "hasOverride": true,
+    "templateId": null,
+    "templateName": null,
+    "steps": [
+      { "id": "ck…", "name": "Score the plan", "prompt": "…", "position": 1024, "enabled": true, "source": "ticket" }
+    ]
+  }
+  ```
+  When `hasOverride` is `false`, steps come from the project's default template
+  (`source: "template"`); `templateId` / `templateName` identify it. When the
+  ticket has its own override, `templateId` is `null` and steps carry
+  `source: "ticket"`.
+
 #### Create
 
 ```

@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld("planbooq", {
     ipcRenderer.invoke("planbooq:files:read", input),
   writeProjectFile: (input: { repoPath: string; relPath: string; content: string }) =>
     ipcRenderer.invoke("planbooq:files:write", input),
+  saveClipboardImage: (input: { dataBase64: string; ext: string }) =>
+    ipcRenderer.invoke("planbooq:files:saveClipboardImage", input),
   onAgentEvent: (cb: (e: unknown) => void) => {
     const listener = (_: unknown, e: unknown) => cb(e);
     ipcRenderer.on("planbooq:agent:event", listener);

@@ -4,6 +4,7 @@ import { listWorkflowTemplates } from "@/actions/workflow";
 import { AgentsClient } from "@/components/settings/agents-client";
 import { ApiKeysClient } from "@/components/settings/api-keys-client";
 import { AppearancePicker } from "@/components/settings/appearance-picker";
+import { SettingsBackButton } from "@/components/settings/settings-back-button";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { WorkflowsClient } from "@/components/settings/workflows-client";
 import { auth } from "@/server/auth";
@@ -52,7 +53,8 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-6">
-      <header>
+      <header className="flex flex-col gap-2">
+        <SettingsBackButton />
         <h1 className="text-xl font-semibold">Settings</h1>
         <p className="text-sm text-muted-foreground">Manage your workspace preferences.</p>
       </header>

@@ -1,20 +1,29 @@
 "use client";
 
-import { ChevronDown, ChevronUp, Loader2, Play, RotateCcw, Settings2 } from "lucide-react";
+import { ChevronDown, Loader2, Play } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
+import { getProjectLocalPath } from "@/actions/project";
 import {
   addTicketStep,
   disableTicketWorkflowOverride,
-  enableTicketWorkflowOverride,
   getTicketWorkflow,
+  listWorkflowTemplates,
   removeTicketStep,
   reorderTicketSteps,
+  setTicketWorkflowFromTemplate,
   triggerWorkflowRun,
   updateTicketStep,
 } from "@/actions/workflow";
 import { StepList } from "@/components/settings/workflows-client";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type WorkflowState = {
   hasOverride: boolean;
@@ -30,10 +39,41 @@ type WorkflowState = {
   }>;
 };
 
-export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.ReactElement {
+type TemplateRow = { id: string; name: string; description: string | null; stepCount: number };
+
+export function TicketWorkflowPanel({
+  ticketId,
+  workspaceId,
+  projectId,
+}: {
+  ticketId: string;
+  workspaceId: string;
+  projectId: string;
+}): React.ReactElement {
   const [wf, setWf] = useState<WorkflowState | null>(null);
+  const [templates, setTemplates] = useState<TemplateRow[]>([]);
+  const [hasLocalPath, setHasLocalPath] = useState<boolean>(false);
   const [pending, start] = useTransition();
-  const [confirmingReset, setConfirmingReset] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const r = await getProjectLocalPath(projectId);
+      if (cancelled) return;
+      setHasLocalPath(r.ok && !!r.localPath);
+    })();
+    const onChanged = () => {
+      void (async () => {
+        const r = await getProjectLocalPath(projectId);
+        setHasLocalPath(r.ok && !!r.localPath);
+      })();
+    };
+    window.addEventListener("planbooq:project-local-path-changed", onChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("planbooq:project-local-path-changed", onChanged);
+    };
+  }, [projectId]);
 
   async function refresh() {
     const a = await getTicketWorkflow(ticketId);
@@ -45,11 +85,50 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
         steps: a.steps,
       });
     }
+    const t = await listWorkflowTemplates({ workspaceId });
+    if (t.ok) setTemplates(t.templates);
   }
 
   useEffect(() => {
     refresh();
   }, [ticketId]);
+
+  function runPrompts(prompts: string[]) {
+    if (prompts.length === 0) return;
+    window.dispatchEvent(
+      new CustomEvent("planbooq:workflow-run", {
+        detail: { ticketId, prompts },
+      }),
+    );
+    void triggerWorkflowRun(ticketId).catch(() => {});
+  }
+
+  function runStep(step: { name: string; prompt: string }) {
+    if (!hasLocalPath) {
+      toast.error("Choose this project's folder first");
+      return;
+    }
+    runPrompts([`[Workflow: ${step.name}]\n${step.prompt}`]);
+    toast.success(`Running step: ${step.name}`);
+  }
+
+  function runAll() {
+    if (!wf) return;
+    if (!hasLocalPath) {
+      toast.error("Choose this project's folder first");
+      return;
+    }
+    const enabled = wf.steps.filter((s) => s.enabled);
+    if (enabled.length === 0) {
+      toast.error("Add at least one enabled step");
+      return;
+    }
+    const prompts = enabled.map(
+      (s, i) => `[Workflow ${i + 1}/${enabled.length}: ${s.name}]\n${s.prompt}`,
+    );
+    runPrompts(prompts);
+    toast.success(`Running ${enabled.length} step${enabled.length === 1 ? "" : "s"}`);
+  }
 
   if (!wf) {
     return <p className="text-sm text-muted-foreground">Loading workflow…</p>;
@@ -57,117 +136,83 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
 
   const enabledCount = wf.steps.filter((s) => s.enabled).length;
   const editable = wf.hasOverride;
+  const currentLabel = wf.hasOverride
+    ? "Custom workflow"
+    : wf.templateName || "No workflow";
 
   return (
     <div className="flex flex-col gap-4">
       <header className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="truncate text-sm font-medium">
-            {wf.hasOverride
-              ? "Custom workflow"
-              : wf.templateName || "Workflow"}
-          </span>
-          <span className="shrink-0 text-[11px] text-muted-foreground">
-            {enabledCount}/{wf.steps.length}
-          </span>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {!wf.hasOverride && (
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() =>
-                start(async () => {
-                  const r = await enableTicketWorkflowOverride(ticketId);
-                  if (!r.ok) toast.error(r.error);
-                  await refresh();
-                })
-              }
-              disabled={pending}
-              title="Customize for this ticket"
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left hover:bg-muted/60"
             >
-              <Settings2 className="size-4" />
-            </Button>
-          )}
-          {wf.hasOverride && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setConfirmingReset(true)}
-              disabled={pending}
-              title="Delete custom steps and use the project default again"
-            >
-              <RotateCcw className="size-4" />
-              Cancel
-            </Button>
-          )}
-          <Button
-            size="sm"
-            onClick={() =>
-              start(async () => {
-                const enabledSteps = wf.steps.filter((s) => s.enabled);
-                if (enabledSteps.length === 0) {
-                  toast.error("Add at least one enabled step");
-                  return;
+              <span className="truncate text-sm font-medium">{currentLabel}</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground">
+                {enabledCount}/{wf.steps.length}
+              </span>
+              <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-[220px]">
+            {templates.length === 0 && (
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                No templates yet. Create one in Settings → Workflows.
+              </div>
+            )}
+            {templates.map((t) => (
+              <DropdownMenuItem
+                key={t.id}
+                onSelect={() =>
+                  start(async () => {
+                    const r = await setTicketWorkflowFromTemplate({
+                      ticketId,
+                      templateId: t.id,
+                    });
+                    if (!r.ok) {
+                      toast.error(r.error);
+                      return;
+                    }
+                    await refresh();
+                  })
                 }
-                const prompts = enabledSteps.map(
-                  (s, i) =>
-                    `[Workflow ${i + 1}/${enabledSteps.length}: ${s.name}]\n${s.prompt}`,
-                );
-                window.dispatchEvent(
-                  new CustomEvent("planbooq:workflow-run", {
-                    detail: { ticketId, prompts },
-                  }),
-                );
-                void triggerWorkflowRun(ticketId).catch(() => {});
-                toast.success(
-                  `Running ${enabledSteps.length} step${enabledSteps.length === 1 ? "" : "s"}`,
-                );
-              })
-            }
-            disabled={pending || enabledCount === 0}
-          >
-            {pending ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-            Run
-          </Button>
-        </div>
+              >
+                <span className="truncate">{t.name}</span>
+                <span className="ml-auto text-[11px] text-muted-foreground">
+                  {t.stepCount}
+                </span>
+              </DropdownMenuItem>
+            ))}
+            {wf.hasOverride && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={() =>
+                    start(async () => {
+                      const r = await disableTicketWorkflowOverride(ticketId);
+                      if (!r.ok) toast.error(r.error);
+                      await refresh();
+                    })
+                  }
+                >
+                  <span className="text-muted-foreground">Reset to project default</span>
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button
+          size="sm"
+          onClick={runAll}
+          disabled={pending || enabledCount === 0 || !hasLocalPath}
+          title={!hasLocalPath ? "Choose this project's folder first" : undefined}
+        >
+          {pending ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+          Run all
+        </Button>
       </header>
-
-      {confirmingReset && (
-        <div className="flex items-start justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
-          <span>
-            This deletes all {wf.steps.length} custom step{wf.steps.length === 1 ? "" : "s"} on this
-            ticket and falls back to the project default. This cannot be undone.
-          </span>
-          <div className="flex shrink-0 gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setConfirmingReset(false)}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() =>
-                start(async () => {
-                  const r = await disableTicketWorkflowOverride(ticketId);
-                  if (!r.ok) toast.error(r.error);
-                  setConfirmingReset(false);
-                  await refresh();
-                })
-              }
-              disabled={pending}
-            >
-              Delete custom steps
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {wf.hasOverride && (
-        <div className="rounded-md border border-amber-500/30 bg-amber-500/[0.06] p-2 text-[12px] text-amber-700 dark:text-amber-300">
-          This ticket has its own copy of the workflow. Edits to the project default won't apply
-          here. Hit Cancel to discard this copy and inherit the default again.
-        </div>
-      )}
 
       {editable ? (
         <StepList
@@ -211,16 +256,22 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
             }
             await refresh();
           }}
+          onRunStep={(s) => runStep(s)}
         />
       ) : wf.steps.length === 0 ? (
         <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-          No project-level default workflow set yet. Click Customize to define steps just for this
-          ticket, or set a default in Settings → Workflows and pick it for this project.
+          No workflow set yet. Pick a template above, or set a project default in Settings →
+          Workflows.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col">
           {wf.steps.map((s, i) => (
-            <ReadOnlyStepRow key={`${s.position}-${s.name}`} step={s} index={i} />
+            <ReadOnlyStepRow
+              key={`${s.position}-${s.name}`}
+              step={s}
+              index={i}
+              onRun={() => runStep(s)}
+            />
           ))}
         </ul>
       )}
@@ -231,36 +282,33 @@ export function TicketWorkflowPanel({ ticketId }: { ticketId: string }): React.R
 function ReadOnlyStepRow({
   step,
   index,
+  onRun,
 }: {
   step: { name: string; prompt: string; enabled: boolean };
   index: number;
+  onRun: () => void;
 }): React.ReactElement {
-  const [open, setOpen] = useState(false);
   return (
     <li
-      className={`flex flex-col gap-1 rounded-md border bg-background px-3 py-2 text-sm ${
+      className={`group flex items-center gap-2 border-b border-border/40 py-1.5 text-sm last:border-b-0 ${
         step.enabled ? "" : "opacity-60"
       }`}
     >
+      <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/60">
+        {index + 1}.
+      </span>
+      <span className="flex-1 truncate">{step.name}</span>
+      {!step.enabled && <span className="text-[11px] text-muted-foreground">disabled</span>}
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-3 text-left"
+        onClick={onRun}
+        disabled={!step.enabled}
+        aria-label="Run this step"
+        title="Run this step"
+        className="text-muted-foreground/40 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-0"
       >
-        <span className="w-6 shrink-0 text-xs text-muted-foreground">{index + 1}.</span>
-        <span className="flex-1 truncate">{step.name}</span>
-        {!step.enabled && <span className="text-xs text-muted-foreground">disabled</span>}
-        {open ? (
-          <ChevronUp className="size-4 text-muted-foreground" />
-        ) : (
-          <ChevronDown className="size-4 text-muted-foreground" />
-        )}
+        <Play className="size-3.5" />
       </button>
-      {open && (
-        <pre className="whitespace-pre-wrap rounded bg-muted/40 p-2 text-[12px] text-muted-foreground">
-          {step.prompt}
-        </pre>
-      )}
     </li>
   );
 }

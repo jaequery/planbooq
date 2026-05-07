@@ -424,6 +424,40 @@ export async function enableTicketWorkflowOverride(
   return { ok: true };
 }
 
+export async function setTicketWorkflowFromTemplate(input: {
+  ticketId: string;
+  templateId: string;
+}): Promise<Result<Empty>> {
+  const ticket = await loadTicket(input.ticketId);
+  if (!ticket) return { ok: false, error: "not_found" };
+  const ctx = await requireMember(ticket.workspaceId);
+  if (!ctx.ok) return ctx;
+  const tpl = await loadTemplate(input.templateId);
+  if (!tpl) return { ok: false, error: "template_not_found" };
+  if (tpl.workspaceId !== ticket.workspaceId) return { ok: false, error: "forbidden" };
+  const steps = await prisma.workflowStep.findMany({
+    where: { templateId: input.templateId },
+    orderBy: { position: "asc" },
+    select: { name: true, prompt: true, enabled: true },
+  });
+  await prisma.$transaction(async (tx) => {
+    await tx.workflowStep.deleteMany({ where: { ticketId: input.ticketId } });
+    if (steps.length > 0) {
+      await tx.workflowStep.createMany({
+        data: steps.map((s, i) => ({
+          ticketId: input.ticketId,
+          name: s.name,
+          prompt: s.prompt,
+          enabled: s.enabled,
+          position: (i + 1) * 1024,
+        })),
+      });
+    }
+  });
+  revalidatePath("/");
+  return { ok: true };
+}
+
 export async function disableTicketWorkflowOverride(
   ticketId: string,
 ): Promise<Result<Empty>> {

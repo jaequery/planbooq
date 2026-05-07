@@ -1,6 +1,23 @@
 "use client";
 
-import { ChevronDown, ChevronUp, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { ChevronDown, ChevronUp, GripVertical, Loader2, Play, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
@@ -252,26 +269,30 @@ export function StepList({
   onUpdate,
   onRemove,
   onReorder,
+  onRunStep,
 }: {
   steps: Step[];
   onAdd: (name: string, prompt: string) => Promise<boolean>;
   onUpdate: (id: string, patch: { name?: string; prompt?: string; enabled?: boolean }) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
   onReorder: (orderedStepIds: string[]) => Promise<void>;
+  onRunStep?: (step: Step) => void;
 }): React.ReactElement {
   const [newName, setNewName] = useState("");
-  const [newPrompt, setNewPrompt] = useState("");
   const [pending, start] = useTransition();
 
-  function move(idx: number, dir: -1 | 1) {
-    const target = idx + dir;
-    if (target < 0 || target >= steps.length) return;
-    const next = steps.slice();
-    const a = next[idx];
-    const b = next[target];
-    if (!a || !b) return;
-    next[idx] = b;
-    next[target] = a;
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = steps.findIndex((s) => s.id === active.id);
+    const newIndex = steps.findIndex((s) => s.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const next = arrayMove(steps, oldIndex, newIndex);
     start(async () => {
       await onReorder(next.map((s) => s.id));
     });
@@ -279,67 +300,53 @@ export function StepList({
 
   function addStep() {
     const n = newName.trim();
-    const p = newPrompt.trim();
-    if (!n || !p) return;
+    if (!n) return;
     start(async () => {
-      const ok = await onAdd(n, p);
-      if (ok) {
-        setNewName("");
-        setNewPrompt("");
-      }
+      const ok = await onAdd(n, "Describe what this step should do.");
+      if (ok) setNewName("");
     });
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">Steps</h3>
-        <span className="text-xs text-muted-foreground">
-          Run top-to-bottom. Disable to skip without deleting.
-        </span>
-      </div>
-
+    <div className="flex flex-col">
       {steps.length === 0 && (
-        <p className="text-sm text-muted-foreground">No steps yet — add one below.</p>
+        <p className="py-2 text-xs text-muted-foreground/70">No steps yet.</p>
       )}
 
-      <ul className="flex flex-col gap-2">
-        {steps.map((s, i) => (
-          <StepRow
-            key={s.id}
-            step={s}
-            index={i}
-            disableUp={i === 0 || pending}
-            disableDown={i === steps.length - 1 || pending}
-            onMoveUp={() => move(i, -1)}
-            onMoveDown={() => move(i, 1)}
-            onUpdate={(patch) => start(async () => onUpdate(s.id, patch))}
-            onRemove={() => start(async () => onRemove(s.id))}
-          />
-        ))}
-      </ul>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={steps.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+          <ul className="flex flex-col">
+            {steps.map((s, i) => (
+              <StepRow
+                key={s.id}
+                step={s}
+                index={i}
+                onUpdate={(patch) => start(async () => onUpdate(s.id, patch))}
+                onRemove={() => start(async () => onRemove(s.id))}
+                onRun={onRunStep ? () => onRunStep(s) : undefined}
+              />
+            ))}
+          </ul>
+        </SortableContext>
+      </DndContext>
 
-      <div className="rounded-md border bg-muted/20 p-3">
-        <div className="mb-2 text-xs font-medium text-muted-foreground">Add a step</div>
-        <div className="flex flex-col gap-2">
-          <Input
-            placeholder='Step name (e.g. "Security analysis")'
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-          />
-          <Textarea
-            placeholder="Instructions (what the AI should do for this step)"
-            value={newPrompt}
-            onChange={(e) => setNewPrompt(e.target.value)}
-            rows={3}
-          />
-          <div className="flex justify-end">
-            <Button size="sm" onClick={addStep} disabled={pending || !newName.trim() || !newPrompt.trim()}>
-              {pending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-              Add step
-            </Button>
-          </div>
-        </div>
+      <div className="flex items-center gap-2 border-t border-border/40 py-1.5">
+        <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground/40">
+          {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+        </span>
+        <input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addStep();
+            }
+          }}
+          onBlur={addStep}
+          placeholder="Add a step…"
+          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50"
+        />
       </div>
     </div>
   );
@@ -348,25 +355,29 @@ export function StepList({
 function StepRow({
   step,
   index,
-  disableUp,
-  disableDown,
-  onMoveUp,
-  onMoveDown,
   onUpdate,
   onRemove,
+  onRun,
 }: {
   step: Step;
   index: number;
-  disableUp: boolean;
-  disableDown: boolean;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
   onUpdate: (patch: { name?: string; prompt?: string; enabled?: boolean }) => void;
   onRemove: () => void;
+  onRun?: () => void;
 }): React.ReactElement {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: step.id,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
   const [name, setName] = useState(step.name);
   const [prompt, setPrompt] = useState(step.prompt);
-  const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const nameRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setName(step.name);
@@ -374,53 +385,98 @@ function StepRow({
   }, [step.name, step.prompt]);
 
   return (
-    <li className="flex flex-col gap-2 rounded-md border bg-background p-3">
+    <li
+      ref={setNodeRef}
+      style={style}
+      className="group flex flex-col border-b border-border/40 py-1 last:border-b-0"
+    >
       <div className="flex items-center gap-2">
-        <span className="w-6 shrink-0 text-xs text-muted-foreground">{index + 1}.</span>
-        <Input
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label="Drag to reorder"
+          className="-ml-1 flex size-5 shrink-0 cursor-grab items-center justify-center text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
+        >
+          <GripVertical className="size-3.5" />
+        </button>
+        <input
+          type="checkbox"
+          checked={step.enabled}
+          onChange={(e) => onUpdate({ enabled: e.target.checked })}
+          aria-label={step.enabled ? "Disable step" : "Enable step"}
+          className="size-3.5 shrink-0 cursor-pointer accent-foreground"
+        />
+        <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/60">
+          {index + 1}.
+        </span>
+        <input
+          ref={nameRef}
           value={name}
           onChange={(e) => setName(e.target.value)}
           onBlur={() => {
             if (name.trim() && name !== step.name) onUpdate({ name: name.trim() });
+            else if (!name.trim()) setName(step.name);
           }}
-          className="flex-1"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              nameRef.current?.blur();
+            } else if (e.key === "Escape") {
+              setName(step.name);
+              nameRef.current?.blur();
+            }
+          }}
+          className={`flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50 ${
+            step.enabled ? "" : "text-muted-foreground line-through"
+          }`}
         />
-        <label className="flex items-center gap-1 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={step.enabled}
-            onChange={(e) => onUpdate({ enabled: e.target.checked })}
-          />
-          on
-        </label>
-        <Button size="icon" variant="ghost" onClick={onMoveUp} disabled={disableUp}>
-          <ChevronUp className="size-4" />
-        </Button>
-        <Button size="icon" variant="ghost" onClick={onMoveDown} disabled={disableDown}>
-          <ChevronDown className="size-4" />
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={() => setOpen((v) => !v)}
-          title={open ? "Hide instructions" : "Edit instructions"}
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-label={expanded ? "Hide instructions" : "Show instructions"}
+          aria-expanded={expanded}
+          title={expanded ? "Hide instructions" : "Show instructions"}
+          className="text-muted-foreground/40 transition-colors hover:text-foreground"
         >
-          {open ? <ChevronUp className="size-4" /> : <Pencil className="size-4" />}
-        </Button>
-        <Button size="icon" variant="ghost" onClick={onRemove}>
-          <Trash2 className="size-4" />
-        </Button>
+          {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+        </button>
+        {onRun && (
+          <button
+            type="button"
+            onClick={onRun}
+            aria-label="Run this step"
+            title="Run this step"
+            className="text-muted-foreground/40 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+          >
+            <Play className="size-3.5" />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Delete step"
+          className="text-muted-foreground/40 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+        >
+          <Trash2 className="size-3.5" />
+        </button>
       </div>
-      {open && (
+      <div
+        className={`grid transition-[grid-template-rows] duration-150 ease-out group-focus-within:grid-rows-[1fr] ${
+          expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onBlur={() => {
             if (prompt.trim() && prompt !== step.prompt) onUpdate({ prompt: prompt.trim() });
           }}
-          rows={4}
+          rows={2}
+          className="ml-12 min-h-0 resize-none overflow-hidden border-0 bg-transparent px-0 py-0 text-xs text-muted-foreground shadow-none focus-visible:ring-0"
+          placeholder="Instructions for this step"
         />
-      )}
+      </div>
     </li>
   );
 }
