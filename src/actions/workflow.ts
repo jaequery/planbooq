@@ -1,7 +1,9 @@
 "use server";
 
+import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 
@@ -608,4 +610,40 @@ export async function triggerWorkflowRun(
 
   revalidatePath("/");
   return { ok: true, runId: run.id, stepCount: enabled.length };
+}
+
+export async function logWorkflowActivity(input: {
+  ticketId: string;
+  text: string;
+}): Promise<Result<{ id: string }>> {
+  const ticket = await loadTicket(input.ticketId);
+  if (!ticket) return { ok: false, error: "not_found" };
+  const ctx = await requireMember(ticket.workspaceId);
+  if (!ctx.ok) return ctx;
+  const text = z.string().min(1).max(500).parse(input.text);
+
+  const activity = await prisma.ticketActivity.create({
+    data: {
+      ticketId: input.ticketId,
+      workspaceId: ticket.workspaceId,
+      kind: "NOTE",
+      payload: { text } as Prisma.InputJsonValue,
+    },
+    select: { id: true, kind: true, payload: true, jobId: true, createdAt: true },
+  });
+
+  await publishWorkspaceEvent(ticket.workspaceId, {
+    name: "ticket.activity",
+    workspaceId: ticket.workspaceId,
+    ticketId: input.ticketId,
+    activity: {
+      id: activity.id,
+      kind: activity.kind,
+      payload: activity.payload as Record<string, unknown>,
+      jobId: activity.jobId,
+      createdAt: activity.createdAt.toISOString(),
+    },
+  });
+
+  return { ok: true, id: activity.id };
 }

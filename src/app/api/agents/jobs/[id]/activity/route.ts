@@ -53,9 +53,21 @@ export async function POST(
   });
 
   if (parsed.data.kind === "PR_CREATED" && typeof parsed.data.payload.url === "string") {
-    await prisma.ticket.update({
+    const updated = await prisma.ticket.update({
       where: { id: job.ticketId },
       data: { prUrl: parsed.data.payload.url },
+      include: {
+        assignee: { select: { id: true, name: true, email: true, image: true } },
+        labels: { select: { id: true, name: true, color: true } },
+      },
+    });
+    await publishWorkspaceEvent(job.ticket.workspaceId, {
+      name: "ticket.updated",
+      ticketId: updated.id,
+      workspaceId: updated.workspaceId,
+      projectId: updated.projectId,
+      ticket: updated,
+      by: "agent",
     });
   }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { quickCreateTicket } from "@/actions/ticket";
 import { Button } from "@/components/ui/button";
@@ -14,10 +14,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
+import { ImageUploadTextarea } from "@/components/ui/image-upload-textarea";
 import type { Ticket } from "@/lib/types";
 
 type Props = {
+  workspaceId: string;
   projectId: string;
   onCreated: (ticket: Ticket) => void;
 };
@@ -38,10 +39,25 @@ function describeError(error: string): string {
   return `Could not create ticket: ${error}`;
 }
 
-export function QuickAddTicket({ projectId, onCreated }: Props): React.ReactElement {
+export function QuickAddTicket({
+  workspaceId,
+  projectId,
+  onCreated,
+}: Props): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent): void => {
+      if ((event.metaKey || event.ctrlKey) && (event.key === "n" || event.key === "N")) {
+        event.preventDefault();
+        setOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   const onSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -90,14 +106,16 @@ export function QuickAddTicket({ projectId, onCreated }: Props): React.ReactElem
           </DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-4" onSubmit={onSubmit}>
-          <Textarea
+          <ImageUploadTextarea
+            workspaceId={workspaceId}
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="e.g. Add a dark mode toggle in the top nav, persist preference per user."
+            placeholder="e.g. Add a dark mode toggle in the top nav, persist preference per user. Paste or drop screenshots to attach."
             rows={6}
             autoFocus
             disabled={pending}
+            onUploadError={(message) => toast.error(`Image upload failed: ${message}`)}
           />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>

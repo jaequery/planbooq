@@ -377,6 +377,14 @@ function DesktopPanel({
     void sendRef.current(next);
   }, [busy]);
 
+  // Broadcast busy/queue state so the workflow panel can reflect "running".
+  useEffect(() => {
+    const running = busy || workflowQueueRef.current.length > 0;
+    window.dispatchEvent(
+      new CustomEvent("planbooq:agent-busy", { detail: { ticketId, running } }),
+    );
+  }, [busy, ticketId]);
+
   const send = async (override?: string) => {
     const bridge = getDesktopBridge();
     if (!bridge) return;
@@ -637,7 +645,8 @@ function DesktopPanel({
                   toast.error(r.error ?? "Could not save image");
                   return;
                 }
-                setInput((prev) => (prev ? `${prev.replace(/\s*$/, "")}\n${r.path}` : r.path!));
+                const md = `![pasted](${r.path})`;
+                setInput((prev) => (prev ? `${prev.replace(/\s*$/, "")}\n${md}` : md));
               } catch (err) {
                 toast.error(err instanceof Error ? err.message : "Paste failed");
               }

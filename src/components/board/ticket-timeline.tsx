@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNowStrict } from "date-fns";
-import { Trash2 } from "lucide-react";
+import { CheckCircle2, GitCommit, GitPullRequest, Hammer, MessageSquare, Trash2, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { createComment, deleteComment, listTicketComments } from "@/actions/comment";
@@ -13,6 +13,24 @@ import { useBoardChannel } from "@/lib/realtime/use-board-channel";
 import type { AblyChannelEvent } from "@/lib/types";
 import type { CommentWithAuthor } from "@/server/services/comments";
 
+type ServerActivity = {
+  id: string;
+  kind: "PR_CREATED" | "COMMIT_PUSHED" | "TEST_RUN" | "BUILD" | "NOTE";
+  payload: Record<string, unknown>;
+  jobId: string | null;
+  createdAt: string;
+};
+
+type ActivityItem = {
+  kind: "activity";
+  id: string;
+  createdAt: Date;
+  text?: string;
+  data?: ServerActivity;
+};
+
+type TimelineItem = CommentItem | ActivityItem;
+
 type CommentItem = {
   kind: "comment";
   id: string;
@@ -22,14 +40,6 @@ type CommentItem = {
   author: CommentWithAuthor["author"] | null;
 };
 
-type ActivityItem = {
-  kind: "activity";
-  id: string;
-  text: string;
-  createdAt: Date;
-};
-
-type TimelineItem = CommentItem | ActivityItem;
 
 type Props = {
   ticketId: string;
@@ -44,6 +54,69 @@ function ActivityAvatar(): React.ReactElement {
   return <div aria-hidden className="h-5 w-5 shrink-0 rounded-full bg-muted-foreground/30" />;
 }
 
+function renderServerActivity(a: ServerActivity): React.ReactElement {
+  const p = a.payload;
+  switch (a.kind) {
+    case "PR_CREATED": {
+      const url = typeof p.url === "string" ? p.url : null;
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          <GitPullRequest className="size-3.5 shrink-0 text-purple-500" />
+          <span>PR opened</span>
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono text-[11px] text-blue-500 hover:underline"
+            >
+              {url.replace(/^https:\/\/github\.com\//, "")}
+            </a>
+          )}
+        </span>
+      );
+    }
+    case "COMMIT_PUSHED": {
+      const branch = typeof p.branch === "string" ? p.branch : null;
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          <GitCommit className="size-3.5 shrink-0 text-emerald-500" />
+          <span>Pushed{branch ? ` to ${branch}` : ""}</span>
+        </span>
+      );
+    }
+    case "TEST_RUN": {
+      const passed = p.passed === true;
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          {passed ? (
+            <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+          ) : (
+            <XCircle className="size-3.5 shrink-0 text-red-500" />
+          )}
+          <span>{passed ? "Tests passed" : "Tests failed"}</span>
+        </span>
+      );
+    }
+    case "BUILD": {
+      const passed = p.passed === true;
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          <Hammer className="size-3.5 shrink-0 text-amber-500" />
+          <span>{passed ? "Build succeeded" : "Build failed"}</span>
+        </span>
+      );
+    }
+    default:
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          <MessageSquare className="size-3.5 shrink-0 text-muted-foreground" />
+          <span>{typeof p.text === "string" ? p.text : "Update"}</span>
+        </span>
+      );
+  }
+}
+
 export function TicketTimeline({
   ticketId,
   workspaceId,
@@ -53,6 +126,7 @@ export function TicketTimeline({
   wasEdited,
 }: Props): React.ReactElement {
   const [comments, setComments] = useState<CommentItem[]>([]);
+  const [serverActivities, setServerActivities] = useState<ServerActivity[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [, startLoad] = useTransition();
   const [draft, setDraft] = useState("");
@@ -79,6 +153,12 @@ export function TicketTimeline({
       }
       setLoaded(true);
     });
+    fetch(`/api/tickets/${ticketId}/activity`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((b) => {
+        if (alive && b.ok) setServerActivities(b.data);
+      })
+      .catch(() => {});
     return () => {
       alive = false;
     };
@@ -111,6 +191,12 @@ export function TicketTimeline({
       }
       if (event.name === "comment.deleted" && event.ticketId === ticketId) {
         setComments((prev) => prev.filter((c) => c.id !== event.commentId));
+        return;
+      }
+      if (event.name === "ticket.activity" && event.ticketId === ticketId) {
+        setServerActivities((prev) =>
+          prev.some((a) => a.id === event.activity.id) ? prev : [event.activity, ...prev],
+        );
       }
     },
     [ticketId],
@@ -130,8 +216,16 @@ export function TicketTimeline({
         createdAt: updatedAt,
       });
     }
-    return [...activity, ...comments].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-  }, [comments, createdAt, updatedAt, wasEdited]);
+    const fromServer: ActivityItem[] = serverActivities.map((a) => ({
+      kind: "activity" as const,
+      id: `srv:${a.id}`,
+      createdAt: new Date(a.createdAt),
+      data: a,
+    }));
+    return [...activity, ...fromServer, ...comments].sort(
+      (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+    );
+  }, [comments, serverActivities, createdAt, updatedAt, wasEdited]);
 
   const submit = (): void => {
     const body = draft.trim();
@@ -190,7 +284,9 @@ export function TicketTimeline({
                   className="flex items-center gap-2 text-[13px] text-muted-foreground"
                 >
                   <ActivityAvatar />
-                  <span className="text-foreground">{item.text}</span>
+                  <span className="text-foreground">
+                    {item.data ? renderServerActivity(item.data) : item.text}
+                  </span>
                   <span className="opacity-60">·</span>
                   <span>{formatDistanceToNowStrict(item.createdAt, { addSuffix: false })} ago</span>
                 </li>

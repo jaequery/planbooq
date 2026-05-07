@@ -122,6 +122,20 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
       }
       if (!("projectId" in event) || event.projectId !== currentProjectId) return;
       if (event.name === "ticket.moved") {
+        setStatuses((prevStatuses) => {
+          // If the ticket landed in a terminal column, drop any lingering
+          // live-agent state so the card doesn't render a stale "running" pill.
+          const dest = prevStatuses.find((s) => s.id === event.toStatusId);
+          if (dest && (dest.key === "completed" || dest.key === "review")) {
+            setLiveAgents((prev) => {
+              if (!prev.has(event.ticketId)) return prev;
+              const next = new Map(prev);
+              next.delete(event.ticketId);
+              return next;
+            });
+          }
+          return prevStatuses;
+        });
         setStatuses((prev) => {
           let moving: Ticket | null = null;
           const stripped = prev.map((s) => {
@@ -188,6 +202,71 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
   useEffect(() => {
     localClientIdRef.current = rtClientId;
   }, [rtClientId]);
+
+  // Seed/reconcile liveAgents from the server. Ably deltas are the live
+  // source of truth, but missed terminal events leave entries stuck on
+  // RUNNING across reloads. On mount and whenever the tab becomes visible,
+  // ask the server which jobs are actually still live and prune the rest.
+  useEffect(() => {
+    const workspaceId = initialData.project.workspaceId;
+    let cancelled = false;
+    const reconcile = async (): Promise<void> => {
+      try {
+        const res = await fetch(`/api/workspaces/${workspaceId}/active-jobs`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const body = (await res.json()) as {
+          ok: boolean;
+          data?: Array<{
+            id: string;
+            ticketId: string;
+            kind: string;
+            status: "PENDING" | "RUNNING";
+          }>;
+        };
+        if (cancelled || !body.ok || !body.data) return;
+        setLiveAgents((prev) => {
+          const next = new Map<string, LiveAgentState>();
+          for (const job of body.data ?? []) {
+            const kind: LiveAgentState["kind"] =
+              job.kind === "PLAN" || job.kind === "EXECUTE" ? job.kind : "CHAT";
+            const existing = prev.get(job.ticketId);
+            next.set(job.ticketId, {
+              jobId: job.id,
+              kind,
+              status: job.status,
+              lastLine: existing?.jobId === job.id ? (existing.lastLine ?? null) : null,
+            });
+          }
+          // Equality check to avoid unnecessary re-renders.
+          if (prev.size === next.size) {
+            let same = true;
+            for (const [k, v] of next) {
+              const p = prev.get(k);
+              if (!p || p.jobId !== v.jobId || p.status !== v.status) {
+                same = false;
+                break;
+              }
+            }
+            if (same) return prev;
+          }
+          return next;
+        });
+      } catch {
+        // tolerated — next visibility change or reload will retry
+      }
+    };
+    void reconcile();
+    const onVisibility = (): void => {
+      if (document.visibilityState === "visible") void reconcile();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [initialData.project.workspaceId]);
 
   // Local-first stand-in for GitHub webhooks: every 30s ask the server to
   // walk Review-status tickets with a prUrl and ask GitHub whether the PR
@@ -433,7 +512,11 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         ) : null}
         <div className="ml-auto flex items-center gap-2">
           <RealtimeIndicator status={rtStatus} />
-          <QuickAddTicket projectId={currentProjectId} onCreated={onTicketCreated} />
+          <QuickAddTicket
+            workspaceId={initialData.project.workspaceId}
+            projectId={currentProjectId}
+            onCreated={onTicketCreated}
+          />
         </div>
       </div>
       <DndContext

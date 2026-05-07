@@ -128,7 +128,14 @@ export function TicketCard({
   const visibleLabels = labels.slice(0, 3);
   const hiddenLabelCount = labels.length - visibleLabels.length;
   const liveAgent = useLiveAgent(ticket.id);
-  const isLive = liveAgent?.status === "RUNNING" || liveAgent?.status === "PENDING";
+  // Suppress the "running" indicator for tickets that have already moved to a
+  // terminal column. Without a server hydration of job state, a missed
+  // terminal Ably delta can otherwise leave the in-memory state stuck on
+  // RUNNING for a ticket that is plainly done.
+  const liveStatusEligible = ticketStatusKey !== "completed" && ticketStatusKey !== "review";
+  const isLive =
+    liveStatusEligible &&
+    (liveAgent?.status === "RUNNING" || liveAgent?.status === "PENDING");
   const liveKindLabel = liveAgent
     ? liveAgent.kind === "PLAN"
       ? "planning"

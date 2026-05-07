@@ -11,7 +11,6 @@ import { LabelPicker } from "@/components/board/label-picker";
 import { PriorityPicker } from "@/components/board/priority-picker";
 import { type StatusOption, StatusPicker } from "@/components/board/status-picker";
 import { TicketActionsMenu } from "@/components/board/ticket-actions-menu";
-import { TicketActivityFeed } from "@/components/board/ticket-activity-feed";
 import { TicketAgentPanel } from "@/components/board/ticket-agent-panel";
 import { TicketPreviewsPanel } from "@/components/board/ticket-previews-panel";
 import { TicketTimeline } from "@/components/board/ticket-timeline";
@@ -624,7 +623,6 @@ export function TicketDetailDialog({
             <TicketPreviewsPanel ticketId={ticket.id} workspaceId={ticket.workspaceId} />
 
             <div className="mt-4 flex flex-col gap-4 border-t border-border/60 pt-4">
-              <h3 className="text-[12px] font-medium text-muted-foreground">Activity</h3>
               <TicketTimeline
                 ticketId={ticket.id}
                 workspaceId={ticket.workspaceId}
@@ -633,7 +631,6 @@ export function TicketDetailDialog({
                 updatedAt={updatedAt}
                 wasEdited={wasEdited}
               />
-              <TicketActivityFeed ticketId={ticket.id} workspaceId={ticket.workspaceId} />
             </div>
           </aside>
         </div>

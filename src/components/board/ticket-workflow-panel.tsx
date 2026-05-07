@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, Loader2, Play } from "lucide-react";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { getProjectLocalPath } from "@/actions/project";
 import {
@@ -9,6 +9,7 @@ import {
   disableTicketWorkflowOverride,
   getTicketWorkflow,
   listWorkflowTemplates,
+  logWorkflowActivity,
   removeTicketStep,
   reorderTicketSteps,
   setTicketWorkflowFromTemplate,
@@ -53,7 +54,39 @@ export function TicketWorkflowPanel({
   const [wf, setWf] = useState<WorkflowState | null>(null);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [hasLocalPath, setHasLocalPath] = useState<boolean>(false);
+  const [running, setRunning] = useState<boolean>(false);
   const [pending, start] = useTransition();
+  // FIFO of step names we've dispatched but not yet logged as completed.
+  const pendingStepsRef = useRef<string[]>([]);
+  const wasRunningRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    const onBusy = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { ticketId?: string; running?: boolean };
+      if (detail?.ticketId !== ticketId) return;
+      const next = !!detail.running;
+      // Falling edge: agent just went idle. If we have a pending step, that
+      // step finished — log completion and, if more queued, start the next.
+      if (wasRunningRef.current && !next && pendingStepsRef.current.length > 0) {
+        const finished = pendingStepsRef.current.shift()!;
+        void logWorkflowActivity({
+          ticketId,
+          text: `Workflow step completed: ${finished}`,
+        }).catch(() => {});
+        const upcoming = pendingStepsRef.current[0];
+        if (upcoming) {
+          void logWorkflowActivity({
+            ticketId,
+            text: `Workflow step started: ${upcoming}`,
+          }).catch(() => {});
+        }
+      }
+      wasRunningRef.current = next;
+      setRunning(next);
+    };
+    window.addEventListener("planbooq:agent-busy", onBusy);
+    return () => window.removeEventListener("planbooq:agent-busy", onBusy);
+  }, [ticketId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,11 +136,21 @@ export function TicketWorkflowPanel({
     void triggerWorkflowRun(ticketId).catch(() => {});
   }
 
+  function logStarted(name: string) {
+    void logWorkflowActivity({
+      ticketId,
+      text: `Workflow step started: ${name}`,
+    }).catch(() => {});
+  }
+
   function runStep(step: { name: string; prompt: string }) {
     if (!hasLocalPath) {
       toast.error("Choose this project's folder first");
       return;
     }
+    const queueWasEmpty = pendingStepsRef.current.length === 0;
+    pendingStepsRef.current.push(step.name);
+    if (queueWasEmpty) logStarted(step.name);
     runPrompts([`[Workflow: ${step.name}]\n${step.prompt}`]);
     toast.success(`Running step: ${step.name}`);
   }
@@ -126,6 +169,9 @@ export function TicketWorkflowPanel({
     const prompts = enabled.map(
       (s, i) => `[Workflow ${i + 1}/${enabled.length}: ${s.name}]\n${s.prompt}`,
     );
+    const queueWasEmpty = pendingStepsRef.current.length === 0;
+    for (const s of enabled) pendingStepsRef.current.push(s.name);
+    if (queueWasEmpty && enabled[0]) logStarted(enabled[0].name);
     runPrompts(prompts);
     toast.success(`Running ${enabled.length} step${enabled.length === 1 ? "" : "s"}`);
   }
@@ -135,7 +181,7 @@ export function TicketWorkflowPanel({
   }
 
   const enabledCount = wf.steps.filter((s) => s.enabled).length;
-  const editable = wf.hasOverride;
+  const editable = wf.hasOverride || (!wf.templateId && wf.steps.length === 0);
   const currentLabel = wf.hasOverride
     ? "Custom workflow"
     : wf.templateName || "No workflow";
@@ -206,11 +252,15 @@ export function TicketWorkflowPanel({
         <Button
           size="sm"
           onClick={runAll}
-          disabled={pending || enabledCount === 0 || !hasLocalPath}
+          disabled={pending || running || enabledCount === 0 || !hasLocalPath}
           title={!hasLocalPath ? "Choose this project's folder first" : undefined}
         >
-          {pending ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-          Run all
+          {pending || running ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Play className="size-4" />
+          )}
+          {running ? "Running…" : "Run all"}
         </Button>
       </header>
 
