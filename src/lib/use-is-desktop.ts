@@ -50,6 +50,11 @@ type DesktopBridge = {
     error?: string;
   }>;
   agentStop: (input: { sessionId: string }) => Promise<{ ok: boolean; error?: string }>;
+  agentOneshot?: (input: { prompt: string; timeoutMs?: number }) => Promise<{
+    ok: boolean;
+    text?: string;
+    error?: string;
+  }>;
   onAgentEvent: (cb: (e: AgentEvent) => void) => () => void;
   readProjectFile?: (input: {
     repoPath: string;

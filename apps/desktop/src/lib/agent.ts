@@ -356,4 +356,66 @@ export function registerAgentIpc(): void {
     sessions.delete(input.sessionId);
     return { ok: true };
   });
+
+  // Fire-and-finish text classification using the locally installed Claude
+  // Code CLI. No worktree, no session — just `claude --print` with a single
+  // prompt. Used for cheap server-adjacent decisions like picking a kanban
+  // status when a workflow runs, so we don't depend on OpenRouter.
+  ipcMain.handle(
+    "planbooq:agent:oneshot",
+    async (
+      _,
+      input: { prompt: string; timeoutMs?: number },
+    ): Promise<{ ok: boolean; text?: string; error?: string }> => {
+      if (!input?.prompt || typeof input.prompt !== "string") {
+        return { ok: false, error: "missing prompt" };
+      }
+      const timeoutMs = Math.max(1000, Math.min(60_000, input.timeoutMs ?? 20_000));
+      return await new Promise((resolve) => {
+        let proc: ChildProcess;
+        try {
+          proc = spawn("claude", ["--print", "--output-format", "text"], {
+            stdio: ["pipe", "pipe", "pipe"],
+          });
+        } catch (err) {
+          resolve({ ok: false, error: err instanceof Error ? err.message : String(err) });
+          return;
+        }
+        let out = "";
+        let err = "";
+        let settled = false;
+        const settle = (v: { ok: boolean; text?: string; error?: string }): void => {
+          if (settled) return;
+          settled = true;
+          try {
+            proc.kill();
+          } catch {}
+          resolve(v);
+        };
+        const timer = setTimeout(() => settle({ ok: false, error: "timeout" }), timeoutMs);
+        proc.stdout?.on("data", (b: Buffer) => {
+          out += b.toString();
+        });
+        proc.stderr?.on("data", (b: Buffer) => {
+          err += b.toString();
+        });
+        proc.on("error", (e: Error) => {
+          clearTimeout(timer);
+          settle({ ok: false, error: e.message });
+        });
+        proc.on("exit", (code) => {
+          clearTimeout(timer);
+          if (code === 0) settle({ ok: true, text: out.trim() });
+          else settle({ ok: false, error: `exit ${code}: ${err.trim().slice(0, 200)}` });
+        });
+        try {
+          proc.stdin?.write(input.prompt);
+          proc.stdin?.end();
+        } catch (e) {
+          clearTimeout(timer);
+          settle({ ok: false, error: e instanceof Error ? e.message : String(e) });
+        }
+      });
+    },
+  );
 }

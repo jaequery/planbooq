@@ -6,7 +6,6 @@ import { z } from "zod";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
-import { chooseStatusForWorkflowRun } from "@/server/openrouter";
 import { moveTicketToStatusKey } from "@/server/services/ticket-status";
 
 type Ok<T> = T extends Record<string, never> ? { ok: true } : { ok: true } & T;
@@ -574,8 +573,48 @@ export async function reorderTicketSteps(input: {
  * as SUCCEEDED rather than waiting on a sequencer that doesn't exist on
  * this code path.
  */
+/**
+ * Returns just enough context for the renderer to ask local Claude Code
+ * which status the ticket should be in once a workflow run kicks off.
+ * Pairs with `triggerWorkflowRun({ suggestedStatusKey })`.
+ */
+export async function getWorkflowStatusContext(ticketId: string): Promise<
+  Result<{
+    title: string;
+    description: string | null;
+    currentStatusKey: string;
+    statuses: Array<{ key: string; name: string }>;
+  }>
+> {
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: {
+      title: true,
+      description: true,
+      workspaceId: true,
+      status: { select: { key: true } },
+    },
+  });
+  if (!ticket) return { ok: false, error: "not_found" };
+  const ctx = await requireMember(ticket.workspaceId);
+  if (!ctx.ok) return ctx;
+  const statuses = await prisma.status.findMany({
+    where: { workspaceId: ticket.workspaceId },
+    orderBy: { position: "asc" },
+    select: { key: true, name: true },
+  });
+  return {
+    ok: true,
+    title: ticket.title,
+    description: ticket.description,
+    currentStatusKey: ticket.status?.key ?? "",
+    statuses,
+  };
+}
+
 export async function triggerWorkflowRun(
   ticketId: string,
+  opts?: { suggestedStatusKey?: string },
 ): Promise<Result<{ runId: string; stepCount: number }>> {
   const ticket = await loadTicket(ticketId);
   if (!ticket) return { ok: false, error: "not_found" };
@@ -610,44 +649,34 @@ export async function triggerWorkflowRun(
     select: { id: true },
   });
 
-  // Ask an LLM which status the ticket should sit in while these steps run.
-  // We pass the ticket, the current status, the enabled workflow steps, and
-  // the workspace's available statuses; the model returns one of those keys.
-  // Best-effort — on any failure (no API key, network, unparseable) fall back
-  // to "building" if the ticket is currently in backlog/todo, otherwise leave
-  // it alone.
+  // Move the ticket to the right status. The client picks the status with
+  // local Claude Code (apps/desktop bridge.agentOneshot) and passes it as
+  // suggestedStatusKey. We validate it against this workspace's statuses to
+  // prevent a malicious or stale renderer from writing arbitrary keys. If
+  // no suggestion was provided (web client, bridge unavailable, or local
+  // claude failed), fall back to a deterministic rule: backlog|todo →
+  // building; leave review/completed alone.
   try {
-    const fullTicket = await prisma.ticket.findUnique({
+    const current = await prisma.ticket.findUnique({
       where: { id: ticketId },
       select: {
-        id: true,
-        title: true,
-        description: true,
         workspaceId: true,
         status: { select: { key: true } },
       },
     });
-    if (fullTicket) {
+    if (current) {
       const statuses = await prisma.status.findMany({
-        where: { workspaceId: fullTicket.workspaceId },
+        where: { workspaceId: current.workspaceId },
         orderBy: { position: "asc" },
-        select: { key: true, name: true },
+        select: { key: true },
       });
-      const currentKey = fullTicket.status?.key ?? "";
+      const allowed = new Set(statuses.map((s) => s.key));
+      const currentKey = current.status?.key ?? "";
       let targetKey: string | null = null;
-      const choice = await chooseStatusForWorkflowRun({
-        workspaceId: fullTicket.workspaceId,
-        ticket: { title: fullTicket.title, description: fullTicket.description },
-        currentStatusKey: currentKey,
-        steps: enabled.map((s) => ({ name: s.name, prompt: s.prompt })),
-        availableStatuses: statuses,
-      });
-      if (choice.ok) {
-        targetKey = choice.statusKey;
+      if (opts?.suggestedStatusKey && allowed.has(opts.suggestedStatusKey)) {
+        targetKey = opts.suggestedStatusKey;
       } else if (currentKey === "backlog" || currentKey === "todo") {
-        // Deterministic fallback when the LLM is unavailable. Don't bump
-        // tickets out of review/completed automatically.
-        targetKey = statuses.some((s) => s.key === "building") ? "building" : null;
+        targetKey = allowed.has("building") ? "building" : null;
       }
       if (targetKey && targetKey !== currentKey) {
         await moveTicketToStatusKey({
