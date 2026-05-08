@@ -9,13 +9,15 @@ import { registerAgentIpc } from "./lib/agent";
 import { registerFilesIpc } from "./lib/files";
 import { initAutoUpdater } from "./lib/updater";
 import { buildAppMenu } from "./lib/menu";
+import squirrelStartup from "electron-squirrel-startup";
 
-if (require("electron-squirrel-startup")) app.quit();
+if (squirrelStartup) app.quit();
 
 log.initialize();
 log.transports.file.level = "info";
 
-const APP_URL = process.env.PLANBOOQ_APP_URL ?? (app.isPackaged ? "https://app.planbooq.com" : "http://localhost:3636");
+const APP_URL = process.env.PLANBOOQ_APP_URL
+  ?? (process.env.NODE_ENV === "development" ? "http://localhost:3636" : "https://planbooq.vercel.app");
 
 let mainWindow: BrowserWindow | null = null;
 

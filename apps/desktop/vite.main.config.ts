@@ -8,7 +8,7 @@ export default defineConfig({
       fileName: () => "main.js",
     },
     rollupOptions: {
-      external: ["electron", "electron-updater", "electron-log", "ably"],
+      external: ["electron", "bufferutil", "utf-8-validate"],
     },
   },
 });
