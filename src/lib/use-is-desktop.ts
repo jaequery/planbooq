@@ -8,7 +8,7 @@ export type AgentEvent =
   | { type: "exit"; sessionId: string; code: number };
 
 type DesktopBridge = {
-  spawnWorktree: (input: { repoPath: string; branch: string; prompt: string }) => Promise<{
+  spawnWorktree: (input: { repoPath: string; branch: string; prompt: string; ticketIdentifier: string }) => Promise<{
     ok: boolean;
     error?: string;
     worktreePath?: string;

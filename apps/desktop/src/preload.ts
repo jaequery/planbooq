@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("planbooq", {
-  spawnWorktree: (input: { repoPath: string; branch: string; prompt: string }) =>
+  spawnWorktree: (input: { repoPath: string; branch: string; prompt: string; ticketIdentifier: string }) =>
     ipcRenderer.invoke("planbooq:worktree:spawn", input),
   pickRepoPath: () => ipcRenderer.invoke("planbooq:worktree:pickRepo"),
   onWorktreeLog: (cb: (line: string) => void) => {

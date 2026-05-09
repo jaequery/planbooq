@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import log from "electron-log/main";
+import { WorktreeNameError, formatWorktreeName } from "./worktree-name";
 
 type Session = { proc: ChildProcess; cwd: string };
 
@@ -278,8 +279,20 @@ export function registerAgentIpc(): void {
       if (!(await isGitRepo(input.repoPath))) return { ok: false, error: "not a git repo" };
 
       const sessionId = randomUUID();
-      const ts = new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 14);
-      const wtName = `${path.basename(input.repoPath)}.planbooq-${ts}`;
+      if (!input.ticket?.identifier) {
+        return {
+          ok: false,
+          error:
+            "missing ticket.identifier — worktree name requires [project].[ticket#] format",
+        };
+      }
+      let wtName: string;
+      try {
+        wtName = formatWorktreeName(path.basename(input.repoPath), input.ticket.identifier);
+      } catch (err) {
+        if (err instanceof WorktreeNameError) return { ok: false, error: err.message };
+        throw err;
+      }
       const wtPath = path.join(path.dirname(input.repoPath), wtName);
 
       emit({ type: "stderr", sessionId, line: `$ git worktree add -b ${input.branch} ${wtPath}\n` });
