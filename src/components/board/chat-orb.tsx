@@ -9,9 +9,6 @@ import type { Ticket } from "@/lib/types";
 type Props = {
   projectId: string;
   workspaceId: string;
-  projectName: string;
-  totalTickets: number;
-  runningTickets: number;
   onCreated: (ticket: Ticket) => void;
 };
 
@@ -49,9 +46,6 @@ function imageMarkdown(name: string, url: string): string {
 export function ChatOrb({
   projectId,
   workspaceId,
-  projectName,
-  totalTickets,
-  runningTickets,
   onCreated,
 }: Props): React.ReactElement {
   const [prompt, setPrompt] = useState("");
@@ -306,22 +300,6 @@ export function ChatOrb({
             <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
               ⌘N
             </kbd>
-          </div>
-          <div className="mt-1.5 flex gap-2 pl-9 text-[10px] text-muted-foreground">
-            <span>
-              <span className="font-semibold text-foreground">Context:</span> {projectName}
-            </span>
-            <span>·</span>
-            <span>
-              <span className="font-semibold text-foreground">{totalTickets}</span> ticket
-              {totalTickets === 1 ? "" : "s"}
-            </span>
-            {runningTickets > 0 ? (
-              <>
-                <span>·</span>
-                <span>{runningTickets} running</span>
-              </>
-            ) : null}
           </div>
         </div>
       </div>
