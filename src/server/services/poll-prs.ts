@@ -8,7 +8,7 @@ import { autoCompleteTicketByPrUrl } from "@/server/services/webhook-github";
 /**
  * Poll-based stand-in for GitHub webhooks. The Electron app is not publicly
  * reachable so webhooks have no destination; instead the board pings this
- * endpoint every ~60s while open, and we walk every Review-status ticket
+ * endpoint every ~8s while open (and on tab focus), and we walk every Review-status ticket
  * with a `prUrl` and ask GitHub whether the PR has merged. Merged → reuse
  * the same `autoCompleteTicketByPrUrl` the webhook handler uses, so the
  * downstream behavior (status move + Ably fanout) is identical.
