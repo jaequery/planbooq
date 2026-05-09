@@ -204,3 +204,90 @@ export async function generateTicketDraft(args: {
     return { ok: false, error: e instanceof Error ? e.message : "unknown" };
   }
 }
+
+type AgentProfileDraft = { name: string; description: string; body: string };
+type AgentProfileDraftResult =
+  | { ok: true; draft: AgentProfileDraft }
+  | { ok: false; error: string };
+
+function parseAgentDraftJson(content: string): AgentProfileDraft | null {
+  const stripped = content
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  try {
+    const obj = JSON.parse(stripped) as Partial<AgentProfileDraft>;
+    if (typeof obj.name !== "string" || typeof obj.body !== "string") return null;
+    return {
+      name: obj.name,
+      description: typeof obj.description === "string" ? obj.description : "",
+      body: obj.body,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function generateAgentProfileDraft(args: {
+  workspaceId: string;
+  prompt: string;
+}): Promise<AgentProfileDraftResult> {
+  const apiKey = await getOpenRouterApiKey(args.workspaceId);
+  if (!apiKey) return { ok: false, error: "no_key" };
+
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Title": "Planbooq",
+      },
+      body: JSON.stringify({
+        model: "anthropic/claude-haiku-4.5",
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              'You design AGENTS.md-style personas for AI coding workers in Planbooq. Reply with strict JSON only: {"name": string up to 80 chars, "description": string up to 280 chars, "body": markdown string up to 8000 chars}. Name is a short title like "Senior frontend" or "API security reviewer". Description is a one-line summary of expertise. Body is a markdown persona prompt with sections like "# Role", "# Expertise", "# Conventions", "# Constraints" — concise, instructional, written as a system prompt the worker will receive. No surrounding prose, no code fences.',
+          },
+          { role: "user", content: args.prompt },
+        ],
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      logger.warn("openrouter.agentDraft.failed", {
+        status: res.status,
+        body: text.slice(0, 200),
+      });
+      return { ok: false, error: `openrouter_${res.status}` };
+    }
+
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = data.choices?.[0]?.message?.content?.trim() ?? "";
+    if (!content) return { ok: false, error: "empty_draft" };
+
+    const parsed = parseAgentDraftJson(content);
+    if (!parsed) {
+      logger.warn("openrouter.agentDraft.unparseable", { sample: content.slice(0, 200) });
+      return { ok: false, error: "unparseable" };
+    }
+
+    const name = parsed.name.trim().slice(0, 80);
+    const description = parsed.description.trim().slice(0, 280);
+    const body = parsed.body.trim().slice(0, 50_000);
+    if (!name || !body) return { ok: false, error: "incomplete_draft" };
+    return { ok: true, draft: { name, description, body } };
+  } catch (e) {
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) {
+      return { ok: false, error: "openrouter_timeout" };
+    }
+    return { ok: false, error: e instanceof Error ? e.message : "unknown" };
+  }
+}

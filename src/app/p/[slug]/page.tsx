@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { Board } from "@/components/board/board";
-import type { BoardData } from "@/lib/types";
+import type { BoardData, StatusWithTickets, TicketWithRelations } from "@/lib/types";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 
@@ -38,6 +38,16 @@ export default async function ProjectPage({ params }: Props): Promise<React.Reac
           include: {
             assignee: { select: { id: true, name: true, email: true, image: true } },
             labels: { select: { id: true, name: true, color: true } },
+            previews: {
+              where: { attachment: { mimeType: { startsWith: "image/" } } },
+              orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+              take: 4,
+              select: {
+                id: true,
+                attachmentId: true,
+                attachment: { select: { mimeType: true } },
+              },
+            },
           },
         },
       },
@@ -56,9 +66,24 @@ export default async function ProjectPage({ params }: Props): Promise<React.Reac
     }),
   ]);
 
+  const statusesWithImagePreviews: StatusWithTickets[] = statuses.map((s) => ({
+    ...s,
+    tickets: s.tickets.map((t): TicketWithRelations => {
+      const { previews, ...rest } = t;
+      return {
+        ...rest,
+        imagePreviews: previews.map((p) => ({
+          id: p.id,
+          attachmentId: p.attachmentId,
+          mimeType: p.attachment.mimeType,
+        })),
+      };
+    }),
+  }));
+
   const boardData: BoardData = {
     project,
-    statuses,
+    statuses: statusesWithImagePreviews,
     allProjects,
   };
 

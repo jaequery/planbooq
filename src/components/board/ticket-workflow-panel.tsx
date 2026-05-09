@@ -20,7 +20,6 @@ import {
 } from "@/actions/workflow";
 import { getDesktopBridge } from "@/lib/use-is-desktop";
 import { StepList } from "@/components/settings/workflows-client";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -264,19 +263,21 @@ export function TicketWorkflowPanel({
     : wf.templateName || "No workflow";
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-2">
       <header className="flex items-center justify-between gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left hover:bg-muted/60"
+              className="flex min-w-0 items-center gap-1 rounded text-left text-muted-foreground hover:text-foreground"
             >
-              <span className="truncate text-sm font-medium">{currentLabel}</span>
-              <span className="shrink-0 text-[11px] text-muted-foreground">
-                {enabledCount}/{wf.steps.length}
-              </span>
-              <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate text-xs">{currentLabel}</span>
+              {wf.steps.length > 0 && (
+                <span className="shrink-0 text-[11px] text-muted-foreground/60">
+                  {enabledCount}/{wf.steps.length}
+                </span>
+              )}
+              <ChevronDown className="size-3 shrink-0 opacity-60" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="min-w-[220px]">
@@ -326,18 +327,19 @@ export function TicketWorkflowPanel({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button
-          size="sm"
+        <button
+          type="button"
           onClick={runAll}
           disabled={pending || running}
+          className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
         >
           {pending || running ? (
-            <Loader2 className="size-4 animate-spin" />
+            <Loader2 className="size-3.5 animate-spin" />
           ) : (
-            <Play className="size-4" />
+            <Play className="size-3.5" />
           )}
-          {running ? "Running…" : "Execute"}
-        </Button>
+          <span>{running ? "Running" : "Run"}</span>
+        </button>
       </header>
 
       {editable ? (
@@ -385,9 +387,8 @@ export function TicketWorkflowPanel({
           onRunStep={(s) => runStep(s)}
         />
       ) : wf.steps.length === 0 ? (
-        <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-          No workflow set yet. Pick a template above, or set a project default in Settings →
-          Workflows.
+        <p className="text-xs text-muted-foreground/70">
+          Pick a template above, or set a project default in Settings → Workflows.
         </p>
       ) : (
         <ul className="flex flex-col">

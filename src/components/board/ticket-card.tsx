@@ -157,12 +157,12 @@ export function TicketCard({
                   <PriorityIcon value={ticket.priority} />
                 </span>
               ) : null}
-              <div className="min-w-0 flex-1 break-words text-[13px] font-medium leading-snug text-foreground">
+              <div className="min-w-0 flex-1 break-words text-[15px] font-medium leading-snug text-foreground">
                 {ticket.title}
               </div>
             </div>
             {ticket.description ? (
-              <p className="mt-1 line-clamp-2 break-words text-[12px] leading-snug text-muted-foreground">
+              <p className="mt-1 line-clamp-2 break-words text-[14px] leading-snug text-muted-foreground">
                 {ticket.description}
               </p>
             ) : null}
@@ -207,7 +207,7 @@ export function TicketCard({
           ) : null}
         </div>
         {!isOverlay && isLive ? (
-          <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <div className="mt-2 flex items-center gap-1.5 text-[13px] text-muted-foreground">
             <span className="relative inline-flex h-2 w-2 shrink-0">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -224,19 +224,49 @@ export function TicketCard({
             )}
           </div>
         ) : null}
+        {ticket.imagePreviews && ticket.imagePreviews.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {ticket.imagePreviews.slice(0, 4).map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onPointerDown={stopDragPropagation}
+                onClick={(e) => {
+                  stopDragPropagation(e);
+                  onOpenDetail?.(ticket.id);
+                }}
+                className="block h-12 w-12 overflow-hidden rounded-md border border-border/70 bg-muted/30 outline-none transition-colors hover:border-border focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Open preview"
+              >
+                <img
+                  src={`/api/attachments/${p.attachmentId}`}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover"
+                />
+              </button>
+            ))}
+            {ticket.imagePreviews.length > 4 ? (
+              <span className="inline-flex h-12 items-center rounded-md border border-border/70 bg-muted/30 px-1.5 text-[10px] text-muted-foreground">
+                +{ticket.imagePreviews.length - 4}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         {visibleLabels.length > 0 ? (
           <div className="mt-2 flex flex-wrap items-center gap-1">
             {visibleLabels.map((l) => (
               <LabelChip key={l.id} label={l} size="sm" />
             ))}
             {hiddenLabelCount > 0 ? (
-              <span className="text-[10px] text-muted-foreground">+{hiddenLabelCount}</span>
+              <span className="text-[12px] text-muted-foreground">+{hiddenLabelCount}</span>
             ) : null}
           </div>
         ) : null}
-        <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground/80">
+        <div className="mt-2 flex items-center justify-between gap-2 text-[13px] text-muted-foreground/80">
           <div className="flex min-w-0 items-center gap-1.5">
-            <Badge variant="outline" className="h-5 rounded-md px-1.5 font-mono text-[10px]">
+            <Badge variant="outline" className="h-5 rounded-md px-1.5 font-mono text-[12px]">
               {ticket.id.slice(-6).toUpperCase()}
             </Badge>
             {ticket.description ? (
@@ -255,7 +285,7 @@ export function TicketCard({
             {dueDate ? (
               <span
                 className={cn(
-                  "inline-flex h-4 items-center gap-0.5 rounded-md border px-1 text-[10px]",
+                  "inline-flex h-4 items-center gap-0.5 rounded-md border px-1 text-[12px]",
                   isOverdue
                     ? "border-red-500/40 text-red-600 dark:text-red-400"
                     : "border-border text-foreground",

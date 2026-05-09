@@ -19,12 +19,13 @@ import { toast } from "sonner";
 import { moveTicket } from "@/actions/ticket";
 import { ChatOrb } from "@/components/board/chat-orb";
 import { Column } from "@/components/board/column";
+import { ProjectDocsPanel } from "@/components/board/project-docs-panel";
 import { RealtimeIndicator } from "@/components/board/realtime-indicator";
 import { TicketCard } from "@/components/board/ticket-card";
 import { TicketDetailDialog } from "@/components/board/ticket-detail-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { type LiveAgentState, LiveAgentsContext } from "@/lib/live-agents-context";
+import { LiveAgentsContext, type LiveAgentState } from "@/lib/live-agents-context";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
 import type { BoardData, StatusWithTickets, Ticket, TicketWithRelations } from "@/lib/types";
 
@@ -39,12 +40,7 @@ function extractTail(kind: "PLAN" | "EXECUTE" | "CHAT", text: string): string | 
   if (!trimmed) return null;
   if (kind === "PLAN") {
     const tail = trimmed.slice(-120);
-    return (
-      tail
-        .replace(/[#*`_>-]+/gu, " ")
-        .replace(/\s+/gu, " ")
-        .trim() || null
-    );
+    return tail.replace(/[#*`_>\-]+/gu, " ").replace(/\s+/gu, " ").trim() || null;
   }
   return null;
 }
@@ -128,6 +124,50 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         }
         return;
       }
+      // Preview events are workspace-scoped (no projectId). Match by ticketId
+      // already in local state — tickets from other projects won't match.
+      if (event.name === "ticket.preview.added") {
+        if (!event.mimeType.startsWith("image/")) return;
+        setStatuses((prev) =>
+          prev.map((s) => ({
+            ...s,
+            tickets: s.tickets.map((t) => {
+              if (t.id !== event.ticketId) return t;
+              const current = t.imagePreviews ?? [];
+              if (current.some((p) => p.id === event.previewId)) return t;
+              return {
+                ...t,
+                imagePreviews: [
+                  ...current,
+                  {
+                    id: event.previewId,
+                    attachmentId: event.attachmentId,
+                    mimeType: event.mimeType,
+                  },
+                ],
+              };
+            }),
+          })),
+        );
+        return;
+      }
+      if (event.name === "ticket.preview.removed") {
+        setStatuses((prev) =>
+          prev.map((s) => ({
+            ...s,
+            tickets: s.tickets.map((t) => {
+              if (t.id !== event.ticketId) return t;
+              const current = t.imagePreviews ?? [];
+              if (!current.some((p) => p.id === event.previewId)) return t;
+              return {
+                ...t,
+                imagePreviews: current.filter((p) => p.id !== event.previewId),
+              };
+            }),
+          })),
+        );
+        return;
+      }
       if (!("projectId" in event) || event.projectId !== currentProjectId) return;
       if (event.name === "ticket.moved") {
         setStatuses((prevStatuses) => {
@@ -162,10 +202,17 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         setStatuses((prev) => {
           // Payload carries TicketWithRelations; default missing relations
           // defensively in case an older client publishes a bare Ticket.
+          // Preserve imagePreviews from local state — the update payload
+          // doesn't carry them, and preview add/remove flows through their
+          // own events.
+          const existing = prev
+            .flatMap((s) => s.tickets)
+            .find((t) => t.id === event.ticket.id);
           const merged: TicketWithRelations = {
             ...event.ticket,
             assignee: event.ticket.assignee ?? null,
             labels: event.ticket.labels ?? [],
+            imagePreviews: event.ticket.imagePreviews ?? existing?.imagePreviews ?? [],
           };
           return prev.map((s) => {
             if (s.id !== merged.statusId) {
@@ -524,93 +571,94 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
 
   return (
     <LiveAgentsContext.Provider value={liveAgents}>
-      <div className="flex h-full min-h-0 flex-col">
-        <div className="flex items-center gap-3 px-4 py-2">
-          <div className="relative max-w-sm flex-1">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/70" />
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search tickets…"
-              className="h-8 pl-8 pr-8 text-[13px]"
-            />
-            {query ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                className="absolute right-1 top-1/2 -translate-y-1/2"
-                onClick={() => setQuery("")}
-                aria-label="Clear search"
-              >
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            ) : null}
-          </div>
-          {isFiltered ? (
-            <span className="text-[12px] tabular-nums text-muted-foreground/70">
-              {visibleTicketCount} match{visibleTicketCount === 1 ? "" : "es"}
-            </span>
-          ) : null}
-          <div className="ml-auto flex items-center gap-2">
-            <RealtimeIndicator status={rtStatus} />
-          </div>
-        </div>
-        <DndContext
-          id="board-dnd"
-          sensors={sensors}
-          modifiers={[restrictToWindowEdges]}
-          onDragStart={onDragStart}
-          onDragEnd={onDragEnd}
-          onDragCancel={() => setActiveTicketId(null)}
-        >
-          <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-4 pb-4">
-            {visibleStatuses.map((status) => (
-              <Column
-                key={status.id}
-                status={status}
-                statuses={statusOptions}
-                tickets={status.tickets}
-                onTicketArchived={onTicketArchived}
-                onOpenDetail={onOpenDetail}
-                isFiltered={isFiltered}
-              />
-            ))}
-          </div>
-          <DragOverlay dropAnimation={null}>
-            {activeTicket ? <TicketCard ticket={activeTicket} isOverlay /> : null}
-          </DragOverlay>
-        </DndContext>
-        <ChatOrb
-          projectId={currentProjectId}
-          workspaceId={initialData.project.workspaceId}
-          backlogStatusId={backlogStatusId}
-          currentUserId={currentUserId}
-          onOptimisticInsert={insertOptimisticTicket}
-          onOptimisticReplace={replaceOptimisticTicket}
-          onOptimisticRollback={rollbackOptimisticTicket}
-        />
-        {detailTicket ? (
-          <TicketDetailDialog
-            ticket={detailTicket}
-            open={detailTicketId !== null}
-            onOpenChange={(open) => {
-              if (!open) {
-                setDetailTicketId(null);
-                setAutoRunOnOpen(false);
-              }
-            }}
-            autoRunAction={autoRunOnOpen}
-            onUpdated={onTicketUpdated}
-            onDeleted={onTicketDeleted}
-            statuses={statusOptions}
-            projectName={initialData.project.name}
-            projectColor={initialData.project.color}
-            projectSlug={initialData.project.slug}
-            currentUserId={currentUserId}
+    <div className="flex h-full min-h-0 flex-col">
+      <ProjectDocsPanel localPath={initialData.project.localPath ?? null} />
+      <div className="flex items-center gap-3 px-4 py-2">
+        <div className="relative max-w-sm flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/70" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search tickets…"
+            className="h-8 pl-8 pr-8 text-[15px]"
           />
+          {query ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="absolute right-1 top-1/2 -translate-y-1/2"
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
+        </div>
+        {isFiltered ? (
+          <span className="text-[14px] tabular-nums text-muted-foreground/70">
+            {visibleTicketCount} match{visibleTicketCount === 1 ? "" : "es"}
+          </span>
         ) : null}
+        <div className="ml-auto flex items-center gap-2">
+          <RealtimeIndicator status={rtStatus} />
+        </div>
       </div>
+      <DndContext
+        id="board-dnd"
+        sensors={sensors}
+        modifiers={[restrictToWindowEdges]}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragCancel={() => setActiveTicketId(null)}
+      >
+        <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-4 pb-4">
+          {visibleStatuses.map((status) => (
+            <Column
+              key={status.id}
+              status={status}
+              statuses={statusOptions}
+              tickets={status.tickets}
+              onTicketArchived={onTicketArchived}
+              onOpenDetail={onOpenDetail}
+              isFiltered={isFiltered}
+            />
+          ))}
+        </div>
+        <DragOverlay dropAnimation={null}>
+          {activeTicket ? <TicketCard ticket={activeTicket} isOverlay /> : null}
+        </DragOverlay>
+      </DndContext>
+      <ChatOrb
+        projectId={currentProjectId}
+        workspaceId={initialData.project.workspaceId}
+        backlogStatusId={backlogStatusId}
+        currentUserId={currentUserId}
+        onOptimisticInsert={insertOptimisticTicket}
+        onOptimisticReplace={replaceOptimisticTicket}
+        onOptimisticRollback={rollbackOptimisticTicket}
+      />
+      {detailTicket ? (
+        <TicketDetailDialog
+          ticket={detailTicket}
+          open={detailTicketId !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setDetailTicketId(null);
+              setAutoRunOnOpen(false);
+            }
+          }}
+          autoRunAction={autoRunOnOpen}
+          onUpdated={onTicketUpdated}
+          onDeleted={onTicketDeleted}
+          statuses={statusOptions}
+          projectName={initialData.project.name}
+          projectColor={initialData.project.color}
+          projectSlug={initialData.project.slug}
+          currentUserId={currentUserId}
+        />
+      ) : null}
+    </div>
     </LiveAgentsContext.Provider>
   );
 }
