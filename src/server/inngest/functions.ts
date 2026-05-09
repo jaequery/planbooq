@@ -127,15 +127,20 @@ export const ticketCreated = inngest.createFunction(
  * fails any RUNNING row whose `updatedAt` is older than STALE_AFTER_MS.
  */
 const STALE_AFTER_MS = 10 * 60 * 1000;
+// Tickets stranded in `building` are a UX bug — reconcile aggressively. The
+// reconcile itself bails when a sibling job is still RUNNING, so this is
+// safe to run frequently against every building ticket.
+const STRANDED_BUILDING_AFTER_MS = 3 * 60 * 1000;
 
 export const reapStaleAgentJobs = inngest.createFunction(
   {
     id: "reap-stale-agent-jobs",
     name: "Reap stale AgentJob rows",
-    triggers: [{ cron: "*/5 * * * *" }],
+    triggers: [{ cron: "*/2 * * * *" }],
   },
   async ({ step }) => {
     const cutoff = new Date(Date.now() - STALE_AFTER_MS);
+    const strandedCutoff = new Date(Date.now() - STRANDED_BUILDING_AFTER_MS);
 
     const stale = await step.run("find-stale", () =>
       prisma.agentJob.findMany({
@@ -204,12 +209,31 @@ export const reapStaleAgentJobs = inngest.createFunction(
     // AgentJob is already terminal. This catches the original zombie path
     // where the renderer-side `decideEndOfRun` never fired (panel was
     // closed mid-run) but the underlying job actually completed cleanly.
+    //
+    // Filter on the latest AgentJob's `updatedAt`, NOT `ticket.updatedAt`:
+    // a user editing the description / posting a comment bumps the ticket's
+    // `updatedAt` and would otherwise indefinitely shield an actively-edited
+    // ticket from reconciliation. We want the opposite — actively viewed
+    // tickets are exactly where staleness is most visible.
+    //
+    // Tickets with no AgentJob at all (manually moved into building) also
+    // qualify as stranded — they have no signal to ever leave.
     const stranded = await step.run("find-stranded-tickets", () =>
       prisma.ticket.findMany({
         where: {
           archivedAt: null,
           status: { key: "building" },
-          updatedAt: { lt: cutoff },
+          OR: [
+            { agentJobs: { none: {} } },
+            {
+              agentJobs: {
+                every: {
+                  status: { in: ["SUCCEEDED", "FAILED", "CANCELED"] },
+                  updatedAt: { lt: strandedCutoff },
+                },
+              },
+            },
+          ],
         },
         select: { id: true, createdById: true },
         take: 200,

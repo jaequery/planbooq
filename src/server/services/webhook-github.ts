@@ -10,6 +10,7 @@ import {
   markPullRequestMerged,
   recordTicketPullRequest,
 } from "@/server/services/ticket-pull-requests";
+import { reconcileBuildingTicket } from "@/server/services/ticket-status";
 
 const SIGNATURE_PREFIX = "sha256=";
 
@@ -96,6 +97,11 @@ export async function linkTicketPrUrlFromPrBody(
     ticket: updated,
     by: "github-webhook",
   });
+
+  // PR just opened against this ticket → if it's still in `building`,
+  // demote it to review (or blocked on conflict). Otherwise the card
+  // sits in Running until the cron watchdog notices.
+  void reconcileBuildingTicket({ ticketId: ticket.id }).catch(() => undefined);
 
   return { kind: "linked", ticketId: ticket.id, workspaceId: ticket.workspaceId };
 }

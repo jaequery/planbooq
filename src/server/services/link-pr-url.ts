@@ -5,6 +5,7 @@ import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
 import { parseGitHubPrUrl } from "@/server/services/github-pr";
 import { recordTicketPullRequest } from "@/server/services/ticket-pull-requests";
+import { reconcileBuildingTicket } from "@/server/services/ticket-status";
 
 const GITHUB_PR_URL_RE_GLOBAL = /https?:\/\/github\.com\/[^/\s)]+\/[^/\s)]+\/pull\/\d+/gi;
 
@@ -63,6 +64,13 @@ export async function maybeLinkPrUrlFromText(
       ticket: updated,
       by: "agent",
     });
+
+    // If the ticket is currently in `building` (Running), a freshly-linked
+    // PR is the strongest possible signal that the agent is no longer working
+    // on it. Reconcile immediately so the card lands in review/blocked/etc
+    // instead of waiting on the cron watchdog.
+    void reconcileBuildingTicket({ ticketId: updated.id }).catch(() => undefined);
+
     return url;
   } catch (e) {
     logger.error("maybeLinkPrUrlFromText.failed", {

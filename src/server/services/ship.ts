@@ -102,11 +102,22 @@ export async function shipTicketSvc(
       deletions: data.deletions,
     });
 
-    await moveTicketToStatusKey({
+    const moved = await moveTicketToStatusKey({
       ticketId: ticket.id,
       toStatusKey: "review",
       byUserId: userId,
     });
+    if (!moved) {
+      // moveTicketToStatusKey returns null when the workspace has no
+      // status with key "review" — possible on workspaces with custom
+      // kanban columns. Surface this loudly so the agent (and we) don't
+      // silently leave the ticket stranded in `building` after a "ship".
+      logger.error("shipTicketSvc.review_status_missing", {
+        ticketId: ticket.id,
+        workspaceId: ticket.workspaceId,
+      });
+      return { ok: false, error: "review_status_missing" };
+    }
 
     // Publish a ticket.updated event so subscribed clients see the new prUrl
     // without a manual page refresh. moveTicketToStatusKey only emits
