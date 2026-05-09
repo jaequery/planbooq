@@ -176,7 +176,7 @@ export function TicketTimeline({
               body: event.comment.body,
               authorId: event.comment.authorId,
               createdAt: new Date(event.comment.createdAt),
-              author: null,
+              author: event.comment.author ?? null,
             },
           ];
         });
@@ -184,7 +184,11 @@ export function TicketTimeline({
       }
       if (event.name === "comment.updated" && event.ticketId === ticketId) {
         setComments((prev) =>
-          prev.map((c) => (c.id === event.comment.id ? { ...c, body: event.comment.body } : c)),
+          prev.map((c) =>
+            c.id === event.comment.id
+              ? { ...c, body: event.comment.body, author: event.comment.author ?? c.author }
+              : c,
+          ),
         );
         return;
       }
