@@ -276,6 +276,7 @@ export function TicketWorkflowPanel({
 
   return (
     <div className="flex flex-col gap-2">
+      {!isEmpty && (
       <header className="flex items-center justify-between gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -340,6 +341,7 @@ export function TicketWorkflowPanel({
           </button>
         )}
       </header>
+      )}
 
       {isEmpty ? (
         <div className="flex flex-col gap-2 rounded-md border border-dashed border-border/60 bg-muted/30 p-3">
