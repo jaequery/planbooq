@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
+import { friendlyError, toast } from "@/lib/toast";
 import type { AblyChannelEvent } from "@/lib/types";
 
 type TicketPreview = {
@@ -47,8 +48,11 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? `status_${res.status}`);
       }
+      toast.success("Screenshot capture started");
     } catch (err) {
-      setCaptureError(err instanceof Error ? err.message : "request_failed");
+      const code = err instanceof Error ? err.message : "request_failed";
+      setCaptureError(code);
+      toast.error(`Could not start screenshots: ${friendlyError(code)}`);
       setCapturing(false);
     }
   }, [ticketId]);

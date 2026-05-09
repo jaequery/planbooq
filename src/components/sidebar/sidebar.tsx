@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NewProjectDialog } from "@/components/sidebar/new-project-dialog";
 import { ProjectActionsMenu } from "@/components/sidebar/project-actions-menu";
+import { useSidebarState } from "@/components/sidebar/sidebar-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
 import type { AblyChannelEvent, ProjectSummary } from "@/lib/types";
@@ -25,6 +26,7 @@ const COUNT_AFFECTING_EVENTS: ReadonlySet<AblyChannelEvent["name"]> = new Set([
 
 export function Sidebar({ projects, workspaceId }: Props): React.ReactElement {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const { collapsed } = useSidebarState();
   const pathname = usePathname();
   const router = useRouter();
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -67,8 +69,15 @@ export function Sidebar({ projects, workspaceId }: Props): React.ReactElement {
   };
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-border/60 bg-muted/30">
-      <div className="flex min-h-0 flex-1 flex-col pt-12">
+    <aside
+      aria-hidden={collapsed}
+      inert={collapsed || undefined}
+      className={cn(
+        "flex shrink-0 flex-col overflow-hidden bg-muted/30 transition-[width,border-color] duration-300 ease-out",
+        collapsed ? "w-0 border-r-0" : "w-60 border-r border-border/60",
+      )}
+    >
+      <div className="flex min-h-0 w-60 flex-1 flex-col pt-12">
         <div className="px-3 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
           Projects
         </div>

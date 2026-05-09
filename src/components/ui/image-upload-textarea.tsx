@@ -6,7 +6,34 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 const ACCEPTED_MIME_TYPES = "image/png,image/jpeg,image/webp,image/gif";
+const ACCEPTED_MIME_SET = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const MAX_SIZE_BYTES = 5 * 1024 * 1024;
+
+const ERROR_MESSAGES: Record<string, string> = {
+  unsupported_mime_type: "That image format isn't supported. Please use PNG, JPEG, WebP, or GIF.",
+  file_too_large: "Image is larger than 5 MB.",
+  size_mismatch: "The upload was corrupted in transit. Please try again.",
+  missing_file: "No file was attached. Please try again.",
+  missing_workspaceId: "Workspace context is missing. Please refresh and try again.",
+  invalid_form_data: "The upload was malformed. Please try again.",
+  unauthorized: "You're signed out. Please sign in and try again.",
+  forbidden: "You don't have permission to upload to this workspace.",
+  storage_failed: "We couldn't save your image to storage. Please try again in a moment.",
+  internal_error: "Something went wrong on our end. Please try again.",
+  upload_failed: "Upload failed. Please check your connection and try again.",
+};
+
+function humanizeError(code: string): string {
+  if (ERROR_MESSAGES[code]) return ERROR_MESSAGES[code];
+  if (code.startsWith("upload_failed_")) {
+    const status = code.slice("upload_failed_".length);
+    if (status === "413") return ERROR_MESSAGES.file_too_large;
+    if (status === "401") return ERROR_MESSAGES.unauthorized;
+    if (status === "403") return ERROR_MESSAGES.forbidden;
+    return `Upload failed (HTTP ${status}). Please try again.`;
+  }
+  return ERROR_MESSAGES.upload_failed;
+}
 
 type ImageUploadTextareaProps = React.ComponentProps<typeof Textarea> & {
   workspaceId: string;
@@ -105,12 +132,16 @@ function ImageUploadTextarea({
 
   const uploadFile = async (file: File): Promise<void> => {
     if (!canUpload) return;
-    if (!file.type.startsWith("image/")) {
-      reportError("Only image files are supported.");
+    if (!ACCEPTED_MIME_SET.has(file.type)) {
+      reportError(humanizeError("unsupported_mime_type"));
+      return;
+    }
+    if (file.size <= 0) {
+      reportError("That file appears to be empty.");
       return;
     }
     if (file.size > MAX_SIZE_BYTES) {
-      reportError("Image is larger than 5 MB.");
+      reportError(humanizeError("file_too_large"));
       return;
     }
 
@@ -127,15 +158,16 @@ function ImageUploadTextarea({
       const res = await fetch("/api/attachments", { method: "POST", body: form });
       const json = (await res.json().catch(() => null)) as UploadResponse | null;
       if (!res.ok || !json || !json.ok) {
-        const error = json && !json.ok ? json.error : `upload_failed_${res.status}`;
+        const code = json && !json.ok ? json.error : `upload_failed_${res.status}`;
         removeToken(token);
-        reportError(error);
+        reportError(humanizeError(code));
         return;
       }
       replaceToken(token, imageMarkdown(file.name, json.data.url));
     } catch (error) {
       removeToken(token);
-      reportError(error instanceof Error ? error.message : "upload_failed");
+      const message = error instanceof Error ? error.message : "upload_failed";
+      reportError(humanizeError(message));
     } finally {
       setIsUploading(false);
     }
