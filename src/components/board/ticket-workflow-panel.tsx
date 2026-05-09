@@ -219,10 +219,6 @@ export function TicketWorkflowPanel({
 
   function runAll() {
     if (!wf) return;
-    if (!hasLocalPath) {
-      toast.error("Choose this project's folder first");
-      return;
-    }
     const enabled = wf.steps.filter((s) => s.enabled);
     if (enabled.length === 0) {
       toast.error("Add at least one enabled step");
@@ -314,8 +310,7 @@ export function TicketWorkflowPanel({
         <Button
           size="sm"
           onClick={runAll}
-          disabled={pending || running || enabledCount === 0 || !hasLocalPath}
-          title={!hasLocalPath ? "Choose this project's folder first" : undefined}
+          disabled={pending || running}
         >
           {pending || running ? (
             <Loader2 className="size-4 animate-spin" />
