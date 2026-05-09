@@ -10,8 +10,6 @@ import {
   FileText,
   MoreHorizontal,
   Pencil,
-  Play,
-  Sparkles,
 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -66,12 +64,6 @@ export function TicketCard({
 }: Props): React.ReactElement {
   const [archiveOpen, setArchiveOpen] = useState(false);
   const ticketStatusKey = statuses.find((s) => s.id === ticket.statusId)?.key;
-  const hoverAction =
-    ticketStatusKey === "backlog"
-      ? { label: "Plan", icon: Sparkles }
-      : ticketStatusKey === "todo"
-        ? { label: "Execute", icon: Play }
-        : null;
   const [pendingArchive, startArchiveTransition] = useTransition();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: ticket.id,
@@ -190,27 +182,6 @@ export function TicketCard({
               className="mt-0.5"
             />
           ) : null}
-          {!isOverlay && hoverAction
-            ? (() => {
-                const HoverIcon = hoverAction.icon;
-                return (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="-mt-1 h-6 px-2 text-[11px] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                    onPointerDown={stopDragPropagation}
-                    onClick={(e) => {
-                      stopDragPropagation(e);
-                      onOpenDetail?.(ticket.id, true);
-                    }}
-                    aria-label={`${hoverAction.label} ${ticket.title}`}
-                  >
-                    <HoverIcon className="h-3 w-3" />
-                    {hoverAction.label}
-                  </Button>
-                );
-              })()
-            : null}
           {!isOverlay ? (
             <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
               <DropdownMenu>
