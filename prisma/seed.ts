@@ -12,7 +12,8 @@ const prisma = new PrismaClient({ adapter });
 const DEFAULT_STATUSES = [
   { key: "backlog", name: "Backlog", color: "#94a3b8", position: 1 },
   { key: "todo", name: "Todo", color: "#64748b", position: 2 },
-  { key: "building", name: "Building", color: "#f59e0b", position: 3 },
+  { key: "building", name: "Running", color: "#f59e0b", position: 3 },
+  { key: "blocked", name: "Blocked", color: "#ef4444", position: 3.5 },
   { key: "review", name: "Review", color: "#3b82f6", position: 4 },
   { key: "completed", name: "Completed", color: "#22c55e", position: 5 },
 ] as const;

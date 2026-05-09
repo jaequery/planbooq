@@ -19,8 +19,8 @@ type Delta = { choices?: Array<{ delta?: { content?: string } }> };
  * reopening replays the partial output. Realtime fanout via `agent.delta` lets
  * the client switch from POST-stream reading to Ably subscription on rehydrate.
  *
- * On completion: persists a TicketPlan row, sets activePlanId, comments, and
- * transitions the ticket to "todo".
+ * On completion: writes the accumulated content into Ticket.plan, comments,
+ * and transitions the ticket to "todo".
  */
 export async function POST(
   _req: Request,
@@ -206,13 +206,9 @@ export async function POST(
         await flush(true);
         try {
           if (accumulated.trim()) {
-            const plan = await prisma.ticketPlan.create({
-              data: { ticketId: ticket.id, content: accumulated, model },
-              select: { id: true },
-            });
             await prisma.ticket.update({
               where: { id: ticket.id },
-              data: { activePlanId: plan.id },
+              data: { plan: accumulated },
             });
             await moveTicketToStatusKey({
               ticketId: ticket.id,

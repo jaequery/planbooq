@@ -290,17 +290,27 @@ export async function quickCreateTicket(
     });
     if (!backlog) return { ok: false, error: "no_backlog_status" };
 
+    const imageMarkdownRe = /!\[[^\]]*\]\([^)]+\)/g;
+    const images = data.prompt.match(imageMarkdownRe) ?? [];
+    const promptForLlm = data.prompt.replace(imageMarkdownRe, "").trim() || data.prompt;
+
     const draftResult = await generateTicketDraft({
       workspaceId: project.workspaceId,
-      prompt: data.prompt,
+      prompt: promptForLlm,
     });
     if (!draftResult.ok) return { ok: false, error: draftResult.error };
+
+    const draftDesc = draftResult.draft.description?.trim() ?? "";
+    const composed =
+      images.length > 0
+        ? `${draftDesc}${draftDesc ? "\n\n" : ""}${images.join("\n\n")}`.slice(0, 5000)
+        : draftDesc;
 
     return await createTicket({
       projectId: project.id,
       statusId: backlog.id,
       title: draftResult.draft.title,
-      description: draftResult.draft.description || undefined,
+      description: composed || undefined,
     });
   } catch (error) {
     logger.error("quickCreateTicket.failed", {
@@ -315,6 +325,7 @@ const UpdateSchema = z
     ticketId: z.string().min(1),
     title: z.string().min(1).max(200).optional(),
     description: z.string().max(5000).nullable().optional(),
+    plan: z.string().max(20000).nullable().optional(),
     priority: z.nativeEnum(Priority).optional(),
     assigneeId: z.string().min(1).nullable().optional(),
     dueDate: z.coerce.date().nullable().optional(),
@@ -362,6 +373,9 @@ export async function updateTicket(
     if (data.title !== undefined) updateData.title = data.title;
     if (data.description !== undefined) {
       updateData.description = data.description?.trim() ? data.description : null;
+    }
+    if (data.plan !== undefined) {
+      updateData.plan = data.plan?.trim() ? data.plan : null;
     }
     if (data.priority !== undefined) updateData.priority = data.priority;
     if (data.assigneeId !== undefined) updateData.assigneeId = data.assigneeId;

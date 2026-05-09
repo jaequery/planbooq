@@ -12,13 +12,8 @@ type Props = {
   status: StatusWithTickets;
   statuses: ReadonlyArray<StatusOption>;
   tickets?: TicketWithRelations[];
-  projectName: string;
-  projectColor: string;
-  projectSlug: string;
-  currentUserId: string;
-  onTicketUpdated: (ticket: TicketWithRelations) => void;
   onTicketArchived: (ticketId: string) => void;
-  onTicketDeleted: (ticketId: string) => void;
+  onOpenDetail: (ticketId: string, autoRunAction?: boolean) => void;
   isFiltered?: boolean;
 };
 
@@ -26,13 +21,8 @@ export function Column({
   status,
   statuses,
   tickets = status.tickets,
-  projectName,
-  projectColor,
-  projectSlug,
-  currentUserId,
-  onTicketUpdated,
   onTicketArchived,
-  onTicketDeleted,
+  onOpenDetail,
   isFiltered = false,
 }: Props): React.ReactElement {
   const { setNodeRef, isOver } = useDroppable({
@@ -87,15 +77,10 @@ export function Column({
                     <TicketCard
                       key={ticket.id}
                       ticket={ticket}
-                      onUpdated={onTicketUpdated}
                       onArchived={onTicketArchived}
-                      onDeleted={onTicketDeleted}
+                      onOpenDetail={onOpenDetail}
                       statusKey={status.key}
                       statuses={statuses}
-                      projectName={projectName}
-                      projectColor={projectColor}
-                      projectSlug={projectSlug}
-                      currentUserId={currentUserId}
                     />
                   ))
                 )}

@@ -6,7 +6,12 @@ import { toast } from "sonner";
 import { dispatchTicketToAgent, listAgents } from "@/actions/agents";
 import { mintAgentApiKey } from "@/actions/api-keys";
 import { getProjectLocalPath, updateProject } from "@/actions/project";
-import { getTicketWorkflow } from "@/actions/workflow";
+import {
+  applyWorkflowStatusSuggestion,
+  decideEndOfRunStatus,
+  getTicketWorkflow,
+  getWorkflowStatusContext,
+} from "@/actions/workflow";
 import { TicketWorkflowPanel } from "@/components/board/ticket-workflow-panel";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
@@ -59,7 +64,12 @@ type ChatMsg =
   | { id: string; role: "assistant"; text: string }
   | { id: string; role: "system"; text: string };
 
-type AssistantBlock = { type: string; text?: string };
+type AssistantBlock = {
+  type: string;
+  text?: string;
+  name?: string;
+  input?: Record<string, unknown>;
+};
 type StreamDelta = { type?: string; text?: string };
 type StreamInner = {
   type?: string;
@@ -79,6 +89,41 @@ type WireEvent =
   | { kind: "stderr"; line: string }
   | { kind: "exit"; code: number }
   | { kind: "user"; text: string };
+
+function formatToolUse(name: string, input: Record<string, unknown> | undefined): string {
+  const arg = (() => {
+    if (!input) return "";
+    const i = input as Record<string, unknown>;
+    const pick = (k: string) => (typeof i[k] === "string" ? (i[k] as string) : "");
+    switch (name) {
+      case "Bash":
+        return pick("command");
+      case "Read":
+      case "Write":
+      case "Edit":
+      case "NotebookEdit":
+        return pick("file_path");
+      case "Glob":
+        return pick("pattern");
+      case "Grep":
+        return pick("pattern");
+      case "WebFetch":
+      case "WebSearch":
+        return pick("url") || pick("query");
+      case "Task":
+        return pick("description");
+      default: {
+        const first = Object.values(i).find((v) => typeof v === "string") as
+          | string
+          | undefined;
+        return first ?? "";
+      }
+    }
+  })();
+  const trimmed = arg.replace(/\s+/g, " ").trim();
+  const clipped = trimmed.length > 120 ? `${trimmed.slice(0, 119)}…` : trimmed;
+  return clipped ? `→ ${name}: ${clipped}` : `→ ${name}`;
+}
 
 /**
  * Applies a single wire-format event to a message list, mutating
@@ -157,8 +202,25 @@ function applyWireEvent(
       .filter((b) => b.type === "text" && typeof b.text === "string")
       .map((b) => b.text as string)
       .join("");
-    if (text) return { msgs: append(text, currentAssistantIdRef.current !== null) };
-    return { msgs };
+    let nextMsgs = msgs;
+    if (text) {
+      nextMsgs = append(text, currentAssistantIdRef.current !== null);
+    }
+    const toolLines = blocks
+      .filter((b) => b.type === "tool_use" && typeof b.name === "string")
+      .map((b) => formatToolUse(b.name as string, b.input));
+    if (toolLines.length > 0) {
+      currentAssistantIdRef.current = null;
+      nextMsgs = [
+        ...nextMsgs,
+        ...toolLines.map((line) => ({
+          id: crypto.randomUUID(),
+          role: "system" as const,
+          text: line,
+        })),
+      ];
+    }
+    return { msgs: nextMsgs };
   }
   if (parsed.type === "system" && parsed.subtype === "init" && parsed.session_id) {
     return { msgs, claudeSessionId: parsed.session_id };
@@ -170,8 +232,56 @@ function applyWireEvent(
   return { msgs };
 }
 
+// Heuristic: does this assistant message look like Claude is waiting on the
+// user to take action? Used to flip the ticket into "Blocked" so a human
+// scanning the board can see at a glance that the agent is parked on a
+// question. We deliberately bias toward false positives — moving a ticket to
+// Blocked when the agent is actually done is a small cost; missing a real
+// "I need you to decide" moment is what this feature exists to fix.
+function looksLikeAwaitingUser(text: string): boolean {
+  if (!text) return false;
+  // Strip fenced code blocks so a trailing "?" inside code doesn't trigger.
+  const stripped = text.replace(/```[\s\S]*?```/g, "").trim();
+  if (!stripped) return false;
+  // Look at the tail — questions/asks typically land there.
+  const tail = stripped.slice(-400);
+  if (/\?\s*$/.test(tail)) return true;
+  return /\b(should i|would you like|do you want|let me know|please (confirm|advise|clarify|provide|let me know|choose|pick|decide)|which (one|option|approach|do you)|need (your|you to) (input|confirmation|approval|decision|answer)|waiting (on|for) you|ready for you to|confirm( |\?|$)|approve( |\?|$))/i.test(
+    tail,
+  );
+}
+
 function serializeWire(ev: WireEvent): string {
   return `${JSON.stringify(ev)}\n`;
+}
+
+/**
+ * Compact summary used for completed assistant messages: strips fenced code
+ * blocks, then returns the first sentence(s) up to maxChars. Lets a long
+ * agent reply collapse into a one-glance summary with an expand affordance.
+ */
+function summarizeAssistant(text: string, maxChars = 200): string {
+  const stripped = text.replace(/```[\s\S]*?```/g, " ").trim();
+  if (!stripped) return text.trim();
+  const firstParaEnd = stripped.search(/\n\n/);
+  const head = (firstParaEnd > 0 ? stripped.slice(0, firstParaEnd) : stripped).trim();
+  const sentences = head
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  let out = "";
+  for (const s of sentences) {
+    if (!out) {
+      out = s;
+    } else if (out.length + 1 + s.length <= maxChars) {
+      out = `${out} ${s}`;
+    } else {
+      break;
+    }
+  }
+  if (!out) out = head;
+  if (out.length > maxChars) out = `${out.slice(0, maxChars - 1).trimEnd()}…`;
+  return out;
 }
 
 function parseStoredOutput(output: string): WireEvent[] {
@@ -195,7 +305,97 @@ function DesktopPanel({
   title,
   description,
   identifier,
+  statusKey,
 }: Props): React.ReactElement {
+  // Track current statusKey via ref so the streaming-event handler (mounted
+  // once with [] deps) can read the latest value without resubscribing. We
+  // also mutate the ref locally when we apply Blocked/Running so back-to-back
+  // events don't all fire status writes against a stale cache.
+  const statusKeyRef = useRef<string | undefined>(statusKey);
+  statusKeyRef.current = statusKey;
+  const messagesRef = useRef<ChatMsg[]>([]);
+  const setBlockedIfAwaiting = () => {
+    if (statusKeyRef.current !== "building") return;
+    const lastAssistant = [...messagesRef.current]
+      .reverse()
+      .find((m) => m.role === "assistant");
+    if (!lastAssistant || !looksLikeAwaitingUser(lastAssistant.text)) return;
+    statusKeyRef.current = "blocked";
+    void applyWorkflowStatusSuggestion(ticketId, "blocked").catch(() => {});
+  };
+  const clearBlocked = () => {
+    if (statusKeyRef.current !== "blocked") return;
+    statusKeyRef.current = "building";
+    void applyWorkflowStatusSuggestion(ticketId, "building").catch(() => {});
+  };
+
+  // Called when the agent finishes a run with no pending workflow steps and
+  // is not awaiting user input. Tries the PR-based decision server-side
+  // first (open → review, merged → completed, conflict → blocked), then
+  // falls back to a local Claude Code one-shot pick from allowed statuses.
+  const decideEndOfRun = async () => {
+    if (statusKeyRef.current !== "building") return;
+    try {
+      const r = await decideEndOfRunStatus(ticketId);
+      if (r.ok && r.statusKey) {
+        statusKeyRef.current = r.statusKey;
+        return;
+      }
+    } catch {
+      // tolerated — try the LLM fallback
+    }
+    try {
+      const bridge = getDesktopBridge();
+      if (!bridge?.agentOneshot) return;
+      const ctxRes = await getWorkflowStatusContext(ticketId);
+      if (!ctxRes.ok || ctxRes.statuses.length === 0) return;
+      const allowed = ctxRes.statuses.map((s) => s.key);
+      const lastAssistant = [...messagesRef.current]
+        .reverse()
+        .find((m) => m.role === "assistant");
+      const summary = lastAssistant
+        ? lastAssistant.text.slice(-1500)
+        : "(no agent output)";
+      const askPrompt = [
+        "You are picking the kanban status for a ticket whose Claude Code session just ended.",
+        "Common status keys: backlog (not started), todo (planned), building (still working), blocked (awaiting user), review (PR open / ready to review), completed (done/merged).",
+        'Reply with strict JSON only: {"statusKey":"<one of allowed>","reason":"short"}. No prose, no fences.',
+        "",
+        `Allowed status keys: ${allowed.join(", ")}`,
+        `Current status: ${ctxRes.currentStatusKey || "(unknown)"}`,
+        `Ticket title: ${ctxRes.title}`,
+        ctxRes.description ? `Ticket description:\n${ctxRes.description}` : "",
+        "Last agent message (tail):",
+        summary,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const res = await bridge.agentOneshot({
+        prompt: askPrompt,
+        timeoutMs: 15_000,
+      });
+      if (!res.ok || !res.text) return;
+      const stripped = res.text
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/```$/i, "")
+        .trim();
+      let suggested: string | undefined;
+      try {
+        const parsed = JSON.parse(stripped) as { statusKey?: unknown };
+        if (typeof parsed.statusKey === "string" && allowed.includes(parsed.statusKey)) {
+          suggested = parsed.statusKey;
+        }
+      } catch {
+        // unparseable — leave status alone
+      }
+      if (suggested && suggested !== statusKeyRef.current) {
+        statusKeyRef.current = suggested;
+        await applyWorkflowStatusSuggestion(ticketId, suggested).catch(() => {});
+      }
+    } catch {
+      // tolerated
+    }
+  };
   const [repoPath, setRepoPath] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [worktreePath, setWorktreePath] = useState<string | null>(null);
@@ -204,6 +404,7 @@ function DesktopPanel({
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const currentAssistantId = useRef<string | null>(null);
   const jobIdRef = useRef<string | null>(null);
@@ -266,6 +467,7 @@ function DesktopPanel({
           if (r.ended) endedInEvents = true;
         }
         currentAssistantId.current = cursor.current;
+        messagesRef.current = acc;
         setMessages(acc);
         setWorktreePath(job.worktreePath);
         setClaudeSessionId(resolvedClaudeSession ?? job.claudeSessionId);
@@ -336,20 +538,36 @@ function DesktopPanel({
       // double-append. We still PATCH worktreePath / claudeSessionId locally
       // because those don't come from bridge events.
 
-      setMessages((m) => {
-        const r = applyWireEvent(wire, m, currentAssistantId);
-        if (r.claudeSessionId !== undefined) {
-          setClaudeSessionId(r.claudeSessionId);
-          patchJob({ claudeSessionId: r.claudeSessionId });
+      const r = applyWireEvent(wire, messagesRef.current, currentAssistantId);
+      messagesRef.current = r.msgs;
+      setMessages(r.msgs);
+      if (r.claudeSessionId !== undefined) {
+        setClaudeSessionId(r.claudeSessionId);
+        patchJob({ claudeSessionId: r.claudeSessionId });
+      }
+      if (r.ended) {
+        setBusy(false);
+        if (wire.kind === "exit") {
+          setSessionId(null);
         }
-        if (r.ended) {
-          setBusy(false);
-          if (wire.kind === "exit") {
-            setSessionId(null);
+        // Only auto-block on a normal `result` end-of-turn — not on a
+        // hard exit, where the process is gone and the user isn't really
+        // being prompted, just stranded. Skip while the workflow queue is
+        // still draining (the next prompt will fire immediately).
+        if (workflowQueueRef.current.length === 0) {
+          const wasBuilding = statusKeyRef.current === "building";
+          if (wire.kind !== "exit") {
+            setBlockedIfAwaiting();
+          }
+          // If setBlockedIfAwaiting didn't move us out of building (no
+          // question detected) — or this was a hard exit — try to land
+          // the ticket in the right terminal column. Without this, runs
+          // that finish cleanly strand the card in Running forever.
+          if (wasBuilding && statusKeyRef.current === "building") {
+            void decideEndOfRun();
           }
         }
-        return r.msgs;
-      });
+      }
     });
   }, []);
 
@@ -405,6 +623,13 @@ function DesktopPanel({
     window.dispatchEvent(
       new CustomEvent("planbooq:agent-busy", { detail: { ticketId, running } }),
     );
+    // Whenever Claude is actively working, force the ticket into Running
+    // regardless of its current column — the agent's live state is the
+    // source of truth for "is work happening right now."
+    if (running && statusKeyRef.current !== "building") {
+      statusKeyRef.current = "building";
+      void applyWorkflowStatusSuggestion(ticketId, "building").catch(() => {});
+    }
   }, [busy, ticketId]);
 
   const send = async (override?: string) => {
@@ -412,6 +637,9 @@ function DesktopPanel({
     if (!bridge) return;
     const message = (override ?? input).trim();
     if (!message) return;
+    // User is responding — undo any auto-Blocked move so the card lands back
+    // in Running while Claude works on the reply.
+    clearBlocked();
 
     if (typeof bridge.agentStart !== "function" || typeof bridge.agentSend !== "function") {
       toast.error("Desktop app is out of date — quit and relaunch Planbooq");
@@ -424,7 +652,11 @@ function DesktopPanel({
       const canResume =
         !!worktreePath && !!claudeSessionId && typeof bridge.agentResume === "function";
       setBusy(true);
-      setMessages((m) => [...m, { id: crypto.randomUUID(), role: "user", text: message }]);
+      setMessages((m) => {
+        const next = [...m, { id: crypto.randomUUID(), role: "user", text: message } as ChatMsg];
+        messagesRef.current = next;
+        return next;
+      });
       setInput("");
 
       // Open a server-side desktop job so this conversation is durable.
@@ -610,29 +842,44 @@ function DesktopPanel({
           ref={scrollRef}
           className="flex max-h-[420px] flex-col gap-3 overflow-y-auto rounded-lg bg-muted/20 p-3"
         >
-          {messages.map((m) => (
-            <div
-              key={m.id}
-              className={
-                m.role === "user"
-                  ? "self-end max-w-[85%] rounded-lg bg-primary/10 px-3 py-2 text-[13px] whitespace-pre-wrap"
-                  : m.role === "system"
-                    ? "self-center text-[11px] text-muted-foreground"
-                    : "self-start max-w-[85%] rounded-lg bg-background px-3 py-2"
-              }
-            >
-              {m.role === "assistant" ? (
-                <Markdown className="text-[13px]">{m.text}</Markdown>
-              ) : (
-                m.text
-              )}
-            </div>
-          ))}
-          {busy && (
-            <div className="self-start text-[12px] text-muted-foreground">
-              <Loader2 className="inline size-3 animate-spin" /> thinking…
-            </div>
-          )}
+          {messages.map((m, i) => {
+            const isStreaming =
+              busy && m.role === "assistant" && i === messages.length - 1;
+            const isAssistant = m.role === "assistant";
+            const displayText = m.text;
+            return (
+              <div
+                key={m.id}
+                className={
+                  m.role === "user"
+                    ? "self-end max-w-[85%] rounded-lg bg-primary/10 px-3 py-2 text-[13px] whitespace-pre-wrap"
+                    : m.role === "system"
+                      ? "self-center text-[11px] text-muted-foreground"
+                      : isStreaming
+                        ? "self-start max-w-[85%] rounded-lg bg-background px-3 py-2 text-muted-foreground italic"
+                        : "self-start max-w-[85%] rounded-lg bg-background px-3 py-2"
+                }
+              >
+                {isAssistant ? (
+                  <Markdown className="text-[13px]">{displayText}</Markdown>
+                ) : (
+                  m.text
+                )}
+                {isStreaming && (
+                  <span className="ml-1 inline-block align-middle">
+                    <Loader2 className="inline size-3 animate-spin" />
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          {busy &&
+            (messages.length === 0 ||
+              messages[messages.length - 1]!.role !== "assistant") && (
+              <div className="self-start text-[12px] text-muted-foreground">
+                <Loader2 className="inline size-3 animate-spin" /> thinking…
+              </div>
+            )}
         </div>
       )}
 

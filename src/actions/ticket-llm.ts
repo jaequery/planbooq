@@ -27,7 +27,7 @@ const PlanSchema = z.object({ ticketId: z.string().min(1) }).strict();
 
 export async function planTicket(
   input: z.infer<typeof PlanSchema>,
-): Promise<ServerActionResult<{ planId: string }>> {
+): Promise<ServerActionResult<{ ticketId: string }>> {
   try {
     const { ticketId } = PlanSchema.parse(input);
     const userId = await requireUserId();
@@ -61,17 +61,9 @@ export async function planTicket(
     });
     if (!result.ok) return { ok: false, error: result.error };
 
-    const plan = await prisma.ticketPlan.create({
-      data: {
-        ticketId: ticket.id,
-        content: result.content,
-        model: result.model,
-      },
-      select: { id: true },
-    });
     await prisma.ticket.update({
       where: { id: ticket.id },
-      data: { activePlanId: plan.id },
+      data: { plan: result.content },
     });
 
     await moveTicketToStatusKey({
@@ -80,7 +72,7 @@ export async function planTicket(
       byUserId: userId,
     });
 
-    return { ok: true, data: { planId: plan.id } };
+    return { ok: true, data: { ticketId: ticket.id } };
   } catch (e) {
     logger.error("planTicket.failed", { error: e instanceof Error ? e.message : String(e) });
     return { ok: false, error: e instanceof Error ? e.message : "unknown" };
@@ -119,15 +111,15 @@ export async function executeTicketDesktop(
         workspaceId: true,
         title: true,
         description: true,
+        plan: true,
         archivedAt: true,
-        activePlan: { select: { content: true } },
       },
     });
     if (!ticket || ticket.archivedAt) return { ok: false, error: "ticket_not_found" };
     await requireMembership(ticket.workspaceId, userId);
 
-    const planSection = ticket.activePlan?.content
-      ? `\n\n## Implementation plan\n\n${ticket.activePlan.content}`
+    const planSection = ticket.plan
+      ? `\n\n## Implementation plan\n\n${ticket.plan}`
       : "";
     const prompt = `# ${ticket.title}\n\n${ticket.description ?? ""}${planSection}`.trim();
 
@@ -146,7 +138,7 @@ export async function executeTicketDesktop(
       "",
       "- **Mode:** Claude Code in an isolated git worktree on the paired desktop",
       "- **Context:** ticket title + description" +
-        (ticket.activePlan?.content ? " + active implementation plan" : ""),
+        (ticket.plan ? " + implementation plan" : ""),
       "- **Wrapper:** Claude has `./.planbooq/pbq` for ticket reads, comments, ship, and error",
       "",
       "Next: when the build is clean Claude opens a PR via `gh pr create` and ships back via `pbq ship` — status moves to **Review**. On failure, label `error` is added and the ticket stays in **Building**.",
@@ -190,8 +182,8 @@ export async function executeTicket(
         projectId: true,
         title: true,
         description: true,
+        plan: true,
         archivedAt: true,
-        activePlan: { select: { content: true } },
       },
     });
     if (!ticket || ticket.archivedAt) return { ok: false, error: "ticket_not_found" };
@@ -203,8 +195,8 @@ export async function executeTicket(
     });
     if (!agent) return { ok: false, error: "no_agent_paired" };
 
-    const planSection = ticket.activePlan?.content
-      ? `\n\n## Implementation plan\n\n${ticket.activePlan.content}`
+    const planSection = ticket.plan
+      ? `\n\n## Implementation plan\n\n${ticket.plan}`
       : "";
     const prompt = `# ${ticket.title}\n\n${ticket.description ?? ""}${planSection}`.trim();
 

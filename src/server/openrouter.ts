@@ -157,7 +157,7 @@ export async function generateTicketDraft(args: {
         "X-Title": "Planbooq",
       },
       body: JSON.stringify({
-        model: "openrouter/auto",
+        model: "anthropic/claude-haiku-4.5",
         response_format: { type: "json_object" },
         messages: [
           {
@@ -168,6 +168,7 @@ export async function generateTicketDraft(args: {
           { role: "user", content: args.prompt },
         ],
       }),
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!res.ok) {
@@ -195,6 +196,9 @@ export async function generateTicketDraft(args: {
     const description = parsed.description.trim().slice(0, 5000);
     return { ok: true, draft: { title, description } };
   } catch (e) {
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) {
+      return { ok: false, error: "openrouter_timeout" };
+    }
     return { ok: false, error: e instanceof Error ? e.message : "unknown" };
   }
 }

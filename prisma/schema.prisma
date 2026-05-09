@@ -188,12 +188,12 @@ model Ticket {
   statusId    String
   title       String
   description String?
+  plan        String?   @db.Text
   priority    Priority  @default(NO_PRIORITY)
   assigneeId  String?
   dueDate     DateTime?
   position    Float
   prUrl       String?
-  activePlanId String?  @unique
   createdById String
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -209,8 +209,6 @@ model Ticket {
   previews  TicketPreview[]
   agentJobs AgentJob[]
   activities TicketActivity[]
-  plans     TicketPlan[] @relation("TicketPlans")
-  activePlan TicketPlan? @relation("TicketActivePlan", fields: [activePlanId], references: [id], onDelete: SetNull)
   workflowSteps WorkflowStep[]
   workflowRuns  WorkflowRun[]
 
@@ -220,19 +218,6 @@ model Ticket {
   @@index([createdById])
   @@index([assigneeId])
   @@index([workspaceId, dueDate])
-}
-
-model TicketPlan {
-  id        String   @id @default(cuid())
-  ticketId  String
-  content   String   @db.Text
-  model     String?
-  createdAt DateTime @default(now())
-
-  ticket       Ticket  @relation("TicketPlans", fields: [ticketId], references: [id], onDelete: Cascade)
-  activeOnTicket Ticket? @relation("TicketActivePlan")
-
-  @@index([ticketId, createdAt])
 }
 
 model Label {

@@ -115,8 +115,10 @@ export function TicketDetailDialog({
   const [, startTransition] = useTransition();
   const [titleDraft, setTitleDraft] = useState(ticket.title);
   const [descriptionDraft, setDescriptionDraft] = useState(ticket.description ?? "");
+  const [planDraft, setPlanDraft] = useState(ticket.plan ?? "");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [isEditingPlan, setIsEditingPlan] = useState(false);
   // Optimistic mirrors of relational fields.
   const [priority, setPriority] = useState<Priority>(ticket.priority);
   const [assignee, setAssignee] = useState<TicketAssignee | null>(ticket.assignee ?? null);
@@ -260,7 +262,15 @@ export function TicketDetailDialog({
   useEffect(() => {
     if (!isEditingTitle) setTitleDraft(ticket.title);
     if (!isEditingDescription) setDescriptionDraft(ticket.description ?? "");
-  }, [ticket.title, ticket.description, isEditingTitle, isEditingDescription]);
+    if (!isEditingPlan) setPlanDraft(ticket.plan ?? "");
+  }, [
+    ticket.title,
+    ticket.description,
+    ticket.plan,
+    isEditingTitle,
+    isEditingDescription,
+    isEditingPlan,
+  ]);
 
   useEffect(() => {
     setPriority(ticket.priority);
@@ -273,17 +283,23 @@ export function TicketDetailDialog({
     if (!open) {
       setIsEditingTitle(false);
       setIsEditingDescription(false);
+      setIsEditingPlan(false);
     }
   }, [open]);
 
-  const persist = (next: { title?: string; description?: string }, rollback: () => void): void => {
+  const persist = (
+    next: { title?: string; description?: string; plan?: string },
+    rollback: () => void,
+  ): void => {
     startTransition(async () => {
       const nextTitle = (next.title ?? ticket.title).trim();
       const nextDescription = next.description ?? ticket.description ?? "";
+      const nextPlan = next.plan ?? ticket.plan ?? "";
       const result = await updateTicket({
         ticketId: ticket.id,
         title: nextTitle,
         description: nextDescription.trim() ? nextDescription : null,
+        plan: nextPlan.trim() ? nextPlan : null,
       });
       if (!result.ok) {
         rollback();
@@ -323,6 +339,18 @@ export function TicketDetailDialog({
   const cancelDescription = (): void => {
     setDescriptionDraft(ticket.description ?? "");
     setIsEditingDescription(false);
+  };
+
+  const commitPlan = (): void => {
+    setIsEditingPlan(false);
+    const original = ticket.plan ?? "";
+    if (planDraft === original) return;
+    persist({ plan: planDraft }, () => setPlanDraft(original));
+  };
+
+  const cancelPlan = (): void => {
+    setPlanDraft(ticket.plan ?? "");
+    setIsEditingPlan(false);
   };
 
   const handleDeleted = (): void => {
@@ -469,6 +497,52 @@ export function TicketDetailDialog({
                       </Markdown>
                     ) : (
                       <span className="text-[14px]">Add description…</span>
+                    )}
+                  </button>
+                )}
+              </div>
+
+              <div className="mt-6">
+                <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Plan
+                </div>
+                {isEditingPlan ? (
+                  <ImageUploadTextarea
+                    workspaceId={ticket.workspaceId}
+                    autoFocus
+                    value={planDraft}
+                    onChange={(e) => setPlanDraft(e.target.value)}
+                    onBlur={commitPlan}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        cancelPlan();
+                      } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault();
+                        commitPlan();
+                      }
+                    }}
+                    onUploadError={(message) => toast.error(`Image upload failed: ${message}`)}
+                    placeholder="Add or paste an implementation plan…"
+                    aria-label="Ticket plan"
+                    className="min-h-[140px] border-0 bg-transparent p-0 text-[14px] leading-relaxed shadow-none focus-visible:ring-0 md:text-[14px]"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingPlan(true)}
+                    className={cn(
+                      "block w-full text-left",
+                      !ticket.plan && "text-muted-foreground hover:text-foreground/80",
+                    )}
+                    aria-label="Edit plan"
+                  >
+                    {ticket.plan ? (
+                      <Markdown className="text-[14px] text-foreground">{ticket.plan}</Markdown>
+                    ) : (
+                      <span className="text-[14px]">
+                        No plan yet. Generate one or write your own…
+                      </span>
                     )}
                   </button>
                 )}

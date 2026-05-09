@@ -7,6 +7,7 @@ import {
   listTicketCommentsSvc,
   updateCommentSvc,
 } from "@/server/services/comments";
+import { createAttachment, getMaxSizeForMime } from "@/server/services/attachment";
 import { createProjectSvc, deleteProjectSvc, updateProjectSvc } from "@/server/services/projects";
 import {
   createTicketSvc,
@@ -224,13 +225,28 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "set_ticket_plan",
+    description:
+      "Write or update the IMPLEMENTATION PLAN for a ticket. ALWAYS use this tool when the user says 'create a plan', 'update the plan', 'write a plan', 'plan this ticket', or anything similar. The plan is stored in the ticket's dedicated `plan` field — it is NOT the same as `description`. Do NOT use `update_ticket` with `description` for plan content. Pass markdown in `plan`. Pass `null` to clear.",
+    inputSchema: obj({ ticketId: str, plan: strOpt }, ["ticketId", "plan"]),
+    handler: async (caller, a) => {
+      const r = await updateTicketSvc(caller.userId, String(a.ticketId), {
+        plan: a.plan === null ? null : String(a.plan),
+      });
+      if (!r.ok) throw new Error(r.error);
+      return r.data;
+    },
+  },
+  {
     name: "update_ticket",
-    description: "Update ticket fields (title, description, priority, assignee, due date, labels).",
+    description:
+      "Update ticket fields (title, description, priority, assignee, due date, labels). For the implementation PLAN, use `set_ticket_plan` instead — DO NOT write plan content into `description`. The `description` field is the user's original ask/scope; the `plan` field is the engineering plan.",
     inputSchema: obj(
       {
         ticketId: str,
         title: strOpt,
         description: strOpt,
+        plan: strOpt,
         priority: { type: ["string", "null"], enum: ["LOW", "MEDIUM", "HIGH", "URGENT", null] },
         assigneeId: strOpt,
         dueDate: strOpt,
@@ -242,6 +258,7 @@ const TOOLS: ToolDef[] = [
       const patch: Record<string, unknown> = {};
       if (a.title !== undefined) patch.title = a.title;
       if (a.description !== undefined) patch.description = a.description;
+      if (a.plan !== undefined) patch.plan = a.plan;
       if (a.priority !== undefined) patch.priority = a.priority;
       if (a.assigneeId !== undefined) patch.assigneeId = a.assigneeId;
       if (a.dueDate !== undefined) patch.dueDate = a.dueDate;
@@ -309,6 +326,51 @@ const TOOLS: ToolDef[] = [
       });
       if (!r.ok) throw new Error(r.error);
       return r.data;
+    },
+  },
+  {
+    name: "upload_attachment",
+    description:
+      "Upload an image/video and get a URL to embed in markdown (e.g. comment bodies). Provide raw bytes as base64 in dataBase64. Pass either workspaceId or ticketId. Returns { id, url, markdown }. Images: png/jpeg/webp/gif up to 5MB. Video: mp4/webm/quicktime up to 25MB.",
+    inputSchema: obj(
+      {
+        workspaceId: strOpt,
+        ticketId: strOpt,
+        mimeType: str,
+        dataBase64: str,
+        filename: strOpt,
+      },
+      ["mimeType", "dataBase64"],
+    ),
+    handler: async (caller, a) => {
+      const mimeType = String(a.mimeType);
+      if (getMaxSizeForMime(mimeType) === null) throw new Error("unsupported_mime_type");
+
+      let workspaceId: string | null = a.workspaceId ? String(a.workspaceId) : null;
+      if (!workspaceId && a.ticketId) {
+        const t = await prisma.ticket.findUnique({
+          where: { id: String(a.ticketId) },
+          select: { workspaceId: true },
+        });
+        if (!t) throw new Error("ticket_not_found");
+        workspaceId = t.workspaceId;
+      }
+      if (!workspaceId) throw new Error("workspaceId_or_ticketId_required");
+      await assertWorkspace(caller, workspaceId);
+
+      const data = Buffer.from(String(a.dataBase64), "base64");
+      if (data.byteLength === 0) throw new Error("empty_payload");
+
+      const result = await createAttachment({
+        userId: caller.userId,
+        workspaceId,
+        mimeType,
+        size: data.byteLength,
+        data,
+      });
+      const altRaw = a.filename ? String(a.filename) : "image";
+      const alt = altRaw.replace(/[[\]]/g, "").trim() || "image";
+      return { ...result, markdown: `![${alt}](${result.url})` };
     },
   },
   {

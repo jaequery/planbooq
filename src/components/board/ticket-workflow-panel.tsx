@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { getProjectLocalPath } from "@/actions/project";
 import {
   addTicketStep,
+  applyWorkflowStatusSuggestion,
   disableTicketWorkflowOverride,
   getTicketWorkflow,
   getWorkflowStatusContext,
@@ -135,62 +136,62 @@ export function TicketWorkflowPanel({
         detail: { ticketId, prompts },
       }),
     );
+    // Move the ticket to Running (deterministic backlog|todo → building)
+    // immediately so the card jumps columns the moment the user clicks Run.
+    // Then ask local Claude Code in the background for a smarter status pick
+    // and apply it as a refinement if it differs.
     void (async () => {
-      // Ask local Claude Code (via the desktop bridge) which kanban status
-      // best fits this ticket while the workflow runs. Returned key is
-      // forwarded to the server, which validates it against the workspace's
-      // real status set before applying. If the bridge isn't available or
-      // claude fails/times out, the server falls back to the deterministic
-      // backlog|todo → building rule.
-      let suggestedStatusKey: string | undefined;
+      try {
+        await triggerWorkflowRun(ticketId);
+      } catch {
+        // tolerated
+      }
+    })();
+    void (async () => {
       try {
         const bridge = getDesktopBridge();
-        if (bridge?.agentOneshot) {
-          const ctxRes = await getWorkflowStatusContext(ticketId);
-          if (ctxRes.ok && ctxRes.statuses.length > 0) {
-            const allowed = ctxRes.statuses.map((s) => s.key);
-            const stepsBlock = prompts
-              .map((p, i) => `${i + 1}. ${p.slice(0, 400)}`)
-              .join("\n");
-            const askPrompt = [
-              "You are picking the kanban status for a ticket whose workflow steps are about to run via Claude Code.",
-              "Common status keys: backlog (not started), todo (planned), building (in progress), review (PR open), completed (done).",
-              'Reply with strict JSON only: {"statusKey":"<one of allowed>","reason":"short"}. No prose, no fences.',
-              "",
-              `Allowed status keys: ${allowed.join(", ")}`,
-              `Current status: ${ctxRes.currentStatusKey || "(unknown)"}`,
-              `Ticket title: ${ctxRes.title}`,
-              ctxRes.description ? `Ticket description:\n${ctxRes.description}` : "",
-              "Workflow steps about to run:",
-              stepsBlock,
-            ]
-              .filter(Boolean)
-              .join("\n");
-            const res = await bridge.agentOneshot({
-              prompt: askPrompt,
-              timeoutMs: 15_000,
-            });
-            if (res.ok && res.text) {
-              const stripped = res.text
-                .replace(/^```(?:json)?\s*/i, "")
-                .replace(/```$/i, "")
-                .trim();
-              try {
-                const parsed = JSON.parse(stripped) as { statusKey?: unknown };
-                if (typeof parsed.statusKey === "string" && allowed.includes(parsed.statusKey)) {
-                  suggestedStatusKey = parsed.statusKey;
-                }
-              } catch {
-                // unparseable — server falls back to deterministic rule
-              }
-            }
+        if (!bridge?.agentOneshot) return;
+        const ctxRes = await getWorkflowStatusContext(ticketId);
+        if (!ctxRes.ok || ctxRes.statuses.length === 0) return;
+        const allowed = ctxRes.statuses.map((s) => s.key);
+        const stepsBlock = prompts
+          .map((p, i) => `${i + 1}. ${p.slice(0, 400)}`)
+          .join("\n");
+        const askPrompt = [
+          "You are picking the kanban status for a ticket whose workflow steps are about to run via Claude Code.",
+          "Common status keys: backlog (not started), todo (planned), building (in progress), blocked (agent is awaiting user input/decision), review (PR open), completed (done).",
+          'Reply with strict JSON only: {"statusKey":"<one of allowed>","reason":"short"}. No prose, no fences.',
+          "",
+          `Allowed status keys: ${allowed.join(", ")}`,
+          `Current status: ${ctxRes.currentStatusKey || "(unknown)"}`,
+          `Ticket title: ${ctxRes.title}`,
+          ctxRes.description ? `Ticket description:\n${ctxRes.description}` : "",
+          "Workflow steps about to run:",
+          stepsBlock,
+        ]
+          .filter(Boolean)
+          .join("\n");
+        const res = await bridge.agentOneshot({
+          prompt: askPrompt,
+          timeoutMs: 15_000,
+        });
+        if (!res.ok || !res.text) return;
+        const stripped = res.text
+          .replace(/^```(?:json)?\s*/i, "")
+          .replace(/```$/i, "")
+          .trim();
+        let suggestedStatusKey: string | undefined;
+        try {
+          const parsed = JSON.parse(stripped) as { statusKey?: unknown };
+          if (typeof parsed.statusKey === "string" && allowed.includes(parsed.statusKey)) {
+            suggestedStatusKey = parsed.statusKey;
           }
+        } catch {
+          // unparseable — keep the deterministic move
         }
-      } catch {
-        // tolerated — server falls back
-      }
-      try {
-        await triggerWorkflowRun(ticketId, suggestedStatusKey ? { suggestedStatusKey } : undefined);
+        if (suggestedStatusKey) {
+          await applyWorkflowStatusSuggestion(ticketId, suggestedStatusKey);
+        }
       } catch {
         // tolerated
       }

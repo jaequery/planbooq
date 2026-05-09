@@ -6,6 +6,7 @@ import { z } from "zod";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { getPrStatusForUser, parseGitHubPrUrl } from "@/server/services/github-pr";
 import { moveTicketToStatusKey } from "@/server/services/ticket-status";
 
 type Ok<T> = T extends Record<string, never> ? { ok: true } : { ok: true } & T;
@@ -32,8 +33,8 @@ async function requireMember(
   return { ok: true, userId: u.userId };
 }
 
-const NameSchema = z.string().min(1).max(80);
-const PromptSchema = z.string().min(1).max(8000);
+const NameSchema = z.string().min(1);
+const PromptSchema = z.string().min(1);
 
 // ---------- Templates ----------
 
@@ -692,6 +693,117 @@ export async function triggerWorkflowRun(
 
   revalidatePath("/");
   return { ok: true, runId: run.id, stepCount: enabled.length };
+}
+
+/**
+ * Apply a status suggestion produced by local Claude Code after the workflow
+ * run already started. Used to refine the deterministic move applied by
+ * `triggerWorkflowRun` when the LLM picks a more specific column.
+ */
+export async function applyWorkflowStatusSuggestion(
+  ticketId: string,
+  suggestedStatusKey: string,
+): Promise<Result<Empty>> {
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: { workspaceId: true, status: { select: { key: true } } },
+  });
+  if (!ticket) return { ok: false, error: "not_found" };
+  const ctx = await requireMember(ticket.workspaceId);
+  if (!ctx.ok) return ctx;
+
+  const statuses = await prisma.status.findMany({
+    where: { workspaceId: ticket.workspaceId },
+    select: { key: true },
+  });
+  const allowed = new Set(statuses.map((s) => s.key));
+  if (!allowed.has(suggestedStatusKey)) {
+    return { ok: false, error: "invalid_status" };
+  }
+  const currentKey = ticket.status?.key ?? "";
+  if (suggestedStatusKey === currentKey) return { ok: true };
+
+  await moveTicketToStatusKey({
+    ticketId,
+    toStatusKey: suggestedStatusKey,
+    byUserId: ctx.userId,
+  });
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/**
+ * Decide what status a ticket should land in once the agent has stopped
+ * working on it. Mirrors the start-of-run status pick in `triggerWorkflowRun`,
+ * but for the end-of-run side: if a PR is open it should land in review (or
+ * completed/blocked depending on merge state), otherwise return null so the
+ * caller can fall back to a local-LLM pick.
+ *
+ * Only fires when the ticket is currently in `building` — we never override
+ * an explicit user move.
+ */
+export async function decideEndOfRunStatus(
+  ticketId: string,
+): Promise<Result<{ statusKey: string | null; reason: string }>> {
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: {
+      workspaceId: true,
+      prUrl: true,
+      status: { select: { key: true } },
+    },
+  });
+  if (!ticket) return { ok: false, error: "not_found" };
+  const ctx = await requireMember(ticket.workspaceId);
+  if (!ctx.ok) return ctx;
+
+  const currentKey = ticket.status?.key ?? "";
+  if (currentKey !== "building") {
+    return { ok: true, statusKey: null, reason: "not-building" };
+  }
+
+  const statuses = await prisma.status.findMany({
+    where: { workspaceId: ticket.workspaceId },
+    select: { key: true },
+  });
+  const allowed = new Set(statuses.map((s) => s.key));
+  const pick = (k: string): string | null => (allowed.has(k) ? k : null);
+
+  const pr = parseGitHubPrUrl(ticket.prUrl);
+  if (!ticket.prUrl || !pr) {
+    return { ok: true, statusKey: null, reason: "no-pr" };
+  }
+
+  const outcome = await getPrStatusForUser({ userId: ctx.userId, pr });
+  if (outcome.kind !== "ok") {
+    return { ok: true, statusKey: null, reason: `pr-${outcome.kind}` };
+  }
+  const s = outcome.status;
+  let target: string | null = null;
+  let reason = "pr-open";
+  if (s.merged) {
+    target = pick("completed") ?? pick("review");
+    reason = "pr-merged";
+  } else if (s.state === "closed") {
+    target = pick("blocked") ?? pick("review");
+    reason = "pr-closed";
+  } else if (s.mergeable === false) {
+    target = pick("blocked") ?? pick("review");
+    reason = "pr-conflict";
+  } else {
+    target = pick("review");
+    reason = "pr-open";
+  }
+  if (!target || target === currentKey) {
+    return { ok: true, statusKey: null, reason: `${reason}-noop` };
+  }
+  await moveTicketToStatusKey({
+    ticketId,
+    toStatusKey: target,
+    byUserId: ctx.userId,
+  });
+  revalidatePath("/");
+  return { ok: true, statusKey: target, reason };
 }
 
 export async function logWorkflowActivity(input: {

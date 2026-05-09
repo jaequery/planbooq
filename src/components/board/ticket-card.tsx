@@ -21,7 +21,6 @@ import { formatDueDate } from "@/components/board/due-date-picker";
 import { LabelChip } from "@/components/board/label-picker";
 import { PriorityIcon } from "@/components/board/priority-picker";
 import type { StatusOption } from "@/components/board/status-picker";
-import { TicketDetailDialog } from "@/components/board/ticket-detail-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,29 +51,19 @@ type Props = {
   onUpdated?: (ticket: TicketWithRelations) => void;
   onArchived?: (ticketId: string) => void;
   onDeleted?: (ticketId: string) => void;
+  onOpenDetail?: (ticketId: string, autoRunAction?: boolean) => void;
   statusKey?: string;
   statuses?: ReadonlyArray<StatusOption>;
-  projectName?: string;
-  projectColor?: string;
-  projectSlug?: string;
-  currentUserId?: string | null;
 };
 
 export function TicketCard({
   ticket,
   isOverlay = false,
-  onUpdated,
   onArchived,
-  onDeleted,
+  onOpenDetail,
   statusKey,
   statuses = [],
-  projectName = "",
-  projectColor = "#94a3b8",
-  projectSlug,
-  currentUserId = null,
 }: Props): React.ReactElement {
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [autoRunOnOpen, setAutoRunOnOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const ticketStatusKey = statuses.find((s) => s.id === ticket.statusId)?.key;
   const hoverAction =
@@ -155,13 +144,13 @@ export function TicketCard({
         tabIndex={isOverlay ? undefined : 0}
         aria-label={isOverlay ? undefined : `Open ${ticket.title}`}
         onClick={() => {
-          if (!isOverlay) setDetailOpen(true);
+          if (!isOverlay) onOpenDetail?.(ticket.id);
         }}
         onKeyDown={(event) => {
           if (isOverlay) return;
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            setDetailOpen(true);
+            onOpenDetail?.(ticket.id);
           }
         }}
         className={cn(
@@ -212,8 +201,7 @@ export function TicketCard({
                     onPointerDown={stopDragPropagation}
                     onClick={(e) => {
                       stopDragPropagation(e);
-                      setAutoRunOnOpen(true);
-                      setDetailOpen(true);
+                      onOpenDetail?.(ticket.id, true);
                     }}
                     aria-label={`${hoverAction.label} ${ticket.title}`}
                   >
@@ -224,7 +212,7 @@ export function TicketCard({
               })()
             : null}
           {!isOverlay ? (
-            <div>
+            <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -239,7 +227,7 @@ export function TicketCard({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-40">
-                  <DropdownMenuItem onSelect={() => setDetailOpen(true)}>
+                  <DropdownMenuItem onSelect={() => onOpenDetail?.(ticket.id)}>
                     <Pencil className="h-4 w-4" />
                     Edit details
                   </DropdownMenuItem>
@@ -320,22 +308,6 @@ export function TicketCard({
       </div>
       {!isOverlay ? (
         <>
-          <TicketDetailDialog
-            ticket={ticket}
-            open={detailOpen}
-            onOpenChange={(open) => {
-              setDetailOpen(open);
-              if (!open) setAutoRunOnOpen(false);
-            }}
-            autoRunAction={autoRunOnOpen}
-            onUpdated={(updated) => onUpdated?.(updated)}
-            onDeleted={(id) => onDeleted?.(id)}
-            statuses={statuses}
-            projectName={projectName}
-            projectColor={projectColor}
-            projectSlug={projectSlug}
-            currentUserId={currentUserId}
-          />
           <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>

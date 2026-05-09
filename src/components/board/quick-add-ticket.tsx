@@ -33,6 +33,9 @@ function describeError(error: string): string {
   if (error === "duplicate_title") {
     return "A ticket with this title already exists in this project.";
   }
+  if (error === "openrouter_timeout") {
+    return "Drafting timed out after 30s. Try again or use a faster model.";
+  }
   if (error.startsWith("openrouter_")) {
     return `LLM request failed (${error}). Check your OpenRouter key and try again.`;
   }

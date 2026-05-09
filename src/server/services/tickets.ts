@@ -112,6 +112,7 @@ export const UpdateTicketSchema = z
   .object({
     title: z.string().min(1).max(200).optional(),
     description: z.string().max(5000).nullable().optional(),
+    plan: z.string().max(20000).nullable().optional(),
     priority: z.nativeEnum(Priority).optional(),
     assigneeId: z.string().min(1).nullable().optional(),
     dueDate: z.coerce.date().nullable().optional(),
@@ -154,6 +155,7 @@ export async function updateTicketSvc(
     if (data.title !== undefined) updateData.title = data.title;
     if (data.description !== undefined)
       updateData.description = data.description?.trim() ? data.description : null;
+    if (data.plan !== undefined) updateData.plan = data.plan?.trim() ? data.plan : null;
     if (data.priority !== undefined) updateData.priority = data.priority;
     if (data.assigneeId !== undefined) updateData.assigneeId = data.assigneeId;
     if (data.dueDate !== undefined) updateData.dueDate = data.dueDate;

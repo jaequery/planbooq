@@ -69,16 +69,39 @@ export async function PATCH(
   await prisma.agentJob.update({ where: { id }, data, select: { id: true } });
 
   // Fanout for cross-tab/cross-client liveness.
+  // Ably caps a single publish at 64KB; chunk large appendOutput so we stay under it.
   if (job.workspaceId && (parsed.data.appendOutput || parsed.data.status)) {
-    void publishWorkspaceEvent(job.workspaceId, {
-      name: "agent.delta",
+    const workspaceId = job.workspaceId;
+    const kind = (job.kind as "PLAN" | "EXECUTE" | "CHAT") ?? "CHAT";
+    const baseEvent = {
+      name: "agent.delta" as const,
       jobId: id,
       ticketId: job.ticketId,
-      workspaceId: job.workspaceId,
-      kind: (job.kind as "PLAN" | "EXECUTE" | "CHAT") ?? "CHAT",
-      appendOutput: parsed.data.appendOutput,
-      status: parsed.data.status,
-    });
+      workspaceId,
+      kind,
+    };
+    const append = parsed.data.appendOutput;
+    if (append && append.length > 0) {
+      const CHUNK = 48 * 1024; // bytes-ish; leave headroom for JSON overhead
+      const chunks: string[] = [];
+      for (let i = 0; i < append.length; i += CHUNK) {
+        chunks.push(append.slice(i, i + CHUNK));
+      }
+      for (let i = 0; i < chunks.length; i++) {
+        const isLast = i === chunks.length - 1;
+        void publishWorkspaceEvent(workspaceId, {
+          ...baseEvent,
+          appendOutput: chunks[i],
+          status: isLast ? parsed.data.status : undefined,
+        });
+      }
+    } else {
+      void publishWorkspaceEvent(workspaceId, {
+        ...baseEvent,
+        appendOutput: undefined,
+        status: parsed.data.status,
+      });
+    }
   }
 
   return NextResponse.json({ ok: true });

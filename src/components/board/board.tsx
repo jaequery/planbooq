@@ -21,6 +21,7 @@ import { Column } from "@/components/board/column";
 import { QuickAddTicket } from "@/components/board/quick-add-ticket";
 import { RealtimeIndicator } from "@/components/board/realtime-indicator";
 import { TicketCard } from "@/components/board/ticket-card";
+import { TicketDetailDialog } from "@/components/board/ticket-detail-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LiveAgentsContext, type LiveAgentState } from "@/lib/live-agents-context";
@@ -69,6 +70,8 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
   const router = useRouter();
   const [statuses, setStatuses] = useState<StatusWithTickets[]>(initialData.statuses);
   const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
+  const [detailTicketId, setDetailTicketId] = useState<string | null>(null);
+  const [autoRunOnOpen, setAutoRunOnOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [liveAgents, setLiveAgents] = useState<ReadonlyMap<string, LiveAgentState>>(new Map());
   const currentProjectId = initialData.project.id;
@@ -353,6 +356,18 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
     );
   }, []);
 
+  const onOpenDetail = useCallback((ticketId: string, autoRunAction = false) => {
+    setAutoRunOnOpen(autoRunAction);
+    setDetailTicketId(ticketId);
+  }, []);
+
+  const statusOptions = useMemo(
+    () => statuses.map((s) => ({ id: s.id, name: s.name, color: s.color, key: s.key })),
+    [statuses],
+  );
+
+  const detailTicket = detailTicketId ? (allTickets.get(detailTicketId) ?? null) : null;
+
   const onDragStart = (event: DragStartEvent): void => {
     setActiveTicketId(String(event.active.id));
   };
@@ -532,15 +547,10 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
             <Column
               key={status.id}
               status={status}
-              statuses={statuses.map((s) => ({ id: s.id, name: s.name, color: s.color, key: s.key }))}
+              statuses={statusOptions}
               tickets={status.tickets}
-              projectName={initialData.project.name}
-              projectColor={initialData.project.color}
-              projectSlug={initialData.project.slug}
-              currentUserId={currentUserId}
-              onTicketUpdated={onTicketUpdated}
               onTicketArchived={onTicketArchived}
-              onTicketDeleted={onTicketDeleted}
+              onOpenDetail={onOpenDetail}
               isFiltered={isFiltered}
             />
           ))}
@@ -549,6 +559,26 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           {activeTicket ? <TicketCard ticket={activeTicket} isOverlay /> : null}
         </DragOverlay>
       </DndContext>
+      {detailTicket ? (
+        <TicketDetailDialog
+          ticket={detailTicket}
+          open={detailTicketId !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setDetailTicketId(null);
+              setAutoRunOnOpen(false);
+            }
+          }}
+          autoRunAction={autoRunOnOpen}
+          onUpdated={onTicketUpdated}
+          onDeleted={onTicketDeleted}
+          statuses={statusOptions}
+          projectName={initialData.project.name}
+          projectColor={initialData.project.color}
+          projectSlug={initialData.project.slug}
+          currentUserId={currentUserId}
+        />
+      ) : null}
     </div>
     </LiveAgentsContext.Provider>
   );
