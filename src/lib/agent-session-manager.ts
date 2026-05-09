@@ -34,6 +34,11 @@ type WireEvent =
 const sessions = new Map<string, Registration>();
 let started = false;
 
+// Coalesce per-line appendOutput into ~250ms batches so a chatty `claude`
+// process doesn't issue 10+ PATCH/sec (each = Prisma read+write + Ably publish).
+const FLUSH_MS = 250;
+const buffers = new Map<string, { text: string; timer: ReturnType<typeof setTimeout> | null }>();
+
 function serializeWire(ev: WireEvent): string {
   return `${JSON.stringify(ev)}\n`;
 }
@@ -53,6 +58,28 @@ function patchJob(
   }).catch(() => undefined);
 }
 
+function flushBuffer(jobId: string): void {
+  const buf = buffers.get(jobId);
+  if (!buf) return;
+  if (buf.timer) clearTimeout(buf.timer);
+  buffers.delete(jobId);
+  if (buf.text.length > 0) patchJob(jobId, { appendOutput: buf.text });
+}
+
+function enqueueAppend(jobId: string, chunk: string): void {
+  const existing = buffers.get(jobId);
+  if (existing) {
+    existing.text += chunk;
+    return;
+  }
+  const entry: { text: string; timer: ReturnType<typeof setTimeout> | null } = {
+    text: chunk,
+    timer: null,
+  };
+  entry.timer = setTimeout(() => flushBuffer(jobId), FLUSH_MS);
+  buffers.set(jobId, entry);
+}
+
 function handle(e: AgentEvent): void {
   const reg = sessions.get(e.sessionId);
   if (!reg) return;
@@ -63,15 +90,23 @@ function handle(e: AgentEvent): void {
         ? { kind: "stderr", line: e.line }
         : { kind: "agent", line: e.line };
 
-  patchJob(reg.jobId, { appendOutput: serializeWire(wire) });
-
   if (e.type === "exit") {
+    // Flush any pending output together with the exit marker, then send the
+    // terminal status as a separate PATCH so finishedAt/exitCode land promptly.
+    const buf = buffers.get(reg.jobId);
+    const pending = buf?.text ?? "";
+    if (buf?.timer) clearTimeout(buf.timer);
+    buffers.delete(reg.jobId);
+    patchJob(reg.jobId, { appendOutput: pending + serializeWire(wire) });
     patchJob(reg.jobId, {
       status: e.code === 0 ? "SUCCEEDED" : "FAILED",
       exitCode: e.code,
     });
     sessions.delete(e.sessionId);
+    return;
   }
+
+  enqueueAppend(reg.jobId, serializeWire(wire));
 }
 
 /** Idempotent. Mounted once at workspace layout via <AgentSessionManager />. */
@@ -84,6 +119,8 @@ export function startAgentSessionManager(): () => void {
   return () => {
     started = false;
     sessions.clear();
+    for (const buf of buffers.values()) if (buf.timer) clearTimeout(buf.timer);
+    buffers.clear();
     try {
       unsubscribe();
     } catch {}
