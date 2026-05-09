@@ -24,7 +24,7 @@ import { TicketCard } from "@/components/board/ticket-card";
 import { TicketDetailDialog } from "@/components/board/ticket-detail-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LiveAgentsContext, type LiveAgentState } from "@/lib/live-agents-context";
+import { type LiveAgentState, LiveAgentsContext } from "@/lib/live-agents-context";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
 import type { BoardData, StatusWithTickets, Ticket, TicketWithRelations } from "@/lib/types";
 
@@ -39,7 +39,12 @@ function extractTail(kind: "PLAN" | "EXECUTE" | "CHAT", text: string): string | 
   if (!trimmed) return null;
   if (kind === "PLAN") {
     const tail = trimmed.slice(-120);
-    return tail.replace(/[#*`_>\-]+/gu, " ").replace(/\s+/gu, " ").trim() || null;
+    return (
+      tail
+        .replace(/[#*`_>-]+/gu, " ")
+        .replace(/\s+/gu, " ")
+        .trim() || null
+    );
   }
   return null;
 }
@@ -313,23 +318,45 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
     [statuses],
   );
 
-  const onTicketCreated = useCallback((ticket: Ticket) => {
-    const enriched: TicketWithRelations = { ...ticket, assignee: null, labels: [] };
+  const insertOptimisticTicket = useCallback((ticket: TicketWithRelations) => {
     setStatuses((prev) => {
-      // De-dupe defensively: if the realtime echo arrived first, skip the
-      // optimistic insert (and vice versa in the realtime handler).
       const alreadyPresent = prev.some((s) => s.tickets.some((t) => t.id === ticket.id));
       if (alreadyPresent) return prev;
       return prev.map((s) =>
         s.id === ticket.statusId
-          ? {
-              ...s,
-              tickets: [...s.tickets, enriched].sort(byUpdatedDesc),
-            }
+          ? { ...s, tickets: [...s.tickets, ticket].sort(byUpdatedDesc) }
           : s,
       );
     });
   }, []);
+
+  const replaceOptimisticTicket = useCallback((tempId: string, real: Ticket) => {
+    const enriched: TicketWithRelations = { ...real, assignee: null, labels: [] };
+    setStatuses((prev) => {
+      const stripped = prev.map((s) => ({
+        ...s,
+        tickets: s.tickets.filter((t) => t.id !== tempId),
+      }));
+      const alreadyPresent = stripped.some((s) => s.tickets.some((t) => t.id === enriched.id));
+      if (alreadyPresent) return stripped;
+      return stripped.map((s) =>
+        s.id === enriched.statusId
+          ? { ...s, tickets: [...s.tickets, enriched].sort(byUpdatedDesc) }
+          : s,
+      );
+    });
+  }, []);
+
+  const rollbackOptimisticTicket = useCallback((tempId: string) => {
+    setStatuses((prev) =>
+      prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== tempId) })),
+    );
+  }, []);
+
+  const backlogStatusId = useMemo(
+    () => statuses.find((s) => s.key === "backlog")?.id ?? null,
+    [statuses],
+  );
 
   const onTicketUpdated = useCallback((ticket: TicketWithRelations) => {
     setStatuses((prev) =>
@@ -497,89 +524,93 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
 
   return (
     <LiveAgentsContext.Provider value={liveAgents}>
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-3 px-4 py-2">
-        <div className="relative max-w-sm flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/70" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search tickets…"
-            className="h-8 pl-8 pr-8 text-[13px]"
-          />
-          {query ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              className="absolute right-1 top-1/2 -translate-y-1/2"
-              onClick={() => setQuery("")}
-              aria-label="Clear search"
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          ) : null}
-        </div>
-        {isFiltered ? (
-          <span className="text-[12px] tabular-nums text-muted-foreground/70">
-            {visibleTicketCount} match{visibleTicketCount === 1 ? "" : "es"}
-          </span>
-        ) : null}
-        <div className="ml-auto flex items-center gap-2">
-          <RealtimeIndicator status={rtStatus} />
-        </div>
-      </div>
-      <DndContext
-        id="board-dnd"
-        sensors={sensors}
-        modifiers={[restrictToWindowEdges]}
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        onDragCancel={() => setActiveTicketId(null)}
-      >
-        <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-4 pb-4">
-          {visibleStatuses.map((status) => (
-            <Column
-              key={status.id}
-              status={status}
-              statuses={statusOptions}
-              tickets={status.tickets}
-              onTicketArchived={onTicketArchived}
-              onOpenDetail={onOpenDetail}
-              isFiltered={isFiltered}
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex items-center gap-3 px-4 py-2">
+          <div className="relative max-w-sm flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/70" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search tickets…"
+              className="h-8 pl-8 pr-8 text-[13px]"
             />
-          ))}
+            {query ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="absolute right-1 top-1/2 -translate-y-1/2"
+                onClick={() => setQuery("")}
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
+          </div>
+          {isFiltered ? (
+            <span className="text-[12px] tabular-nums text-muted-foreground/70">
+              {visibleTicketCount} match{visibleTicketCount === 1 ? "" : "es"}
+            </span>
+          ) : null}
+          <div className="ml-auto flex items-center gap-2">
+            <RealtimeIndicator status={rtStatus} />
+          </div>
         </div>
-        <DragOverlay dropAnimation={null}>
-          {activeTicket ? <TicketCard ticket={activeTicket} isOverlay /> : null}
-        </DragOverlay>
-      </DndContext>
-      <ChatOrb
-        projectId={currentProjectId}
-        workspaceId={initialData.project.workspaceId}
-        onCreated={onTicketCreated}
-      />
-      {detailTicket ? (
-        <TicketDetailDialog
-          ticket={detailTicket}
-          open={detailTicketId !== null}
-          onOpenChange={(open) => {
-            if (!open) {
-              setDetailTicketId(null);
-              setAutoRunOnOpen(false);
-            }
-          }}
-          autoRunAction={autoRunOnOpen}
-          onUpdated={onTicketUpdated}
-          onDeleted={onTicketDeleted}
-          statuses={statusOptions}
-          projectName={initialData.project.name}
-          projectColor={initialData.project.color}
-          projectSlug={initialData.project.slug}
+        <DndContext
+          id="board-dnd"
+          sensors={sensors}
+          modifiers={[restrictToWindowEdges]}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          onDragCancel={() => setActiveTicketId(null)}
+        >
+          <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-4 pb-4">
+            {visibleStatuses.map((status) => (
+              <Column
+                key={status.id}
+                status={status}
+                statuses={statusOptions}
+                tickets={status.tickets}
+                onTicketArchived={onTicketArchived}
+                onOpenDetail={onOpenDetail}
+                isFiltered={isFiltered}
+              />
+            ))}
+          </div>
+          <DragOverlay dropAnimation={null}>
+            {activeTicket ? <TicketCard ticket={activeTicket} isOverlay /> : null}
+          </DragOverlay>
+        </DndContext>
+        <ChatOrb
+          projectId={currentProjectId}
+          workspaceId={initialData.project.workspaceId}
+          backlogStatusId={backlogStatusId}
           currentUserId={currentUserId}
+          onOptimisticInsert={insertOptimisticTicket}
+          onOptimisticReplace={replaceOptimisticTicket}
+          onOptimisticRollback={rollbackOptimisticTicket}
         />
-      ) : null}
-    </div>
+        {detailTicket ? (
+          <TicketDetailDialog
+            ticket={detailTicket}
+            open={detailTicketId !== null}
+            onOpenChange={(open) => {
+              if (!open) {
+                setDetailTicketId(null);
+                setAutoRunOnOpen(false);
+              }
+            }}
+            autoRunAction={autoRunOnOpen}
+            onUpdated={onTicketUpdated}
+            onDeleted={onTicketDeleted}
+            statuses={statusOptions}
+            projectName={initialData.project.name}
+            projectColor={initialData.project.color}
+            projectSlug={initialData.project.slug}
+            currentUserId={currentUserId}
+          />
+        ) : null}
+      </div>
     </LiveAgentsContext.Provider>
   );
 }
