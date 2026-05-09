@@ -205,6 +205,160 @@ export async function generateTicketDraft(args: {
   }
 }
 
+type Priority = "URGENT" | "HIGH" | "MEDIUM" | "LOW" | "NO_PRIORITY";
+type PriorityResult =
+  | { ok: true; priority: Priority; reason: string; source: "llm" | "heuristic" }
+  | { ok: false; error: string };
+
+const URGENT_KEYWORDS = [
+  "urgent",
+  "asap",
+  "critical",
+  "p0",
+  "outage",
+  "production down",
+  "prod down",
+  "data loss",
+  "security",
+  "vulnerability",
+  "exploit",
+  "breach",
+  "regression",
+  "crash",
+];
+const HIGH_KEYWORDS = [
+  "important",
+  "p1",
+  "blocker",
+  "blocking",
+  "deadline",
+  "ship",
+  "launch",
+  "bug",
+  "fix",
+  "broken",
+  "fails",
+  "failing",
+  "perf",
+  "slow",
+  "timeout",
+];
+const LOW_KEYWORDS = [
+  "nice to have",
+  "nice-to-have",
+  "someday",
+  "polish",
+  "minor",
+  "typo",
+  "cleanup",
+  "cosmetic",
+  "tweak",
+  "p3",
+  "p4",
+  "later",
+  "wishlist",
+];
+
+export function heuristicPriority(args: { title: string; description: string | null }): {
+  priority: Priority;
+  reason: string;
+} {
+  const haystack = `${args.title}\n${args.description ?? ""}`.toLowerCase();
+  const has = (kws: string[]) => kws.find((k) => haystack.includes(k));
+  const u = has(URGENT_KEYWORDS);
+  if (u) return { priority: "URGENT", reason: `matched urgent signal "${u}"` };
+  const h = has(HIGH_KEYWORDS);
+  if (h) return { priority: "HIGH", reason: `matched high signal "${h}"` };
+  const l = has(LOW_KEYWORDS);
+  if (l) return { priority: "LOW", reason: `matched low signal "${l}"` };
+  return { priority: "MEDIUM", reason: "no strong signals — defaulted to medium" };
+}
+
+function parsePriorityJson(content: string): { priority: Priority; reason: string } | null {
+  const stripped = content
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  try {
+    const obj = JSON.parse(stripped) as { priority?: unknown; reason?: unknown };
+    const p = typeof obj.priority === "string" ? obj.priority.toUpperCase() : "";
+    const valid: Priority[] = ["URGENT", "HIGH", "MEDIUM", "LOW", "NO_PRIORITY"];
+    if (!valid.includes(p as Priority)) return null;
+    return {
+      priority: p as Priority,
+      reason: typeof obj.reason === "string" ? obj.reason.slice(0, 280) : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function inferTicketPriority(args: {
+  workspaceId: string;
+  title: string;
+  description: string | null;
+  projectContext?: string | null;
+}): Promise<PriorityResult> {
+  const apiKey = await getOpenRouterApiKey(args.workspaceId);
+  if (!apiKey) {
+    const h = heuristicPriority({ title: args.title, description: args.description });
+    return { ok: true, priority: h.priority, reason: h.reason, source: "heuristic" };
+  }
+
+  const userPrompt = [
+    args.projectContext ? `Project context:\n${args.projectContext}` : null,
+    `Ticket title: ${args.title}`,
+    args.description ? `Ticket description:\n${args.description}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Title": "Planbooq",
+      },
+      body: JSON.stringify({
+        model: "anthropic/claude-haiku-4.5",
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              'You assign a priority level to a kanban ticket given its title, description, and project context. Reply with strict JSON only: {"priority": "URGENT"|"HIGH"|"MEDIUM"|"LOW", "reason": string up to 200 chars}. Rubric: URGENT = production outage, security vulnerability, data loss, blocking active customer. HIGH = bug affecting users, blocker for upcoming work, important feature on the roadmap. MEDIUM = normal feature work, improvements, refactors. LOW = polish, nice-to-haves, minor cleanup, cosmetic. Lean MEDIUM when uncertain. No surrounding prose, no code fences.',
+          },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      logger.warn("openrouter.priority.failed", { status: res.status, body: text.slice(0, 200) });
+      const h = heuristicPriority({ title: args.title, description: args.description });
+      return { ok: true, priority: h.priority, reason: h.reason, source: "heuristic" };
+    }
+    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = data.choices?.[0]?.message?.content?.trim() ?? "";
+    const parsed = parsePriorityJson(content);
+    if (!parsed) {
+      logger.warn("openrouter.priority.unparseable", { sample: content.slice(0, 200) });
+      const h = heuristicPriority({ title: args.title, description: args.description });
+      return { ok: true, priority: h.priority, reason: h.reason, source: "heuristic" };
+    }
+    return { ok: true, priority: parsed.priority, reason: parsed.reason, source: "llm" };
+  } catch (e) {
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) {
+      const h = heuristicPriority({ title: args.title, description: args.description });
+      return { ok: true, priority: h.priority, reason: h.reason, source: "heuristic" };
+    }
+    return { ok: false, error: e instanceof Error ? e.message : "unknown" };
+  }
+}
+
 type AgentProfileDraft = { name: string; description: string; body: string };
 type AgentProfileDraftResult =
   | { ok: true; draft: AgentProfileDraft }
