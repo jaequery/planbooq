@@ -364,6 +364,28 @@ export const captureTicketScreenshots = inngest.createFunction(
       }),
     );
 
+    // Retake semantics: clear existing previews so the new capture replaces
+    // them rather than appending. Attachment rows are intentionally not
+    // touched — they remain in storage if history is needed later.
+    await step.run("clear-existing-previews", async () => {
+      const existing = await prisma.ticketPreview.findMany({
+        where: { ticketId: data.ticketId },
+        select: { id: true },
+      });
+      if (existing.length === 0) return { cleared: 0 };
+      await prisma.ticketPreview.deleteMany({ where: { ticketId: data.ticketId } });
+      for (const p of existing) {
+        await publishWorkspaceEvent(data.workspaceId, {
+          name: "ticket.preview.removed",
+          workspaceId: data.workspaceId,
+          ticketId: data.ticketId,
+          previewId: p.id,
+          by: data.requestedByUserId,
+        });
+      }
+      return { cleared: existing.length };
+    });
+
     // Synthetic caller — the user who requested this run. addTicketPreviewSvc
     // re-checks workspace membership before writing.
     const caller = {
