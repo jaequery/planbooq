@@ -258,9 +258,21 @@ export function TicketWorkflowPanel({
 
   const enabledCount = wf.steps.filter((s) => s.enabled).length;
   const editable = wf.hasOverride || (!wf.templateId && wf.steps.length === 0);
+  const isEmpty = !wf.hasOverride && !wf.templateId && wf.steps.length === 0;
   const currentLabel = wf.hasOverride
     ? "Custom workflow"
-    : wf.templateName || "No workflow";
+    : wf.templateName || "Choose workflow";
+
+  function pickTemplate(templateId: string) {
+    start(async () => {
+      const r = await setTicketWorkflowFromTemplate({ ticketId, templateId });
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
+      }
+      await refresh();
+    });
+  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -287,22 +299,7 @@ export function TicketWorkflowPanel({
               </div>
             )}
             {templates.map((t) => (
-              <DropdownMenuItem
-                key={t.id}
-                onSelect={() =>
-                  start(async () => {
-                    const r = await setTicketWorkflowFromTemplate({
-                      ticketId,
-                      templateId: t.id,
-                    });
-                    if (!r.ok) {
-                      toast.error(r.error);
-                      return;
-                    }
-                    await refresh();
-                  })
-                }
-              >
+              <DropdownMenuItem key={t.id} onSelect={() => pickTemplate(t.id)}>
                 <span className="truncate">{t.name}</span>
                 <span className="ml-auto text-[11px] text-muted-foreground">
                   {t.stepCount}
@@ -327,22 +324,76 @@ export function TicketWorkflowPanel({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-        <button
-          type="button"
-          onClick={runAll}
-          disabled={pending || running}
-          className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {pending || running ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Play className="size-3.5" />
-          )}
-          <span>{running ? "Running" : "Run"}</span>
-        </button>
+        {!isEmpty && (
+          <button
+            type="button"
+            onClick={runAll}
+            disabled={pending || running}
+            className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {pending || running ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Play className="size-3.5" />
+            )}
+            <span>{running ? "Running" : "Run"}</span>
+          </button>
+        )}
       </header>
 
-      {editable ? (
+      {isEmpty ? (
+        <div className="flex flex-col gap-2 rounded-md border border-dashed border-border/60 bg-muted/30 p-3">
+          <div>
+            <p className="text-sm font-medium">Ready to run</p>
+            <p className="text-xs text-muted-foreground">
+              Run the default build, or pick a template to follow specific steps.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={runAll}
+              disabled={pending || running}
+              aria-label="Run workflow"
+              className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {pending || running ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Play className="size-3.5" />
+              )}
+              <span>{running ? "Running" : "Run"}</span>
+            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground/80 transition-colors hover:bg-muted"
+                >
+                  <span>Pick template</span>
+                  <ChevronDown className="size-3 opacity-60" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-[220px]">
+                {templates.length === 0 ? (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                    No templates yet. Create one in Settings → Workflows.
+                  </div>
+                ) : (
+                  templates.map((t) => (
+                    <DropdownMenuItem key={t.id} onSelect={() => pickTemplate(t.id)}>
+                      <span className="truncate">{t.name}</span>
+                      <span className="ml-auto text-[11px] text-muted-foreground">
+                        {t.stepCount}
+                      </span>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      ) : editable ? (
         <StepList
           steps={wf.steps.map((s) => ({
             id: s.id as string,
