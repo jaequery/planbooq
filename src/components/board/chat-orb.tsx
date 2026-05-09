@@ -51,7 +51,7 @@ export function ChatOrb({
   const [prompt, setPrompt] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [pending, startTransition] = useTransition();
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const uploadCounterRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -137,7 +137,7 @@ export function ChatOrb({
     e.target.value = "";
   };
 
-  const onPaste: React.ClipboardEventHandler<HTMLInputElement> = (e) => {
+  const onPaste: React.ClipboardEventHandler<HTMLTextAreaElement> = (e) => {
     const files: File[] = [];
     for (let i = 0; i < e.clipboardData.items.length; i += 1) {
       const item = e.clipboardData.items[i];
@@ -199,7 +199,7 @@ export function ChatOrb({
     });
   };
 
-  const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+  const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       submit();
@@ -261,14 +261,15 @@ export function ChatOrb({
             </div>
           ) : null}
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-start gap-3">
             <div
               className="h-6 w-6 flex-shrink-0 rounded-full"
               style={{ background: "linear-gradient(135deg, #f59e0b, #ef4444)" }}
               aria-hidden
             />
-            <input
+            <textarea
               ref={inputRef}
+              rows={1}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={onKeyDown}
@@ -279,7 +280,7 @@ export function ChatOrb({
                 pending ? "Drafting…" : "What should we ship next? (Enter to create)"
               }
               disabled={pending}
-              className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground disabled:opacity-60"
+              className="field-sizing-content max-h-60 min-h-6 flex-1 resize-none bg-transparent text-[13px] leading-6 outline-none placeholder:text-muted-foreground disabled:opacity-60"
             />
             <input
               ref={fileInputRef}
