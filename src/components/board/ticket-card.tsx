@@ -230,6 +230,36 @@ export function TicketCard({
             )}
           </div>
         ) : null}
+        {ticket.imagePreviews && ticket.imagePreviews.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {ticket.imagePreviews.slice(0, 4).map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onPointerDown={stopDragPropagation}
+                onClick={(e) => {
+                  stopDragPropagation(e);
+                  onOpenDetail?.(ticket.id);
+                }}
+                className="block h-12 w-12 overflow-hidden rounded-md border border-border/70 bg-muted/30 outline-none transition-colors hover:border-border focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Open preview"
+              >
+                <img
+                  src={`/api/attachments/${p.attachmentId}`}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover"
+                />
+              </button>
+            ))}
+            {ticket.imagePreviews.length > 4 ? (
+              <span className="inline-flex h-12 items-center rounded-md border border-border/70 bg-muted/30 px-1.5 text-[10px] text-muted-foreground">
+                +{ticket.imagePreviews.length - 4}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         {visibleLabels.length > 0 ? (
           <div className="mt-2 flex flex-wrap items-center gap-1">
             {visibleLabels.map((l) => (

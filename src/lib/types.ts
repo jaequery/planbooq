@@ -15,10 +15,17 @@ export type { Label, Member, Priority, Project, Role, Status, Ticket, User, Work
 export type TicketAssignee = Pick<User, "id" | "name" | "email" | "image">;
 export type TicketLabel = Pick<Label, "id" | "name" | "color">;
 
+export type TicketImagePreview = {
+  id: string;
+  attachmentId: string;
+  mimeType: string;
+};
+
 export type TicketWithRelations = Ticket & {
   assignee?: TicketAssignee | null;
   labels?: TicketLabel[];
   project?: Pick<Project, "slug"> | null;
+  imagePreviews?: TicketImagePreview[];
 };
 
 export type StatusWithTickets = Status & { tickets: TicketWithRelations[] };
