@@ -260,7 +260,7 @@ export function TicketWorkflowPanel({
   const editable = wf.hasOverride || (!wf.templateId && wf.steps.length === 0);
   const isEmpty = !wf.hasOverride && !wf.templateId && wf.steps.length === 0;
   const currentLabel = wf.hasOverride
-    ? "Custom workflow"
+    ? "Workflow"
     : wf.templateName || "Choose workflow";
 
   function pickTemplate(templateId: string) {
