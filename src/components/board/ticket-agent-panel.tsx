@@ -120,8 +120,12 @@ function formatToolUse(name: string, input: Record<string, unknown> | undefined)
       }
     }
   })();
-  const trimmed = arg.replace(/\s+/g, " ").trim();
-  const clipped = trimmed.length > 120 ? `${trimmed.slice(0, 119)}…` : trimmed;
+  const shortened = arg.replace(
+    /\/[^\s"']*?\/(?=src\/|app\/|prisma\/|public\/|docs\/|scripts\/|\.planning\/)/g,
+    "",
+  );
+  const trimmed = shortened.replace(/\s+/g, " ").trim();
+  const clipped = trimmed.length > 160 ? `${trimmed.slice(0, 159)}…` : trimmed;
   return clipped ? `→ ${name}: ${clipped}` : `→ ${name}`;
 }
 
@@ -854,10 +858,10 @@ function DesktopPanel({
                   m.role === "user"
                     ? "self-end max-w-[85%] rounded-lg bg-primary/10 px-3 py-2 text-[13px] whitespace-pre-wrap"
                     : m.role === "system"
-                      ? "self-center text-[11px] text-muted-foreground"
+                      ? "self-start max-w-full pl-1 text-[11px] font-mono text-muted-foreground/80 break-all leading-snug"
                       : isStreaming
-                        ? "self-start max-w-[85%] rounded-lg bg-background px-3 py-2 text-muted-foreground italic"
-                        : "self-start max-w-[85%] rounded-lg bg-background px-3 py-2"
+                        ? "self-start max-w-[85%] min-w-0 rounded-lg bg-background px-3 py-2 break-words"
+                        : "self-start max-w-[85%] min-w-0 rounded-lg bg-background px-3 py-2 break-words"
                 }
               >
                 {isAssistant ? (
