@@ -4,6 +4,7 @@ import { logger } from "@/lib/logger";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
 import { parseGitHubPrUrl } from "@/server/services/github-pr";
+import { recordTicketPullRequest } from "@/server/services/ticket-pull-requests";
 
 const GITHUB_PR_URL_RE_GLOBAL = /https?:\/\/github\.com\/[^/\s)]+\/[^/\s)]+\/pull\/\d+/gi;
 
@@ -39,6 +40,11 @@ export async function maybeLinkPrUrlFromText(
       select: { id: true, prUrl: true, archivedAt: true },
     });
     if (!ticket || ticket.archivedAt) return null;
+
+    // Always record into history; the unique (ticketId, url) constraint
+    // makes this idempotent.
+    await recordTicketPullRequest({ ticketId: ticket.id, url });
+
     if (ticket.prUrl) return null;
 
     const updated = await prisma.ticket.update({

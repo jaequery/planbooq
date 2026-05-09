@@ -6,6 +6,10 @@ import { logger } from "@/lib/logger";
 import { parseTicketRef } from "@/lib/ticket-identifier";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
+import {
+  markPullRequestMerged,
+  recordTicketPullRequest,
+} from "@/server/services/ticket-pull-requests";
 
 const SIGNATURE_PREFIX = "sha256=";
 
@@ -70,6 +74,12 @@ export async function linkTicketPrUrlFromPrBody(
     select: { id: true, workspaceId: true, projectId: true, prUrl: true },
   });
   if (!ticket) return { kind: "no_match" };
+
+  // Always record the PR in history (idempotent on (ticketId, url)). This
+  // captures PRs that came in via GitHub events even if Ticket.prUrl is
+  // already pointing somewhere else.
+  await recordTicketPullRequest({ ticketId: ticket.id, url: prUrl });
+
   if (ticket.prUrl === prUrl) return { kind: "already_linked" };
 
   const updated = await prisma.ticket.update({
@@ -91,6 +101,11 @@ export async function linkTicketPrUrlFromPrBody(
 }
 
 export async function autoCompleteTicketByPrUrl(prUrl: string): Promise<AutoCompleteOutcome> {
+  // Mark the PR row as merged regardless of whether it's currently the
+  // ticket's "active" pointer — a re-shipped ticket may have superseded
+  // this PR locally before the merge webhook arrived.
+  await markPullRequestMerged(prUrl);
+
   const ticket = await prisma.ticket.findFirst({
     where: { prUrl, archivedAt: null },
     select: { id: true, workspaceId: true, projectId: true, statusId: true },

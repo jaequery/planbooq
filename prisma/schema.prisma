@@ -214,6 +214,7 @@ model Ticket {
   workflowSteps WorkflowStep[]
   workflowRuns  WorkflowRun[]
   agentProfileLinks TicketAgentProfile[]
+  pullRequests TicketPullRequest[]
 
   @@index([workspaceId, statusId, position])
   @@index([projectId, statusId, position])
@@ -497,6 +498,39 @@ model AgentProfile {
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, isActive])
+}
+
+// -----------------------------
+// Pull request history (one ticket → many PRs)
+// -----------------------------
+
+enum TicketPullRequestStatus {
+  OPEN
+  MERGED
+  CLOSED
+  SUPERSEDED
+}
+
+model TicketPullRequest {
+  id           String                  @id @default(cuid())
+  ticketId     String
+  url          String
+  status       TicketPullRequestStatus @default(OPEN)
+  branch       String?
+  targetBranch String?
+  summary      String?                 @db.Text
+  filesChanged Int?
+  additions    Int?
+  deletions    Int?
+  openedAt     DateTime                @default(now())
+  mergedAt     DateTime?
+  closedAt     DateTime?
+  supersededAt DateTime?
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, url])
+  @@index([ticketId, openedAt])
 }
 
 model TicketAgentProfile {
