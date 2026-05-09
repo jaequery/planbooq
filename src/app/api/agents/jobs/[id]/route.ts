@@ -50,8 +50,12 @@ export async function PATCH(
   }
   if (typeof parsed.data.exitCode === "number") data.exitCode = parsed.data.exitCode;
   if (parsed.data.error) data.error = parsed.data.error;
+
+  // Atomic append in SQL — read-modify-write of job.output races with
+  // concurrent PATCHes (paired-agent stdout chunks arrive in parallel) and
+  // last-write-wins drops chunks, so the rendered chat appears empty/partial.
   if (parsed.data.appendOutput) {
-    data.output = `${job.output}${parsed.data.appendOutput}`;
+    await prisma.$executeRaw`UPDATE "AgentJob" SET "output" = "output" || ${parsed.data.appendOutput} WHERE "id" = ${id}`;
   }
 
   const updated = await prisma.agentJob.update({

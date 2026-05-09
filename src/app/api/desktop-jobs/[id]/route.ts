@@ -60,15 +60,22 @@ export async function PATCH(
   }
   if (typeof parsed.data.exitCode === "number") data.exitCode = parsed.data.exitCode;
   if (parsed.data.error) data.error = parsed.data.error;
-  if (parsed.data.appendOutput) {
-    data.output = `${job.output}${parsed.data.appendOutput}`;
-  }
   if (parsed.data.worktreePath !== undefined) data.worktreePath = parsed.data.worktreePath;
   if (parsed.data.claudeSessionId !== undefined) {
     data.claudeSessionId = parsed.data.claudeSessionId;
   }
 
-  await prisma.agentJob.update({ where: { id }, data, select: { id: true } });
+  // Atomic append in SQL — `data.output = job.output + append` would race
+  // with concurrent PATCHes (user-typed message + manager flush, two flushes
+  // around a status change) reading the same baseline and last-write-wins
+  // dropping chunks. Symptom: chat hydrates empty/incomplete after the PR
+  // already shipped.
+  if (parsed.data.appendOutput) {
+    await prisma.$executeRaw`UPDATE "AgentJob" SET "output" = "output" || ${parsed.data.appendOutput} WHERE "id" = ${id}`;
+  }
+  if (Object.keys(data).length > 0) {
+    await prisma.agentJob.update({ where: { id }, data, select: { id: true } });
+  }
 
   // Desktop chat output is free-form — the agent will frequently announce a
   // newly-created PR in the chat stream (e.g. "Opened https://github.com/.../pull/42")
