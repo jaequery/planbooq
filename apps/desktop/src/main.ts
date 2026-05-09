@@ -7,6 +7,7 @@ import { startNotificationBridge, stopNotificationBridge } from "./lib/notificat
 import { registerWorktreeIpc } from "./lib/worktree";
 import { registerAgentIpc } from "./lib/agent";
 import { registerFilesIpc } from "./lib/files";
+import { registerGitIpc } from "./lib/git";
 import { initAutoUpdater } from "./lib/updater";
 import { buildAppMenu } from "./lib/menu";
 import squirrelStartup from "electron-squirrel-startup";
@@ -108,6 +109,7 @@ if (!gotLock) {
   registerWorktreeIpc();
   registerAgentIpc();
   registerFilesIpc();
+  registerGitIpc();
 
   app.whenReady().then(() => {
     Menu.setApplicationMenu(buildAppMenu(() => focusMain()));
