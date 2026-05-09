@@ -1,7 +1,7 @@
 "use client";
 
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import { Loader2, MoreHorizontal, Pencil, Plus, Power, Trash2 } from "lucide-react";
+import { Loader2, MoreHorizontal, Pencil, Plus, Power, Sparkles, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
@@ -10,6 +10,7 @@ import { z } from "zod";
 import {
   createAgentProfile,
   deleteAgentProfile,
+  draftAgentProfileWithAi,
   getAgentProfile,
   updateAgentProfile,
 } from "@/actions/agent-profiles";
@@ -266,10 +267,45 @@ function EditorDialog({
   onSaved,
 }: EditorProps): React.ReactElement {
   const [pending, startTransition] = useTransition();
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiDirty, setAiDirty] = useState(false);
   const form = useForm<FormValues>({
     resolver: standardSchemaResolver(FormSchema),
     defaultValues: initial ?? { name: "", description: "", body: STARTER_BODY },
   });
+
+  const onGenerate = async () => {
+    const prompt = aiPrompt.trim();
+    if (prompt.length < 3) {
+      toast.error("Describe the agent in a sentence or two.");
+      return;
+    }
+    setAiBusy(true);
+    try {
+      const r = await draftAgentProfileWithAi({ workspaceId, prompt });
+      if (!r.ok) {
+        const msg =
+          r.error === "no_key"
+            ? "AI generation isn't configured (OPENROUTER_API_KEY missing)."
+            : r.error === "openrouter_timeout"
+              ? "AI request timed out — try again."
+              : `AI generation failed: ${r.error}`;
+        toast.error(msg);
+        return;
+      }
+      form.setValue("name", r.data.name, { shouldValidate: true, shouldDirty: true });
+      form.setValue("description", r.data.description, {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
+      form.setValue("body", r.data.body, { shouldValidate: true, shouldDirty: true });
+      setAiDirty(true);
+      toast.success("Draft generated — review and save.");
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   const submit = form.handleSubmit((values) => {
     startTransition(async () => {
@@ -301,6 +337,56 @@ function EditorDialog({
           </DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-3" onSubmit={submit}>
+          {!editingId && (
+            <div className="flex flex-col gap-1.5 rounded-md border border-dashed bg-muted/40 p-3">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="size-3.5 text-muted-foreground" />
+                <Label htmlFor="ap-ai-prompt" className="text-xs font-medium">
+                  Generate with AI
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Describe the agent in plain language — Planbooq will draft an AGENTS.md persona for
+                you to review before saving.
+              </p>
+              <Textarea
+                id="ap-ai-prompt"
+                rows={2}
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder="e.g. A meticulous Postgres + Prisma reviewer who flags N+1 queries and missing indexes."
+                disabled={aiBusy || pending}
+              />
+              <div className="flex items-center justify-between gap-2">
+                {aiDirty ? (
+                  <span className="text-xs text-muted-foreground">
+                    Draft inserted below — edit anything before saving.
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    Fields below stay editable after generation.
+                  </span>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={onGenerate}
+                  disabled={aiBusy || pending || aiPrompt.trim().length < 3}
+                >
+                  {aiBusy ? (
+                    <>
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin" /> Generating…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-1.5 size-3.5" /> Generate
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="ap-name">Name</Label>
             <Input
