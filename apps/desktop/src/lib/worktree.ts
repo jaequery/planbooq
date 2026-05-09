@@ -3,11 +3,13 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs/promises";
 import log from "electron-log/main";
+import { WorktreeNameError, formatWorktreeName } from "./worktree-name";
 
 interface SpawnInput {
   repoPath: string;
   branch: string;
   prompt: string;
+  ticketIdentifier: string;
 }
 
 function isSafeBranch(s: string): boolean {
@@ -54,14 +56,19 @@ export function registerWorktreeIpc(): void {
   });
 
   ipcMain.handle("planbooq:worktree:spawn", async (_, input: SpawnInput) => {
-    if (!input?.repoPath || !input?.branch || !input?.prompt) {
-      return { ok: false, error: "missing required fields" };
+    if (!input?.repoPath || !input?.branch || !input?.prompt || !input?.ticketIdentifier) {
+      return { ok: false, error: "missing required fields (repoPath, branch, prompt, ticketIdentifier)" };
     }
     if (!isSafeBranch(input.branch)) return { ok: false, error: "invalid branch name" };
     if (!(await isGitRepo(input.repoPath))) return { ok: false, error: "not a git repo" };
 
-    const ts = new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 14);
-    const wtName = `${path.basename(input.repoPath)}.planbooq-${ts}`;
+    let wtName: string;
+    try {
+      wtName = formatWorktreeName(path.basename(input.repoPath), input.ticketIdentifier);
+    } catch (err) {
+      if (err instanceof WorktreeNameError) return { ok: false, error: err.message };
+      throw err;
+    }
     const wtPath = path.join(path.dirname(input.repoPath), wtName);
 
     emit(`$ git worktree add -b ${input.branch} ${wtPath}\n`);
