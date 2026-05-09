@@ -1,7 +1,7 @@
 "use client";
 
 import type { Priority } from "@prisma/client";
-import { AlertTriangle, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { updateTicket } from "@/actions/ticket";
@@ -11,23 +11,19 @@ import { cn } from "@/lib/utils";
 
 type PriorityValue = Priority;
 
-type PriorityOption = { value: PriorityValue; label: string; dotClass: string };
+type PriorityOption = { value: PriorityValue; label: string };
 
-const NO_PRIORITY_OPTION: PriorityOption = {
-  value: "NO_PRIORITY",
-  label: "No priority",
-  dotClass: "border-dashed border border-current",
-};
+const NO_PRIORITY_OPTION: PriorityOption = { value: "NO_PRIORITY", label: "No priority" };
 
 const PRIORITY_OPTIONS: ReadonlyArray<PriorityOption> = [
   NO_PRIORITY_OPTION,
-  { value: "URGENT", label: "Urgent", dotClass: "bg-red-500" },
-  { value: "HIGH", label: "High", dotClass: "bg-orange-500" },
-  { value: "MEDIUM", label: "Medium", dotClass: "bg-amber-500" },
-  { value: "LOW", label: "Low", dotClass: "bg-sky-500" },
+  { value: "URGENT", label: "Urgent" },
+  { value: "HIGH", label: "High" },
+  { value: "MEDIUM", label: "Medium" },
+  { value: "LOW", label: "Low" },
 ];
 
-export function priorityMeta(value: PriorityValue): { label: string; dotClass: string } {
+export function priorityMeta(value: PriorityValue): { label: string } {
   return PRIORITY_OPTIONS.find((o) => o.value === value) ?? NO_PRIORITY_OPTION;
 }
 
@@ -38,25 +34,77 @@ export function PriorityIcon({
   value: PriorityValue;
   className?: string;
 }): React.ReactElement {
-  const meta = priorityMeta(value);
+  const label = priorityMeta(value).label;
   if (value === "URGENT") {
     return (
-      <span className={cn("inline-flex items-center gap-1", className)}>
-        <span aria-hidden className={cn("inline-block h-2.5 w-2.5 rounded-full", meta.dotClass)} />
-        <AlertTriangle className="h-3.5 w-3.5 text-red-500" aria-hidden />
-      </span>
+      <svg
+        viewBox="0 0 16 16"
+        className={cn("h-3.5 w-3.5 shrink-0", className)}
+        role="img"
+        aria-label={label}
+        focusable="false"
+      >
+        <title>{label}</title>
+        <rect x="1" y="1" width="14" height="14" rx="3" className="fill-red-500" />
+        <rect x="7.25" y="3.5" width="1.5" height="5.5" rx="0.5" className="fill-white" />
+        <rect x="7.25" y="10.5" width="1.5" height="2" rx="0.5" className="fill-white" />
+      </svg>
     );
   }
+  if (value === "NO_PRIORITY") {
+    return (
+      <svg
+        viewBox="0 0 16 16"
+        className={cn("h-3.5 w-3.5 shrink-0 text-muted-foreground/60", className)}
+        role="img"
+        aria-label={label}
+        focusable="false"
+      >
+        <title>{label}</title>
+        <rect x="2" y="7.25" width="2.5" height="1.5" rx="0.5" fill="currentColor" />
+        <rect x="6.75" y="7.25" width="2.5" height="1.5" rx="0.5" fill="currentColor" />
+        <rect x="11.5" y="7.25" width="2.5" height="1.5" rx="0.5" fill="currentColor" />
+      </svg>
+    );
+  }
+  const filled = value === "LOW" ? 1 : value === "MEDIUM" ? 2 : 3;
+  const activeClass =
+    value === "LOW" ? "fill-sky-500" : value === "MEDIUM" ? "fill-amber-500" : "fill-orange-500";
+  const mutedClass = "fill-muted-foreground/30";
   return (
-    <span
-      aria-hidden
-      className={cn(
-        "inline-block h-2.5 w-2.5 rounded-full",
-        meta.dotClass,
-        value === "NO_PRIORITY" && "text-muted-foreground/60",
-        className,
-      )}
-    />
+    <svg
+      viewBox="0 0 16 16"
+      className={cn("h-3.5 w-3.5 shrink-0", className)}
+      role="img"
+      aria-label={label}
+      focusable="false"
+    >
+      <title>{label}</title>
+      <rect
+        x="2"
+        y="10"
+        width="3"
+        height="4"
+        rx="0.75"
+        className={filled >= 1 ? activeClass : mutedClass}
+      />
+      <rect
+        x="6.5"
+        y="6.5"
+        width="3"
+        height="7.5"
+        rx="0.75"
+        className={filled >= 2 ? activeClass : mutedClass}
+      />
+      <rect
+        x="11"
+        y="3"
+        width="3"
+        height="11"
+        rx="0.75"
+        className={filled >= 3 ? activeClass : mutedClass}
+      />
+    </svg>
   );
 }
 
