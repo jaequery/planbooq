@@ -314,6 +314,82 @@ async function loadTicket(ticketId: string) {
   });
 }
 
+const SYSTEM_DEFAULT_WORKFLOW_NAME = "Default";
+const SYSTEM_DEFAULT_WORKFLOW_STEPS: Array<{ name: string; prompt: string }> = [
+  {
+    name: "Plan",
+    prompt:
+      "Read the ticket title and description carefully. Outline a concrete implementation plan before touching code: list the files you expect to change, the approach, and any risks or open questions.",
+  },
+  {
+    name: "Build",
+    prompt:
+      "Implement the plan. Make the smallest set of changes needed to satisfy the ticket. Run typecheck/lint and fix any regressions.",
+  },
+  {
+    name: "Issue PR",
+    prompt:
+      "Follow the shipping steps in CLAUDE.local.md to commit, push, open a GitHub PR, and call `./.planbooq/pbq ship` with the PR URL.",
+  },
+];
+
+/**
+ * Ensures a system default workflow template exists for the workspace and is
+ * set as the project's default. Idempotent — safe to call on every workflow
+ * fetch when the project has no default configured.
+ */
+async function ensureSystemDefaultWorkflow(
+  workspaceId: string,
+  projectId: string,
+): Promise<{ id: string; name: string; steps: Array<{ id: string; name: string; prompt: string; position: number; enabled: boolean }> } | null> {
+  const existing = await prisma.workflowTemplate.findFirst({
+    where: { workspaceId, isGlobal: true },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      name: true,
+      steps: {
+        orderBy: { position: "asc" },
+        select: { id: true, name: true, prompt: true, position: true, enabled: true },
+      },
+    },
+  });
+
+  let template = existing;
+  if (!template) {
+    const created = await prisma.workflowTemplate.create({
+      data: {
+        workspaceId,
+        name: SYSTEM_DEFAULT_WORKFLOW_NAME,
+        isGlobal: true,
+        steps: {
+          create: SYSTEM_DEFAULT_WORKFLOW_STEPS.map((s, i) => ({
+            name: s.name,
+            prompt: s.prompt,
+            position: (i + 1) * 1024,
+          })),
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        steps: {
+          orderBy: { position: "asc" },
+          select: { id: true, name: true, prompt: true, position: true, enabled: true },
+        },
+      },
+    });
+    template = created;
+  }
+
+  await prisma.project.update({
+    where: { id: projectId },
+    data: { defaultWorkflowTemplateId: template.id },
+  });
+
+  return template;
+}
+
 export async function getTicketWorkflow(ticketId: string): Promise<
   Result<{
     hasOverride: boolean;
@@ -364,7 +440,17 @@ export async function getTicketWorkflow(ticketId: string): Promise<
       },
     },
   });
-  const tpl = project?.defaultWorkflowTemplate;
+  let tpl = project?.defaultWorkflowTemplate ?? null;
+  if (!tpl) {
+    const ensured = await ensureSystemDefaultWorkflow(ticket.workspaceId, ticket.projectId);
+    if (ensured) {
+      tpl = {
+        id: ensured.id,
+        name: ensured.name,
+        steps: ensured.steps,
+      };
+    }
+  }
   return {
     ok: true,
     hasOverride: false,
