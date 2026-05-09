@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import type { ServerActionResult } from "@/lib/types";
+import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
 import { createCommentSvc } from "@/server/services/comments";
 import { moveTicketToStatusKey } from "@/server/services/ticket-status";
@@ -94,6 +95,28 @@ export async function shipTicketSvc(
       toStatusKey: "review",
       byUserId: userId,
     });
+
+    // Publish a ticket.updated event so subscribed clients see the new prUrl
+    // without a manual page refresh. moveTicketToStatusKey only emits
+    // ticket.moved, which carries statusId/position but not the prUrl change.
+    const updatedTicket = await prisma.ticket.findUnique({
+      where: { id: ticket.id },
+      include: {
+        assignee: { select: { id: true, name: true, email: true, image: true } },
+        labels: { select: { id: true, name: true, color: true } },
+        project: { select: { slug: true } },
+      },
+    });
+    if (updatedTicket) {
+      await publishWorkspaceEvent(ticket.workspaceId, {
+        name: "ticket.updated",
+        ticketId: ticket.id,
+        workspaceId: ticket.workspaceId,
+        projectId: updatedTicket.projectId,
+        ticket: updatedTicket,
+        by: userId,
+      });
+    }
 
     // Best-effort: close out the active EXECUTE job so cards stop pulsing.
     const runningJob = await prisma.agentJob.findFirst({
