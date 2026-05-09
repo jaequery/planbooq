@@ -1,12 +1,11 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Code2, Eye, FileText, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Code2, FileText, Loader2, Pencil } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { Markdown } from "@/components/ui/markdown";
 import { cn } from "@/lib/utils";
 import { getDesktopBridge } from "@/lib/use-is-desktop";
 
@@ -18,7 +17,7 @@ const DOCS: ReadonlyArray<{ key: DocKey; label: string; relPath: string; fallbac
   { key: "agent", label: "AGENT.md", relPath: "AGENT.md", fallback: "AGENTS.md" },
 ];
 
-type ViewMode = "preview" | "code";
+type ViewMode = "editor" | "code";
 
 type DocState = {
   loaded: boolean;
@@ -45,7 +44,7 @@ type Props = { localPath: string | null };
 export function ProjectDocsPanel({ localPath }: Props): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<DocKey>("readme");
-  const [view, setView] = useState<ViewMode>("preview");
+  const [view, setView] = useState<ViewMode>("editor");
   const [docs, setDocs] = useState<Record<DocKey, DocState>>({
     claude: emptyDoc("CLAUDE.md"),
     agent: emptyDoc("AGENT.md"),
@@ -201,16 +200,16 @@ export function ProjectDocsPanel({ localPath }: Props): React.ReactElement {
                   <div className="inline-flex h-7 items-center rounded-md border border-border/60 p-0.5">
                     <button
                       type="button"
-                      onClick={() => setView("preview")}
+                      onClick={() => setView("editor")}
                       className={cn(
                         "inline-flex h-6 items-center gap-1 rounded px-2 text-[12px] transition-colors",
-                        view === "preview"
+                        view === "editor"
                           ? "bg-muted text-foreground"
                           : "text-muted-foreground hover:text-foreground",
                       )}
-                      aria-pressed={view === "preview"}
+                      aria-pressed={view === "editor"}
                     >
-                      <Eye className="h-3.5 w-3.5" /> Preview
+                      <Pencil className="h-3.5 w-3.5" /> Editor
                     </button>
                     <button
                       type="button"
@@ -263,15 +262,12 @@ export function ProjectDocsPanel({ localPath }: Props): React.ReactElement {
                         placeholder={`# ${d.label}\n\nWrite project instructions here…`}
                       />
                     ) : (
-                      <div className="h-64 max-h-[60vh] overflow-auto rounded-md border border-border/60 bg-background px-3 py-2 text-[13px]">
-                        {state.content.trim().length === 0 ? (
-                          <div className="text-[12px] italic text-muted-foreground">
-                            {d.label} is empty. Switch to Code to add content.
-                          </div>
-                        ) : (
-                          <Markdown>{state.content}</Markdown>
-                        )}
-                      </div>
+                      <Textarea
+                        value={state.content}
+                        onChange={(e) => onChangeContent(e.target.value)}
+                        className="h-64 max-h-[60vh] resize-y overflow-auto text-[13px] leading-relaxed"
+                        placeholder={`Write ${d.label} here…`}
+                      />
                     )}
                   </TabsContent>
                 );
