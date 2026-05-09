@@ -1,6 +1,6 @@
 "use client";
 
-import { GitMerge, GitPullRequest, Wand2, X } from "lucide-react";
+import { ChevronDown, GitMerge, GitPullRequest, Wand2, X } from "lucide-react";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
@@ -139,6 +139,7 @@ export function TicketDetailDialog({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [isEditingPlan, setIsEditingPlan] = useState(false);
+  const [isPlanExpanded, setIsPlanExpanded] = useState(false);
   // Optimistic mirrors of relational fields.
   const [priority, setPriority] = useState<Priority>(ticket.priority);
   const [assignee, setAssignee] = useState<TicketAssignee | null>(ticket.assignee ?? null);
@@ -655,10 +656,35 @@ export function TicketDetailDialog({
               </div>
 
               <div className="mt-8 rounded-md border border-border/60 border-l-2 border-l-primary/60 bg-muted/40 px-4 py-3">
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80">
-                  Plan
-                </div>
-                {isEditingPlan ? (
+                {(() => {
+                  const planText = ticket.plan ?? "";
+                  const isLong = planText.length > 280 || planText.split("\n").length > 6;
+                  const showCollapsed = !isEditingPlan && !!ticket.plan && isLong && !isPlanExpanded;
+                  return (
+                    <>
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-foreground/80">
+                          Plan
+                        </div>
+                        {!isEditingPlan && ticket.plan && isLong ? (
+                          <button
+                            type="button"
+                            onClick={() => setIsPlanExpanded((v) => !v)}
+                            aria-expanded={isPlanExpanded}
+                            aria-label={isPlanExpanded ? "Collapse plan" : "Expand plan"}
+                            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            <span>{isPlanExpanded ? "Show less" : "Show more"}</span>
+                            <ChevronDown
+                              className={cn(
+                                "h-3.5 w-3.5 transition-transform",
+                                isPlanExpanded && "rotate-180",
+                              )}
+                            />
+                          </button>
+                        ) : null}
+                      </div>
+                      {isEditingPlan ? (
                   <ImageUploadTextarea
                     workspaceId={ticket.workspaceId}
                     autoFocus
@@ -690,7 +716,17 @@ export function TicketDetailDialog({
                     aria-label="Edit plan"
                   >
                     {ticket.plan ? (
-                      <Markdown className="text-[14px] text-foreground">{ticket.plan}</Markdown>
+                      <div
+                        className={cn(
+                          "relative",
+                          showCollapsed && "max-h-[7.5rem] overflow-hidden",
+                        )}
+                      >
+                        <Markdown className="text-[14px] text-foreground">{ticket.plan}</Markdown>
+                        {showCollapsed ? (
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-muted/90 to-transparent" />
+                        ) : null}
+                      </div>
                     ) : (
                       <span className="text-[14px]">
                         No plan yet. Generate one or write your own…
@@ -698,6 +734,9 @@ export function TicketDetailDialog({
                     )}
                   </button>
                 )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
