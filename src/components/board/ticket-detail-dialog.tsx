@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Markdown } from "@/components/ui/markdown";
 import { formatTicketIdentifier } from "@/lib/ticket-identifier";
 import type { Priority, TicketAssignee, TicketLabel, TicketWithRelations } from "@/lib/types";
+import { getDesktopBridge } from "@/lib/use-is-desktop";
 import { cn } from "@/lib/utils";
 import type { PrStatus } from "@/server/services/github-pr";
 
@@ -283,12 +284,53 @@ export function TicketDetailDialog({
     (attempt: number): void => {
       setMergeError(null);
       setFixState({ phase: "dispatching", attempt });
+
+      // Prefer the in-ticket chat (local Claude Code via the desktop bridge):
+      // the agent panel listens for `planbooq:workflow-run` and runs the prompt
+      // there, so progress streams into the chat instead of disappearing into a
+      // remote paired-agent job.
+      const prUrl = ticket.prUrl;
+      const prNumberMatch = prUrl ? prUrl.match(/\/pull\/(\d+)/) : null;
+      const bridge = getDesktopBridge();
+      if (bridge && prUrl && prNumberMatch) {
+        const prNumber = prNumberMatch[1];
+        const prompt = [
+          `# Resolve merge conflicts on PR #${prNumber}`,
+          ``,
+          `Ticket: ${ticket.title}`,
+          `PR URL: ${prUrl}`,
+          `Attempt: ${attempt} of ${MAX_FIX_ATTEMPTS}`,
+          ``,
+          `The pull request has merge conflicts with its base branch.`,
+          `Check out the PR branch, merge (or rebase) the base branch into it,`,
+          `resolve every conflict using your best judgment, run typecheck/lint,`,
+          `commit the resolution, and push the branch so the PR becomes mergeable.`,
+          ``,
+          `Steps:`,
+          `1. gh pr checkout ${prNumber}`,
+          `2. Detect base branch and merge it (e.g. \`git fetch origin && git merge origin/<base>\`).`,
+          `3. Resolve each conflict — preserve intent from both sides.`,
+          `4. \`pnpm typecheck && pnpm lint\` — fix any new issues caused by the merge.`,
+          `5. Commit with a clear message and push.`,
+          `6. Do NOT merge or close the PR; only resolve conflicts and push.`,
+        ].join("\n");
+        window.dispatchEvent(
+          new CustomEvent("planbooq:workflow-run", {
+            detail: { ticketId: ticket.id, prompts: [prompt] },
+          }),
+        );
+        setFixState({ phase: "resolving", attempt });
+        toast.message("Claude is resolving conflicts");
+        return;
+      }
+
+      // Web fallback: dispatch to a paired remote agent via the server action.
       void (async () => {
         const result = await requestMergeConflictFix(ticket.id, attempt);
         if (!result.ok) {
           const reason =
             result.error === "no_agent_paired"
-              ? "No paired Planbooq agent available to resolve conflicts."
+              ? "No paired Planbooq agent available. Open this ticket in the desktop app to use the local chat, or pair an agent in Settings → Agents."
               : result.error === "no_pr_url"
                 ? "No PR URL on this ticket."
                 : `Could not dispatch Claude: ${result.error}`;
@@ -297,10 +339,10 @@ export function TicketDetailDialog({
           return;
         }
         setFixState({ phase: "resolving", attempt });
-        toast.message(`Claude is resolving conflicts (attempt ${attempt}/${MAX_FIX_ATTEMPTS})`);
+        toast.message("Claude is resolving conflicts");
       })();
     },
-    [ticket.id],
+    [ticket.id, ticket.prUrl, ticket.title],
   );
 
   const handleFixMerge = (): void => {
@@ -333,9 +375,9 @@ export function TicketDetailDialog({
             setFixState({
               phase: "failed",
               attempt,
-              reason: `Still conflicted after ${MAX_FIX_ATTEMPTS} attempts. Resolve manually.`,
+              reason: "Still conflicted. Resolve manually.",
             });
-            toast.error(`Fix Merge gave up after ${MAX_FIX_ATTEMPTS} attempts.`);
+            toast.error("Fix Merge gave up.");
             return;
           }
           dispatchFixMerge(attempt + 1);
@@ -736,6 +778,7 @@ export function TicketDetailDialog({
                         fixState.phase === "resolving" ||
                         fixState.phase === "retrying";
                       const showFixButton = (conflict || fixActive) && !prStatus.merged;
+                      const showMergeButton = !prStatus.merged;
                       const disabled = isFetchingStatus || mergePending || disabledReason !== null;
                       const badgeClass =
                         badge.tone === "warn"
@@ -754,7 +797,7 @@ export function TicketDetailDialog({
                               {badge.label}
                             </span>
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className={showMergeButton ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 gap-2"}>
                             <Button
                               type="button"
                               variant="outline"
@@ -771,7 +814,7 @@ export function TicketDetailDialog({
                                 View PR
                               </a>
                             </Button>
-                            {showFixButton ? (
+                            {!showMergeButton ? null : showFixButton ? (
                               <Button
                                 type="button"
                                 onClick={handleFixMerge}
@@ -787,7 +830,7 @@ export function TicketDetailDialog({
                                 {fixState.phase === "dispatching"
                                   ? "Dispatching…"
                                   : fixState.phase === "resolving"
-                                    ? `Resolving (${fixState.attempt}/${MAX_FIX_ATTEMPTS})`
+                                    ? "Resolving…"
                                     : fixState.phase === "retrying"
                                       ? "Retrying merge…"
                                       : "Fix Merge"}
@@ -803,11 +846,7 @@ export function TicketDetailDialog({
                                 className="h-9 justify-center text-[13px] font-medium"
                               >
                                 <GitMerge className="mr-1.5 h-4 w-4" aria-hidden />
-                                {mergePending
-                                  ? "Merging…"
-                                  : badge.tone === "merged"
-                                    ? "Merged"
-                                    : "Merge"}
+                                {mergePending ? "Merging…" : "Merge"}
                               </Button>
                             )}
                           </div>
@@ -847,10 +886,10 @@ export function TicketDetailDialog({
               fixState.phase === "retrying" ? (
                 <div className="text-[12px] text-muted-foreground">
                   {fixState.phase === "dispatching"
-                    ? `Dispatching Claude (attempt ${fixState.attempt}/${MAX_FIX_ATTEMPTS})…`
+                    ? "Dispatching Claude…"
                     : fixState.phase === "resolving"
-                      ? `Claude is resolving conflicts (attempt ${fixState.attempt}/${MAX_FIX_ATTEMPTS}). The PR will retry automatically once the branch is mergeable.`
-                      : `Branch is mergeable — retrying merge (attempt ${fixState.attempt}/${MAX_FIX_ATTEMPTS})…`}
+                      ? "Claude is resolving conflicts. The PR will retry automatically once the branch is mergeable."
+                      : "Branch is mergeable — retrying merge…"}
                 </div>
               ) : null}
               {fixState.phase === "failed" ? (
