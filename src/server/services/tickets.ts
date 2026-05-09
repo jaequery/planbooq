@@ -5,6 +5,7 @@ import type { ServerActionResult, TicketWithRelations } from "@/lib/types";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
 import { inngest } from "@/server/inngest/client";
+import { autoTransitionPlanningToTodo } from "@/server/services/ticket-status";
 
 const TICKET_RELATIONS_INCLUDE = {
   assignee: { select: { id: true, name: true, email: true, image: true } },
@@ -100,7 +101,19 @@ export async function createTicketSvc(
       by: userId,
     });
     safeInngest("ticket/created", { ticketId: ticket.id, workspaceId: project.workspaceId });
-    return { ok: true, data: ticket };
+
+    let result = ticket;
+    if (data.plan?.trim()) {
+      const moved = await autoTransitionPlanningToTodo({ ticketId: ticket.id, byUserId: userId });
+      if (moved) {
+        const refreshed = await prisma.ticket.findUnique({
+          where: { id: ticket.id },
+          include: TICKET_RELATIONS_INCLUDE,
+        });
+        if (refreshed) result = refreshed;
+      }
+    }
+    return { ok: true, data: result };
   } catch (error) {
     logger.error("createTicketSvc.failed", {
       error: error instanceof Error ? error.message : String(error),
@@ -180,7 +193,19 @@ export async function updateTicketSvc(
       ticket: updated,
       by: userId,
     });
-    return { ok: true, data: updated };
+
+    let result = updated;
+    if (data.plan?.trim()) {
+      const moved = await autoTransitionPlanningToTodo({ ticketId: ticket.id, byUserId: userId });
+      if (moved) {
+        const refreshed = await prisma.ticket.findUnique({
+          where: { id: ticket.id },
+          include: TICKET_RELATIONS_INCLUDE,
+        });
+        if (refreshed) result = refreshed;
+      }
+    }
+    return { ok: true, data: result };
   } catch (error) {
     logger.error("updateTicketSvc.failed", {
       error: error instanceof Error ? error.message : String(error),

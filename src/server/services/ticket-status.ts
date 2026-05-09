@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
-import { getPrStatusForUser, parseGitHubPrUrl } from "@/server/services/github-pr";
 import { inngest } from "@/server/inngest/client";
+import { getPrStatusForUser, parseGitHubPrUrl } from "@/server/services/github-pr";
 
 /**
  * Move a ticket to the status with the given key (e.g. "todo", "building").
@@ -89,6 +89,31 @@ export async function moveTicketToStatusKey(args: {
     });
 
   return { fromStatusId, toStatusId: target.id, position };
+}
+
+/**
+ * Auto-transition a ticket out of a "planning" status once a plan exists.
+ * No-op when the ticket is not currently in a status with key "planning",
+ * or when the workspace has no "todo" status to land on. Returns true when
+ * a move actually happened so callers can refetch the ticket.
+ */
+export async function autoTransitionPlanningToTodo(args: {
+  ticketId: string;
+  byUserId: string;
+}): Promise<boolean> {
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: args.ticketId },
+    select: { archivedAt: true, status: { select: { key: true } } },
+  });
+  if (!ticket || ticket.archivedAt) return false;
+  if (ticket.status?.key !== "planning") return false;
+
+  const moved = await moveTicketToStatusKey({
+    ticketId: args.ticketId,
+    toStatusKey: "todo",
+    byUserId: args.byUserId,
+  });
+  return Boolean(moved && moved.fromStatusId !== moved.toStatusId);
 }
 
 /**
