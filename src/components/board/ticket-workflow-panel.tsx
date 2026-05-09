@@ -39,6 +39,7 @@ type WorkflowState = {
     position: number;
     enabled: boolean;
     source: "ticket" | "template";
+    completed: boolean | null;
   }>;
 };
 
@@ -65,6 +66,17 @@ export function TicketWorkflowPanel({
   const [currentStep, setCurrentStep] = useState<string | null>(null);
 
   function statusFor(name: string): "pending" | "running" | "completed" {
+    // Server-derived completion (from prUrl, AgentJobs, TicketActivity) is
+    // authoritative when a real signal exists. Falls through to the
+    // client-side FIFO heuristic only for steps the server can't classify.
+    const step = wf?.steps.find((s) => s.name === name);
+    if (step?.completed === true) return "completed";
+    if (step?.completed === false) {
+      // Server explicitly says not done — only a live "running" indicator
+      // can override. Don't trust stale local state.
+      if (currentStep === name && running) return "running";
+      return "pending";
+    }
     if (currentStep === name && running) return "running";
     if (completedSteps.has(name)) return "completed";
     return "pending";
@@ -99,9 +111,17 @@ export function TicketWorkflowPanel({
       }
       wasRunningRef.current = next;
       setRunning(next);
+      // On falling edge, refetch so the server-derived `completed` per step
+      // catches up with whatever the agent just changed (prUrl, build job,
+      // test activity). The FIFO heuristic is now strictly fallback.
+      if (!next) {
+        void refresh();
+      }
     };
     window.addEventListener("planbooq:agent-busy", onBusy);
     return () => window.removeEventListener("planbooq:agent-busy", onBusy);
+    // refresh is stable enough — declared in this same component scope.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
 
   useEffect(() => {
@@ -140,6 +160,19 @@ export function TicketWorkflowPanel({
 
   useEffect(() => {
     refresh();
+  }, [ticketId]);
+
+  // Refetch when the board reports a ticket.updated for this ticket — the
+  // payload may include a new prUrl that flips a "PR" step to completed.
+  useEffect(() => {
+    const onUpdated = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { ticketId?: string };
+      if (detail?.ticketId !== ticketId) return;
+      void refresh();
+    };
+    window.addEventListener("planbooq:ticket-updated", onUpdated);
+    return () => window.removeEventListener("planbooq:ticket-updated", onUpdated);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
 
   function runPrompts(prompts: string[]) {

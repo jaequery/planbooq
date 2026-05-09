@@ -390,6 +390,98 @@ async function ensureSystemDefaultWorkflow(
   return template;
 }
 
+/**
+ * Map a step name to a "kind" we know how to derive completion for.
+ * Default-template names get unambiguous matches; user-named steps fall
+ * back to `unknown` and the client-side FIFO heuristic decides.
+ */
+type StepKind = "build" | "pr" | "test" | "unknown";
+
+function classifyStepKind(name: string): StepKind {
+  const n = name.toLowerCase();
+  if (/\b(pr|pull[\s-]?request|ship|merge)\b/.test(n)) return "pr";
+  if (/\b(issue|open|create|raise)\b.*\bpr\b/.test(n)) return "pr";
+  if (/\b(test|verify|qa|e2e|playwright|vitest|jest)\b/.test(n)) return "test";
+  if (/\b(build|implement|develop|code|make|fix|refactor)\b/.test(n)) return "build";
+  return "unknown";
+}
+
+/**
+ * Authoritative signals for step completion. We derive at read time from
+ * real state (prUrl, AgentJobs, TicketActivity) instead of trusting a
+ * stored stepRun row, because the actual work happens in many places
+ * (desktop bridge, CLI via pbq, agent webhook) and stored rows drift.
+ *
+ * - build  → an EXECUTE AgentJob has SUCCEEDED, OR a BUILD/COMMIT_PUSHED
+ *            activity exists, OR the PR is up (PR ⇒ build implicitly done)
+ * - pr     → ticket.prUrl is set, OR a PR_CREATED activity exists
+ * - test   → a TEST_RUN activity exists
+ * - unknown→ null (let client decide via FIFO)
+ */
+async function deriveStepCompletion(args: {
+  ticketId: string;
+  prUrl: string | null;
+  steps: Array<{ name: string }>;
+}): Promise<Map<string, boolean | null>> {
+  const out = new Map<string, boolean | null>();
+  const kinds = args.steps.map((s) => classifyStepKind(s.name));
+  const need = new Set(kinds);
+
+  let hasBuildJob = false;
+  let hasBuildActivity = false;
+  let hasPrActivity = false;
+  let hasTestActivity = false;
+
+  if (need.has("build")) {
+    hasBuildJob = !!(await prisma.agentJob.findFirst({
+      where: { ticketId: args.ticketId, kind: "EXECUTE", status: "SUCCEEDED" },
+      select: { id: true },
+    }));
+    if (!hasBuildJob) {
+      hasBuildActivity = !!(await prisma.ticketActivity.findFirst({
+        where: { ticketId: args.ticketId, kind: { in: ["BUILD", "COMMIT_PUSHED"] } },
+        select: { id: true },
+      }));
+    }
+  }
+  if (need.has("pr") && !args.prUrl) {
+    hasPrActivity = !!(await prisma.ticketActivity.findFirst({
+      where: { ticketId: args.ticketId, kind: "PR_CREATED" },
+      select: { id: true },
+    }));
+  }
+  if (need.has("test")) {
+    hasTestActivity = !!(await prisma.ticketActivity.findFirst({
+      where: { ticketId: args.ticketId, kind: "TEST_RUN" },
+      select: { id: true },
+    }));
+  }
+
+  for (let i = 0; i < args.steps.length; i++) {
+    const step = args.steps[i];
+    const kind = kinds[i];
+    if (!step || !kind) continue;
+    const name = step.name;
+    let completed: boolean | null;
+    switch (kind) {
+      case "build":
+        // PR open implies build was done.
+        completed = !!args.prUrl || hasBuildJob || hasBuildActivity;
+        break;
+      case "pr":
+        completed = !!args.prUrl || hasPrActivity;
+        break;
+      case "test":
+        completed = hasTestActivity;
+        break;
+      default:
+        completed = null;
+    }
+    out.set(name, completed);
+  }
+  return out;
+}
+
 export async function getTicketWorkflow(ticketId: string): Promise<
   Result<{
     hasOverride: boolean;
@@ -402,6 +494,9 @@ export async function getTicketWorkflow(ticketId: string): Promise<
       position: number;
       enabled: boolean;
       source: "ticket" | "template";
+      /** Server-derived from authoritative signals; null = no signal,
+       *  client FIFO heuristic decides. */
+      completed: boolean | null;
     }>;
   }>
 > {
@@ -410,18 +505,33 @@ export async function getTicketWorkflow(ticketId: string): Promise<
   const ctx = await requireMember(ticket.workspaceId);
   if (!ctx.ok) return ctx;
 
+  const ticketState = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: { prUrl: true },
+  });
+  const prUrl = ticketState?.prUrl ?? null;
+
   const overrideSteps = await prisma.workflowStep.findMany({
     where: { ticketId },
     orderBy: { position: "asc" },
     select: { id: true, name: true, prompt: true, position: true, enabled: true },
   });
   if (overrideSteps.length > 0) {
+    const completion = await deriveStepCompletion({
+      ticketId,
+      prUrl,
+      steps: overrideSteps,
+    });
     return {
       ok: true,
       hasOverride: true,
       templateId: null,
       templateName: null,
-      steps: overrideSteps.map((s) => ({ ...s, source: "ticket" as const })),
+      steps: overrideSteps.map((s) => ({
+        ...s,
+        source: "ticket" as const,
+        completed: completion.get(s.name) ?? null,
+      })),
     };
   }
   const project = await prisma.project.findUnique({
@@ -451,18 +561,25 @@ export async function getTicketWorkflow(ticketId: string): Promise<
       };
     }
   }
+  const tplSteps = tpl?.steps ?? [];
+  const completion = await deriveStepCompletion({
+    ticketId,
+    prUrl,
+    steps: tplSteps,
+  });
   return {
     ok: true,
     hasOverride: false,
     templateId: tpl?.id ?? null,
     templateName: tpl?.name ?? null,
-    steps: (tpl?.steps ?? []).map((s) => ({
+    steps: tplSteps.map((s) => ({
       id: s.id,
       name: s.name,
       prompt: s.prompt,
       position: s.position,
       enabled: s.enabled,
       source: "template" as const,
+      completed: completion.get(s.name) ?? null,
     })),
   };
 }
@@ -719,22 +836,24 @@ export async function triggerWorkflowRun(
     : enabled.map((s) => ({ name: s.name, prompt: s.prompt }));
 
   const now = new Date();
+  // Record the run as RUNNING with PENDING stepRuns. Marking everything
+  // SUCCEEDED at trigger time was misleading — it caused the UI to show
+  // every step checked the moment Run was clicked, even though the agent
+  // hadn't done a thing yet. Real completion is derived at read time
+  // from authoritative signals (prUrl, AgentJobs, TicketActivity).
   const run = await prisma.workflowRun.create({
     data: {
       ticketId,
       workspaceId: ticket.workspaceId,
       templateId: wf.templateId,
-      status: "SUCCEEDED",
+      status: "RUNNING",
       startedAt: now,
-      finishedAt: now,
       stepRuns: {
         create: recorded.map((s, i) => ({
           position: i,
           name: s.name,
           prompt: s.prompt,
-          status: "SUCCEEDED" as const,
-          startedAt: now,
-          finishedAt: now,
+          status: "PENDING" as const,
         })),
       },
     },

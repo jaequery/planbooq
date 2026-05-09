@@ -247,6 +247,14 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
             return { ...s, tickets: next };
           });
         });
+        // Fan out a window event so panels mounted inside an open ticket
+        // dialog (e.g. workflow panel) can refetch their server-derived
+        // state without each subscribing to Ably independently.
+        window.dispatchEvent(
+          new CustomEvent("planbooq:ticket-updated", {
+            detail: { ticketId: event.ticket.id },
+          }),
+        );
       } else if (event.name === "ticket.archived" || event.name === "ticket.deleted") {
         setStatuses((prev) =>
           prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== event.ticketId) })),
