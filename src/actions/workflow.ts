@@ -421,11 +421,18 @@ function classifyStepKind(name: string): StepKind {
 async function deriveStepCompletion(args: {
   ticketId: string;
   prUrl: string | null;
+  statusKey: string | null;
   steps: Array<{ name: string }>;
 }): Promise<Map<string, boolean | null>> {
   const out = new Map<string, boolean | null>();
   const kinds = args.steps.map((s) => classifyStepKind(s.name));
   const need = new Set(kinds);
+
+  // Terminal status is the strongest possible signal: if the ticket has
+  // reached `review` or `completed`, every preceding workflow step is by
+  // definition done. This catches the case where a step is named in a way
+  // the regex can't classify, or where activity rows didn't get written.
+  const terminal = args.statusKey === "review" || args.statusKey === "completed";
 
   let hasBuildJob = false;
   let hasBuildActivity = false;
@@ -465,17 +472,18 @@ async function deriveStepCompletion(args: {
     let completed: boolean | null;
     switch (kind) {
       case "build":
-        // PR open implies build was done.
-        completed = !!args.prUrl || hasBuildJob || hasBuildActivity;
+        completed = terminal || !!args.prUrl || hasBuildJob || hasBuildActivity;
         break;
       case "pr":
-        completed = !!args.prUrl || hasPrActivity;
+        completed = terminal || !!args.prUrl || hasPrActivity;
         break;
       case "test":
-        completed = hasTestActivity;
+        completed = terminal || hasTestActivity;
         break;
       default:
-        completed = null;
+        // Unknown-kind steps: terminal status still implies done. Otherwise
+        // fall back to the client FIFO heuristic (null).
+        completed = terminal ? true : null;
     }
     out.set(name, completed);
   }
@@ -507,9 +515,10 @@ export async function getTicketWorkflow(ticketId: string): Promise<
 
   const ticketState = await prisma.ticket.findUnique({
     where: { id: ticketId },
-    select: { prUrl: true },
+    select: { prUrl: true, status: { select: { key: true } } },
   });
   const prUrl = ticketState?.prUrl ?? null;
+  const statusKey = ticketState?.status?.key ?? null;
 
   const overrideSteps = await prisma.workflowStep.findMany({
     where: { ticketId },
@@ -520,6 +529,7 @@ export async function getTicketWorkflow(ticketId: string): Promise<
     const completion = await deriveStepCompletion({
       ticketId,
       prUrl,
+      statusKey,
       steps: overrideSteps,
     });
     return {
@@ -565,6 +575,7 @@ export async function getTicketWorkflow(ticketId: string): Promise<
   const completion = await deriveStepCompletion({
     ticketId,
     prUrl,
+    statusKey,
     steps: tplSteps,
   });
   return {
