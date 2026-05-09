@@ -557,11 +557,6 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
       <ChatOrb
         projectId={currentProjectId}
         workspaceId={initialData.project.workspaceId}
-        projectName={initialData.project.name}
-        totalTickets={statuses.reduce((sum, s) => sum + s.tickets.length, 0)}
-        runningTickets={
-          statuses.find((s) => s.key === "building")?.tickets.length ?? 0
-        }
         onCreated={onTicketCreated}
       />
       {detailTicket ? (
