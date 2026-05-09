@@ -1,9 +1,13 @@
 "use client";
 
-import { GitMerge, GitPullRequest, X } from "lucide-react";
+import { GitMerge, GitPullRequest, Wand2, X } from "lucide-react";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { getPullRequestStatus, mergePullRequest } from "@/actions/github-pr";
+import {
+  getPullRequestStatus,
+  mergePullRequest,
+  requestMergeConflictFix,
+} from "@/actions/github-pr";
 import { updateTicket } from "@/actions/ticket";
 import { AgentProfilesPicker } from "@/components/board/agent-profiles-picker";
 import { AssigneeAvatar, AssigneePicker } from "@/components/board/assignee-picker";
@@ -88,6 +92,14 @@ function describeReasonBadge(reason: PrStatusReason): string {
   }
 }
 
+function hasMergeConflict(status: PrStatus): boolean {
+  if (status.merged) return false;
+  if (status.state === "closed") return false;
+  return status.mergeable === false || status.mergeableState === "dirty";
+}
+
+const MAX_FIX_ATTEMPTS = 5;
+
 function describeMergeDisabledReason(status: PrStatus): string | null {
   if (status.merged) return "PR already merged";
   if (status.state === "closed") return "PR is closed";
@@ -132,6 +144,13 @@ export function TicketDetailDialog({
   const [isFetchingStatus, startStatusTransition] = useTransition();
   const [mergePending, startMergeTransition] = useTransition();
   const [mergeError, setMergeError] = useState<React.ReactNode | null>(null);
+  const [fixState, setFixState] = useState<
+    | { phase: "idle" }
+    | { phase: "dispatching"; attempt: number }
+    | { phase: "resolving"; attempt: number }
+    | { phase: "retrying"; attempt: number }
+    | { phase: "failed"; attempt: number; reason: string }
+  >({ phase: "idle" });
 
   const ticketPrUrl = ticket.prUrl;
   const showPrStatus = open && isGitHubPrUrl(ticketPrUrl);
@@ -259,6 +278,90 @@ export function TicketDetailDialog({
       setMergeError(inline);
     });
   };
+
+  const dispatchFixMerge = useCallback(
+    (attempt: number): void => {
+      setMergeError(null);
+      setFixState({ phase: "dispatching", attempt });
+      void (async () => {
+        const result = await requestMergeConflictFix(ticket.id, attempt);
+        if (!result.ok) {
+          const reason =
+            result.error === "no_agent_paired"
+              ? "No paired Planbooq agent available to resolve conflicts."
+              : result.error === "no_pr_url"
+                ? "No PR URL on this ticket."
+                : `Could not dispatch Claude: ${result.error}`;
+          setFixState({ phase: "failed", attempt, reason });
+          toast.error(reason);
+          return;
+        }
+        setFixState({ phase: "resolving", attempt });
+        toast.message(`Claude is resolving conflicts (attempt ${attempt}/${MAX_FIX_ATTEMPTS})`);
+      })();
+    },
+    [ticket.id],
+  );
+
+  const handleFixMerge = (): void => {
+    dispatchFixMerge(1);
+  };
+
+  // Watch PR status while a fix is in flight: when the branch becomes
+  // mergeable, auto-retry the merge; if it lands as a conflict again,
+  // re-dispatch Claude up to MAX_FIX_ATTEMPTS.
+  useEffect(() => {
+    if (!prStatus) return;
+    if (fixState.phase !== "resolving") return;
+    if (prStatus.merged) {
+      setFixState({ phase: "idle" });
+      return;
+    }
+    if (prStatus.mergeable === true) {
+      const attempt = fixState.attempt;
+      setFixState({ phase: "retrying", attempt });
+      startMergeTransition(async () => {
+        const result = await mergePullRequest(ticket.id);
+        if (result.ok && result.data.merged === true) {
+          toast.success("PR merged after Claude resolved conflicts.");
+          setFixState({ phase: "idle" });
+          loadStatus();
+          return;
+        }
+        if (result.ok && result.data.merged === false && result.data.reason === "conflict") {
+          if (attempt >= MAX_FIX_ATTEMPTS) {
+            setFixState({
+              phase: "failed",
+              attempt,
+              reason: `Still conflicted after ${MAX_FIX_ATTEMPTS} attempts. Resolve manually.`,
+            });
+            toast.error(`Fix Merge gave up after ${MAX_FIX_ATTEMPTS} attempts.`);
+            return;
+          }
+          dispatchFixMerge(attempt + 1);
+          return;
+        }
+        const reason = !result.ok
+          ? result.error
+          : result.data.merged === false
+            ? (result.data.message ?? `Merge retry failed: ${result.data.reason}`)
+            : "Merge retry failed";
+        setFixState({ phase: "failed", attempt, reason });
+        toast.error(reason);
+      });
+      return;
+    }
+    if (prStatus.mergeable === false && fixState.attempt > 0) {
+      // Branch is conflicted again after Claude's push; if the agent already
+      // ran and pushed (we'd see mergeable flip true→false), step up.
+      // Otherwise the agent is still working — keep waiting.
+    }
+  }, [prStatus, fixState, ticket.id, loadStatus, dispatchFixMerge]);
+
+  // Reset fix flow when PR becomes mergeable, merged, or the dialog closes.
+  useEffect(() => {
+    if (!showPrStatus) setFixState({ phase: "idle" });
+  }, [showPrStatus]);
 
   useEffect(() => {
     if (!isEditingTitle) setTitleDraft(ticket.title);
@@ -627,6 +730,12 @@ export function TicketDetailDialog({
                     (() => {
                       const badge = describeStatusBadge(prStatus);
                       const disabledReason = describeMergeDisabledReason(prStatus);
+                      const conflict = hasMergeConflict(prStatus);
+                      const fixActive =
+                        fixState.phase === "dispatching" ||
+                        fixState.phase === "resolving" ||
+                        fixState.phase === "retrying";
+                      const showFixButton = (conflict || fixActive) && !prStatus.merged;
                       const disabled = isFetchingStatus || mergePending || disabledReason !== null;
                       const badgeClass =
                         badge.tone === "warn"
@@ -662,22 +771,45 @@ export function TicketDetailDialog({
                                 View PR
                               </a>
                             </Button>
-                            <Button
-                              type="button"
-                              onClick={handleMerge}
-                              disabled={disabled}
-                              title={
-                                mergePending ? "Merging…" : (disabledReason ?? "Merge this PR")
-                              }
-                              className="h-9 justify-center text-[13px] font-medium"
-                            >
-                              <GitMerge className="mr-1.5 h-4 w-4" aria-hidden />
-                              {mergePending
-                                ? "Merging…"
-                                : badge.tone === "merged"
-                                  ? "Merged"
-                                  : "Merge"}
-                            </Button>
+                            {showFixButton ? (
+                              <Button
+                                type="button"
+                                onClick={handleFixMerge}
+                                disabled={fixActive || mergePending}
+                                title={
+                                  fixActive
+                                    ? "Claude is resolving merge conflicts"
+                                    : "Ask Claude to resolve merge conflicts and retry"
+                                }
+                                className="h-9 justify-center text-[13px] font-medium"
+                              >
+                                <Wand2 className="mr-1.5 h-4 w-4" aria-hidden />
+                                {fixState.phase === "dispatching"
+                                  ? "Dispatching…"
+                                  : fixState.phase === "resolving"
+                                    ? `Resolving (${fixState.attempt}/${MAX_FIX_ATTEMPTS})`
+                                    : fixState.phase === "retrying"
+                                      ? "Retrying merge…"
+                                      : "Fix Merge"}
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                onClick={handleMerge}
+                                disabled={disabled}
+                                title={
+                                  mergePending ? "Merging…" : (disabledReason ?? "Merge this PR")
+                                }
+                                className="h-9 justify-center text-[13px] font-medium"
+                              >
+                                <GitMerge className="mr-1.5 h-4 w-4" aria-hidden />
+                                {mergePending
+                                  ? "Merging…"
+                                  : badge.tone === "merged"
+                                    ? "Merged"
+                                    : "Merge"}
+                              </Button>
+                            )}
                           </div>
                         </div>
                       );
@@ -709,6 +841,22 @@ export function TicketDetailDialog({
               ) : null}
               {mergeError ? (
                 <div className="text-[12px] text-red-600 dark:text-red-400">{mergeError}</div>
+              ) : null}
+              {fixState.phase === "dispatching" ||
+              fixState.phase === "resolving" ||
+              fixState.phase === "retrying" ? (
+                <div className="text-[12px] text-muted-foreground">
+                  {fixState.phase === "dispatching"
+                    ? `Dispatching Claude (attempt ${fixState.attempt}/${MAX_FIX_ATTEMPTS})…`
+                    : fixState.phase === "resolving"
+                      ? `Claude is resolving conflicts (attempt ${fixState.attempt}/${MAX_FIX_ATTEMPTS}). The PR will retry automatically once the branch is mergeable.`
+                      : `Branch is mergeable — retrying merge (attempt ${fixState.attempt}/${MAX_FIX_ATTEMPTS})…`}
+                </div>
+              ) : null}
+              {fixState.phase === "failed" ? (
+                <div className="text-[12px] text-red-600 dark:text-red-400">
+                  Fix Merge failed: {fixState.reason}
+                </div>
               ) : null}
             </div>
             <TicketPreviewsPanel ticketId={ticket.id} workspaceId={ticket.workspaceId} />

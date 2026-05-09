@@ -14,6 +14,8 @@ import {
   parseGitHubPrUrl,
 } from "@/server/services/github-pr";
 import { autoCompleteTicketByPrUrl } from "@/server/services/webhook-github";
+import { createAgentJobForTicket, pickAgentForUser } from "@/server/services/agent-jobs";
+import { createCommentSvc } from "@/server/services/comments";
 
 const TICKET_RELATIONS_INCLUDE = {
   assignee: { select: { id: true, name: true, email: true, image: true } },
@@ -191,6 +193,83 @@ export async function mergePullRequest(
     }
   } catch (error) {
     logger.error("github_pr.merge.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
+export async function requestMergeConflictFix(
+  ticketId: string,
+  attempt: number = 1,
+): Promise<ServerActionResult<{ jobId: string; attempt: number }>> {
+  try {
+    const { ticketId: id } = TicketIdSchema.parse({ ticketId });
+    const userId = await requireUserId();
+
+    const ticket = await prisma.ticket.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        prUrl: true,
+        title: true,
+        workspaceId: true,
+      },
+    });
+    if (!ticket) return { ok: false, error: "ticket_not_found" };
+    await requireMembership(ticket.workspaceId, userId);
+    if (!ticket.prUrl) return { ok: false, error: "no_pr_url" };
+
+    const pr = parseGitHubPrUrl(ticket.prUrl);
+    if (!pr) return { ok: false, error: "not_github" };
+
+    const agent = await pickAgentForUser({
+      workspaceId: ticket.workspaceId,
+      userId,
+    });
+    if (!agent) return { ok: false, error: "no_agent_paired" };
+
+    const safeAttempt = Math.max(1, Math.min(attempt, 5));
+    const prompt = [
+      `# Resolve merge conflicts on PR #${pr.number}`,
+      ``,
+      `Ticket: ${ticket.title}`,
+      `PR URL: ${pr.htmlUrl}`,
+      `Attempt: ${safeAttempt} of 5`,
+      ``,
+      `The pull request has merge conflicts with its base branch.`,
+      `Check out the PR branch, merge (or rebase) the base branch into it,`,
+      `resolve every conflict using your best judgment, run typecheck/lint,`,
+      `commit the resolution, and push the branch so the PR becomes mergeable.`,
+      ``,
+      `Steps:`,
+      `1. gh pr checkout ${pr.number}`,
+      `2. Detect base branch and merge it (e.g. \`git fetch origin && git merge origin/<base>\`).`,
+      `3. Resolve each conflict — preserve intent from both sides.`,
+      `4. \`pnpm typecheck && pnpm lint\` — fix any new issues caused by the merge.`,
+      `5. Commit with a clear message and push.`,
+      `6. Do NOT merge or close the PR; only resolve conflicts and push.`,
+    ].join("\n");
+
+    const { jobId } = await createAgentJobForTicket({
+      agentId: agent.id,
+      ticketId: ticket.id,
+      prompt,
+    });
+
+    await createCommentSvc(userId, {
+      ticketId: ticket.id,
+      body: `**Fix Merge dispatched** — attempt ${safeAttempt}/5. Claude is resolving conflicts on PR #${pr.number}.`,
+    });
+
+    logger.info("github_pr.fix_merge.dispatched", {
+      ticketId: id,
+      jobId,
+      attempt: safeAttempt,
+    });
+    return { ok: true, data: { jobId, attempt: safeAttempt } };
+  } catch (error) {
+    logger.error("github_pr.fix_merge.failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     return { ok: false, error: error instanceof Error ? error.message : "unknown" };
