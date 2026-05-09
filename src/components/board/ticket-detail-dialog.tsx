@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { getPullRequestStatus, mergePullRequest } from "@/actions/github-pr";
 import { updateTicket } from "@/actions/ticket";
+import { AgentProfilesPicker } from "@/components/board/agent-profiles-picker";
 import { AssigneeAvatar, AssigneePicker } from "@/components/board/assignee-picker";
 import { DueDatePicker } from "@/components/board/due-date-picker";
 import { LabelPicker } from "@/components/board/label-picker";
@@ -522,6 +523,10 @@ export function TicketDetailDialog({
               />
             </div>
             <div className="flex items-center gap-2">
+              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Agents</span>
+              <AgentProfilesPicker ticketId={ticket.id} workspaceId={ticket.workspaceId} />
+            </div>
+            <div className="flex items-center gap-2">
               <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Project</span>
               <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[13px]">
                 <span
@@ -567,36 +572,38 @@ export function TicketDetailDialog({
                             </span>
                           </div>
                           <div className="grid grid-cols-2 gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            asChild
-                            className="h-9 justify-center text-[13px] font-medium"
-                          >
-                            <a
-                              href={ticket.prUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title={ticket.prUrl}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              asChild
+                              className="h-9 justify-center text-[13px] font-medium"
                             >
-                              <GitPullRequest className="mr-1.5 h-4 w-4" aria-hidden />
-                              View PR
-                            </a>
-                          </Button>
-                          <Button
-                            type="button"
-                            onClick={handleMerge}
-                            disabled={disabled}
-                            title={mergePending ? "Merging…" : (disabledReason ?? "Merge this PR")}
-                            className="h-9 justify-center text-[13px] font-medium"
-                          >
-                            <GitMerge className="mr-1.5 h-4 w-4" aria-hidden />
-                            {mergePending
-                              ? "Merging…"
-                              : badge.tone === "merged"
-                                ? "Merged"
-                                : "Merge"}
-                          </Button>
+                              <a
+                                href={ticket.prUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={ticket.prUrl}
+                              >
+                                <GitPullRequest className="mr-1.5 h-4 w-4" aria-hidden />
+                                View PR
+                              </a>
+                            </Button>
+                            <Button
+                              type="button"
+                              onClick={handleMerge}
+                              disabled={disabled}
+                              title={
+                                mergePending ? "Merging…" : (disabledReason ?? "Merge this PR")
+                              }
+                              className="h-9 justify-center text-[13px] font-medium"
+                            >
+                              <GitMerge className="mr-1.5 h-4 w-4" aria-hidden />
+                              {mergePending
+                                ? "Merging…"
+                                : badge.tone === "merged"
+                                  ? "Merged"
+                                  : "Merge"}
+                            </Button>
                           </div>
                         </div>
                       );

@@ -7,13 +7,14 @@ import { useCallback } from "react";
 import { useIsDesktop } from "@/lib/use-is-desktop";
 import { cn } from "@/lib/utils";
 
-type TabValue = "appearance" | "api-keys" | "workflows" | "agents";
+type TabValue = "appearance" | "api-keys" | "workflows" | "agents" | "local-agents";
 
 const ALL_TABS: { value: TabValue; label: string }[] = [
   { value: "appearance", label: "Appearance" },
   { value: "api-keys", label: "API keys" },
   { value: "workflows", label: "Workflows" },
   { value: "agents", label: "Agents" },
+  { value: "local-agents", label: "Local agents" },
 ];
 
 type Props = {
@@ -21,6 +22,7 @@ type Props = {
   apiKeys: React.ReactNode;
   workflows: React.ReactNode;
   agents: React.ReactNode;
+  localAgents: React.ReactNode;
 };
 
 export function SettingsTabs({
@@ -28,20 +30,23 @@ export function SettingsTabs({
   apiKeys,
   workflows,
   agents,
+  localAgents,
 }: Props): React.ReactElement {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isDesktop = useIsDesktop();
-  const TABS = isDesktop ? ALL_TABS.filter((t) => t.value !== "agents") : ALL_TABS;
+  const TABS = isDesktop ? ALL_TABS.filter((t) => t.value !== "local-agents") : ALL_TABS;
   const param = searchParams.get("tab");
   const active: TabValue =
     param === "api-keys"
       ? "api-keys"
       : param === "workflows"
         ? "workflows"
-        : param === "agents" && !isDesktop
+        : param === "agents"
           ? "agents"
-          : "appearance";
+          : param === "local-agents" && !isDesktop
+            ? "local-agents"
+            : "appearance";
 
   const onValueChange = useCallback(
     (value: string) => {
@@ -84,9 +89,12 @@ export function SettingsTabs({
       <TabsPrimitive.Content value="workflows" className="focus-visible:outline-none">
         {workflows}
       </TabsPrimitive.Content>
+      <TabsPrimitive.Content value="agents" className="focus-visible:outline-none">
+        {agents}
+      </TabsPrimitive.Content>
       {!isDesktop && (
-        <TabsPrimitive.Content value="agents" className="focus-visible:outline-none">
-          {agents}
+        <TabsPrimitive.Content value="local-agents" className="focus-visible:outline-none">
+          {localAgents}
         </TabsPrimitive.Content>
       )}
     </TabsPrimitive.Root>

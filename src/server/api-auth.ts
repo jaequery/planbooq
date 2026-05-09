@@ -90,6 +90,7 @@ export function mapErrorToStatus(code: string): number {
     case "invalid_status":
     case "comment_not_found":
     case "preview_not_found":
+    case "not_found":
       return 404;
     case "rate_limited":
       return 429;
@@ -105,6 +106,7 @@ export function mapErrorToStatus(code: string): number {
     case "slug_taken":
     case "invalid_slug":
     case "invalid_color":
+    case "invalid_agent_profile":
       return 400;
     default:
       return 500;

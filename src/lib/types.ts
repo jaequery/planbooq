@@ -39,6 +39,26 @@ export type BoardData = {
 
 export type WorkspaceMembership = Member & { workspace: Workspace };
 
+export type AgentProfileSummary = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  archivedAt: Date | null;
+};
+
+export type AgentProfileFull = AgentProfileSummary & { body: string };
+
+export type TicketAgentProfileLink = {
+  agentProfileId: string;
+  position: number;
+  profile: AgentProfileSummary;
+};
+
 export type AblyChannelEvent =
   | {
       name: "ticket.created";
@@ -154,6 +174,31 @@ export type AblyChannelEvent =
         jobId: string | null;
         createdAt: string;
       };
+    }
+  | {
+      name: "agentProfile.created";
+      workspaceId: string;
+      profile: AgentProfileSummary;
+      by: string;
+    }
+  | {
+      name: "agentProfile.updated";
+      workspaceId: string;
+      profile: AgentProfileSummary;
+      by: string;
+    }
+  | {
+      name: "agentProfile.deleted";
+      workspaceId: string;
+      profileId: string;
+      by: string;
+    }
+  | {
+      name: "ticket.agentProfiles.updated";
+      workspaceId: string;
+      ticketId: string;
+      profileIds: string[];
+      by: string;
     }
   | {
       name: "agent.delta";
