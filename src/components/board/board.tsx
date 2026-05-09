@@ -556,6 +556,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
       </DndContext>
       <ChatOrb
         projectId={currentProjectId}
+        workspaceId={initialData.project.workspaceId}
         projectName={initialData.project.name}
         totalTickets={statuses.reduce((sum, s) => sum + s.tickets.length, 0)}
         runningTickets={
