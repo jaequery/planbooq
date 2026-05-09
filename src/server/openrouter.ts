@@ -61,14 +61,14 @@ export async function runOpenRouterForTicket(args: {
   }
 }
 
-type TicketDraft = { title: string; description: string };
+type TicketDraft = { title: string; description: string; plan: string };
 type DraftResult = { ok: true; draft: TicketDraft } | { ok: false; error: string };
 
 function fallbackDraftFromPrompt(prompt: string): TicketDraft {
   const firstLine = prompt.trim().split("\n")[0]?.trim() ?? prompt.trim();
   const title = firstLine.slice(0, 200) || "Untitled ticket";
   const description = prompt.trim().slice(0, 5000);
-  return { title, description };
+  return { title, description, plan: "" };
 }
 
 function parseDraftJson(content: string): TicketDraft | null {
@@ -82,6 +82,7 @@ function parseDraftJson(content: string): TicketDraft | null {
     return {
       title: obj.title,
       description: typeof obj.description === "string" ? obj.description : "",
+      plan: typeof obj.plan === "string" ? obj.plan : "",
     };
   } catch {
     return null;
@@ -163,7 +164,7 @@ export async function generateTicketDraft(args: {
           {
             role: "system",
             content:
-              'You convert a user request into a Planbooq kanban ticket. Reply with strict JSON only: {"title": string up to 120 chars, "description": markdown string up to 4000 chars}. Title is a concise imperative summary. Description expands on scope and acceptance criteria when the prompt is rich; keep it brief when the prompt is terse. No surrounding prose, no code fences.',
+              'You convert a user request into a Planbooq kanban ticket. Reply with strict JSON only: {"title": string up to 120 chars, "description": markdown string up to 2000 chars, "plan": markdown string up to 4000 chars}. Title is a concise imperative summary. Description is a brief summary of the user\'s ask and acceptance criteria — NOT a plan. Plan is the engineering implementation plan (sections like Goal, Approach, Files to change, Acceptance criteria) when the prompt has enough detail to plan; otherwise an empty string. Never put plan content into description. No surrounding prose, no code fences.',
           },
           { role: "user", content: args.prompt },
         ],
@@ -194,7 +195,8 @@ export async function generateTicketDraft(args: {
 
     const title = parsed.title.trim().slice(0, 200) || fallbackDraftFromPrompt(args.prompt).title;
     const description = parsed.description.trim().slice(0, 5000);
-    return { ok: true, draft: { title, description } };
+    const plan = parsed.plan.trim().slice(0, 20000);
+    return { ok: true, draft: { title, description, plan } };
   } catch (e) {
     if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) {
       return { ok: false, error: "openrouter_timeout" };
