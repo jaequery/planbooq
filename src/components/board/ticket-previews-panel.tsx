@@ -49,7 +49,6 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
       }
     } catch (err) {
       setCaptureError(err instanceof Error ? err.message : "request_failed");
-    } finally {
       setCapturing(false);
     }
   }, [ticketId]);
@@ -117,6 +116,11 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
           >
             {capturing ? "Taking screenshots…" : "Take Screenshots"}
           </button>
+          {capturing && !captureError ? (
+            <div className="text-[12px] text-muted-foreground">
+              Queued — previews will appear here when ready.
+            </div>
+          ) : null}
           {captureError ? (
             <div className="text-[12px] text-destructive">
               Failed to start screenshots: {captureError}
