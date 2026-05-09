@@ -33,6 +33,7 @@ model User {
   ticketPreviews  TicketPreview[] @relation("TicketPreviewCreator")
   agents          Agent[]
   agentPairCodes  AgentPairCode[]
+  agentProfiles   AgentProfile[]  @relation("AgentProfileCreator")
 }
 
 model ApiKey {
@@ -116,6 +117,7 @@ model Workspace {
   attachments Attachment[]
   agents      Agent[]
   workflowTemplates WorkflowTemplate[]
+  agentProfiles AgentProfile[]
 }
 
 model Project {
@@ -211,6 +213,7 @@ model Ticket {
   activities TicketActivity[]
   workflowSteps WorkflowStep[]
   workflowRuns  WorkflowRun[]
+  agentProfileLinks TicketAgentProfile[]
 
   @@index([workspaceId, statusId, position])
   @@index([projectId, statusId, position])
@@ -469,4 +472,42 @@ model WorkflowStepRun {
   run WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([runId, position])
+}
+
+// -----------------------------
+// Agent profiles (AGENTS.md personas)
+// -----------------------------
+
+model AgentProfile {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  slug        String
+  description String?
+  body        String    @db.Text
+  isActive    Boolean   @default(true)
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  archivedAt  DateTime?
+
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User                 @relation("AgentProfileCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  ticketLinks TicketAgentProfile[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, isActive])
+}
+
+model TicketAgentProfile {
+  ticketId       String
+  agentProfileId String
+  position       Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  ticket       Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  agentProfile AgentProfile @relation(fields: [agentProfileId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, agentProfileId])
+  @@index([agentProfileId])
 }

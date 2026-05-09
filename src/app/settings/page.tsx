@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 import { listWorkflowTemplates } from "@/actions/workflow";
+import { AgentProfilesClient } from "@/components/settings/agent-profiles-client";
 import { AgentsClient } from "@/components/settings/agents-client";
 import { ApiKeysClient } from "@/components/settings/api-keys-client";
 import { AppearancePicker } from "@/components/settings/appearance-picker";
@@ -36,6 +37,22 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
 
   const wfList = await listWorkflowTemplates({ workspaceId: membership.workspaceId });
   const initialTemplates = wfList.ok ? wfList.templates : [];
+
+  const agentProfiles = await prisma.agentProfile.findMany({
+    where: { workspaceId: membership.workspaceId },
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      workspaceId: true,
+      name: true,
+      slug: true,
+      description: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+      archivedAt: true,
+    },
+  });
 
   const keys = await prisma.apiKey.findMany({
     where: { workspaceId: membership.workspaceId },
@@ -84,7 +101,13 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
               initialTemplates={initialTemplates}
             />
           }
-          agents={<AgentsClient workspaceId={membership.workspaceId} initialAgents={agents} />}
+          agents={
+            <AgentProfilesClient
+              workspaceId={membership.workspaceId}
+              initialProfiles={agentProfiles}
+            />
+          }
+          localAgents={<AgentsClient workspaceId={membership.workspaceId} initialAgents={agents} />}
         />
       </Suspense>
     </div>
