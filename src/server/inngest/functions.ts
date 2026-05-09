@@ -1,7 +1,7 @@
 import { logger } from "@/lib/logger";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
-import { runOpenRouterForTicket } from "@/server/openrouter";
+import { inferTicketPriority, runOpenRouterForTicket } from "@/server/openrouter";
 import { reconcileBuildingTicket } from "@/server/services/ticket-status";
 
 import { inngest } from "./client";
@@ -26,6 +26,68 @@ export const ticketCreated = inngest.createFunction(
         workspaceId: data.workspaceId,
       });
       return { ok: true };
+    });
+
+    await step.run("auto-priority", async () => {
+      const ticket = await prisma.ticket.findUnique({
+        where: { id: data.ticketId },
+        select: {
+          id: true,
+          workspaceId: true,
+          projectId: true,
+          title: true,
+          description: true,
+          priority: true,
+          archivedAt: true,
+        },
+      });
+      if (!ticket || ticket.archivedAt) return { ran: false };
+      if (ticket.priority !== "NO_PRIORITY") return { ran: false, reason: "already_set" };
+
+      const project = await prisma.project.findUnique({
+        where: { id: ticket.projectId },
+        select: { description: true, techStack: true },
+      });
+      const projectContext =
+        [project?.description, project?.techStack].filter(Boolean).join("\n\n") || null;
+
+      const result = await inferTicketPriority({
+        workspaceId: ticket.workspaceId,
+        title: ticket.title,
+        description: ticket.description,
+        projectContext,
+      });
+      if (!result.ok) {
+        logger.warn("autoPriority.failed", { ticketId: ticket.id, error: result.error });
+        return { ran: true, ok: false };
+      }
+      if (result.priority === "NO_PRIORITY") return { ran: true, ok: true, skipped: true };
+
+      const updated = await prisma.ticket.update({
+        where: { id: ticket.id },
+        data: { priority: result.priority },
+        include: {
+          assignee: { select: { id: true, name: true, email: true, image: true } },
+          labels: { select: { id: true, name: true, color: true } },
+          project: { select: { slug: true } },
+        },
+      });
+
+      await publishWorkspaceEvent(ticket.workspaceId, {
+        name: "ticket.updated",
+        ticketId: ticket.id,
+        workspaceId: ticket.workspaceId,
+        projectId: ticket.projectId,
+        ticket: updated,
+        by: ticket.id,
+      });
+
+      logger.info("autoPriority.assigned", {
+        ticketId: ticket.id,
+        priority: result.priority,
+        source: result.source,
+      });
+      return { ran: true, ok: true, priority: result.priority, source: result.source };
     });
 
     await step.run("maybe-run-openrouter", async () => {
