@@ -30,6 +30,29 @@ function sortPreviews(items: TicketPreview[]): TicketPreview[] {
 export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.ReactElement {
   const [items, setItems] = useState<TicketPreview[]>([]);
   const [loading, setLoading] = useState(true);
+  const [capturing, setCapturing] = useState(false);
+  const [captureError, setCaptureError] = useState<string | null>(null);
+
+  const handleTakeScreenshots = useCallback(async () => {
+    setCapturing(true);
+    setCaptureError(null);
+    try {
+      const res = await fetch(`/api/v1/tickets/${ticketId}/screenshots`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? `status_${res.status}`);
+      }
+    } catch (err) {
+      setCaptureError(err instanceof Error ? err.message : "request_failed");
+    } finally {
+      setCapturing(false);
+    }
+  }, [ticketId]);
 
   useEffect(() => {
     let alive = true;
@@ -85,7 +108,22 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
       {loading ? (
         <div className="h-[120px] w-full animate-pulse rounded-md bg-muted" />
       ) : items.length === 0 ? (
-        <div className="text-[12px] text-muted-foreground">No previews yet.</div>
+        <div className="flex flex-col items-start gap-2">
+          <div className="text-[12px] text-muted-foreground">No previews yet.</div>
+          <button
+            type="button"
+            onClick={handleTakeScreenshots}
+            disabled={capturing}
+            className="rounded-md border border-border bg-background px-2.5 py-1 text-[12px] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {capturing ? "Taking screenshots…" : "Take Screenshots"}
+          </button>
+          {captureError ? (
+            <div className="text-[12px] text-destructive">
+              Failed to start screenshots: {captureError}
+            </div>
+          ) : null}
+        </div>
       ) : (
         <ul className="flex flex-col gap-3">
           {items.map((p) => (
