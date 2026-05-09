@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Loader2, Play } from "lucide-react";
+import { Check, ChevronDown, Loader2, Play } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { getProjectLocalPath } from "@/actions/project";
@@ -61,6 +61,14 @@ export function TicketWorkflowPanel({
   // FIFO of step names we've dispatched but not yet logged as completed.
   const pendingStepsRef = useRef<string[]>([]);
   const wasRunningRef = useRef<boolean>(false);
+  const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
+  const [currentStep, setCurrentStep] = useState<string | null>(null);
+
+  function statusFor(name: string): "pending" | "running" | "completed" {
+    if (currentStep === name && running) return "running";
+    if (completedSteps.has(name)) return "completed";
+    return "pending";
+  }
 
   useEffect(() => {
     const onBusy = (e: Event) => {
@@ -75,7 +83,13 @@ export function TicketWorkflowPanel({
           ticketId,
           text: `Workflow step completed: ${finished}`,
         }).catch(() => {});
+        setCompletedSteps((prev) => {
+          const out = new Set(prev);
+          out.add(finished);
+          return out;
+        });
         const upcoming = pendingStepsRef.current[0];
+        setCurrentStep(upcoming ?? null);
         if (upcoming) {
           void logWorkflowActivity({
             ticketId,
@@ -211,7 +225,16 @@ export function TicketWorkflowPanel({
     }
     const queueWasEmpty = pendingStepsRef.current.length === 0;
     pendingStepsRef.current.push(step.name);
-    if (queueWasEmpty) logStarted(step.name);
+    setCompletedSteps((prev) => {
+      if (!prev.has(step.name)) return prev;
+      const out = new Set(prev);
+      out.delete(step.name);
+      return out;
+    });
+    if (queueWasEmpty) {
+      setCurrentStep(step.name);
+      logStarted(step.name);
+    }
     runPrompts([`[Workflow: ${step.name}]\n${step.prompt}`]);
     toast.success(`Running step: ${step.name}`);
   }
@@ -237,7 +260,10 @@ export function TicketWorkflowPanel({
         .join("\n");
       const queueWasEmpty = pendingStepsRef.current.length === 0;
       pendingStepsRef.current.push(defaultName);
-      if (queueWasEmpty) logStarted(defaultName);
+      if (queueWasEmpty) {
+        setCurrentStep(defaultName);
+        logStarted(defaultName);
+      }
       runPrompts([defaultPrompt]);
       toast.success("Running default build");
       return;
@@ -247,7 +273,16 @@ export function TicketWorkflowPanel({
     );
     const queueWasEmpty = pendingStepsRef.current.length === 0;
     for (const s of enabled) pendingStepsRef.current.push(s.name);
-    if (queueWasEmpty && enabled[0]) logStarted(enabled[0].name);
+    setCompletedSteps((prev) => {
+      if (prev.size === 0) return prev;
+      const out = new Set(prev);
+      for (const s of enabled) out.delete(s.name);
+      return out;
+    });
+    if (queueWasEmpty && enabled[0]) {
+      setCurrentStep(enabled[0].name);
+      logStarted(enabled[0].name);
+    }
     runPrompts(prompts);
     toast.success(`Running ${enabled.length} step${enabled.length === 1 ? "" : "s"}`);
   }
@@ -381,6 +416,7 @@ export function TicketWorkflowPanel({
             await refresh();
           }}
           onRunStep={(s) => runStep(s)}
+          stepStatus={(s) => statusFor(s.name)}
         />
       ) : wf.steps.length === 0 ? (
         <p className="text-xs text-muted-foreground/70">
@@ -394,6 +430,7 @@ export function TicketWorkflowPanel({
               step={s}
               index={i}
               onRun={() => runStep(s)}
+              status={statusFor(s.name)}
             />
           ))}
         </ul>
@@ -406,10 +443,12 @@ function ReadOnlyStepRow({
   step,
   index,
   onRun,
+  status,
 }: {
   step: { name: string; prompt: string; enabled: boolean };
   index: number;
   onRun: () => void;
+  status: "pending" | "running" | "completed";
 }): React.ReactElement {
   return (
     <li
@@ -417,8 +456,18 @@ function ReadOnlyStepRow({
         step.enabled ? "" : "opacity-60"
       }`}
     >
-      <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/60">
-        {index + 1}.
+      <span
+        className="flex w-5 shrink-0 items-center justify-end text-[11px] tabular-nums text-muted-foreground/60"
+        aria-label={`Step ${status}`}
+        title={status === "completed" ? "Completed" : status === "running" ? "Running" : "Pending"}
+      >
+        {status === "completed" ? (
+          <Check className="size-3.5 text-emerald-500/80" aria-hidden />
+        ) : status === "running" ? (
+          <Loader2 className="size-3.5 animate-spin text-foreground/70" aria-hidden />
+        ) : (
+          <>{index + 1}.</>
+        )}
       </span>
       <span className="flex-1 truncate">{step.name}</span>
       {!step.enabled && <span className="text-[11px] text-muted-foreground">disabled</span>}

@@ -17,7 +17,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, ChevronUp, GripVertical, Loader2, Play, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, GripVertical, Loader2, Play, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
@@ -270,6 +270,7 @@ export function StepList({
   onRemove,
   onReorder,
   onRunStep,
+  stepStatus,
 }: {
   steps: Step[];
   onAdd: (name: string, prompt: string) => Promise<boolean>;
@@ -277,6 +278,7 @@ export function StepList({
   onRemove: (id: string) => Promise<void>;
   onReorder: (orderedStepIds: string[]) => Promise<void>;
   onRunStep?: (step: Step) => void;
+  stepStatus?: (step: Step) => "pending" | "running" | "completed";
 }): React.ReactElement {
   const [newName, setNewName] = useState("");
   const [pending, start] = useTransition();
@@ -320,6 +322,7 @@ export function StepList({
                 onUpdate={(patch) => start(async () => onUpdate(s.id, patch))}
                 onRemove={() => start(async () => onRemove(s.id))}
                 onRun={onRunStep ? () => onRunStep(s) : undefined}
+                status={stepStatus?.(s) ?? "pending"}
               />
             ))}
           </ul>
@@ -358,12 +361,14 @@ function StepRow({
   onUpdate,
   onRemove,
   onRun,
+  status = "pending",
 }: {
   step: Step;
   index: number;
   onUpdate: (patch: { name?: string; prompt?: string; enabled?: boolean }) => void;
   onRemove: () => void;
   onRun?: () => void;
+  status?: "pending" | "running" | "completed";
 }): React.ReactElement {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: step.id,
@@ -407,8 +412,18 @@ function StepRow({
           aria-label={step.enabled ? "Disable step" : "Enable step"}
           className="size-3.5 shrink-0 cursor-pointer accent-foreground"
         />
-        <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/60">
-          {index + 1}.
+        <span
+          className="flex w-5 shrink-0 items-center justify-end text-[11px] tabular-nums text-muted-foreground/60"
+          aria-label={`Step ${status}`}
+          title={status === "completed" ? "Completed" : status === "running" ? "Running" : "Pending"}
+        >
+          {status === "completed" ? (
+            <Check className="size-3.5 text-emerald-500/80" aria-hidden />
+          ) : status === "running" ? (
+            <Loader2 className="size-3.5 animate-spin text-foreground/70" aria-hidden />
+          ) : (
+            <>{index + 1}.</>
+          )}
         </span>
         <input
           ref={nameRef}
