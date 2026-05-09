@@ -123,6 +123,50 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         }
         return;
       }
+      // Preview events are workspace-scoped (no projectId). Match by ticketId
+      // already in local state — tickets from other projects won't match.
+      if (event.name === "ticket.preview.added") {
+        if (!event.mimeType.startsWith("image/")) return;
+        setStatuses((prev) =>
+          prev.map((s) => ({
+            ...s,
+            tickets: s.tickets.map((t) => {
+              if (t.id !== event.ticketId) return t;
+              const current = t.imagePreviews ?? [];
+              if (current.some((p) => p.id === event.previewId)) return t;
+              return {
+                ...t,
+                imagePreviews: [
+                  ...current,
+                  {
+                    id: event.previewId,
+                    attachmentId: event.attachmentId,
+                    mimeType: event.mimeType,
+                  },
+                ],
+              };
+            }),
+          })),
+        );
+        return;
+      }
+      if (event.name === "ticket.preview.removed") {
+        setStatuses((prev) =>
+          prev.map((s) => ({
+            ...s,
+            tickets: s.tickets.map((t) => {
+              if (t.id !== event.ticketId) return t;
+              const current = t.imagePreviews ?? [];
+              if (!current.some((p) => p.id === event.previewId)) return t;
+              return {
+                ...t,
+                imagePreviews: current.filter((p) => p.id !== event.previewId),
+              };
+            }),
+          })),
+        );
+        return;
+      }
       if (!("projectId" in event) || event.projectId !== currentProjectId) return;
       if (event.name === "ticket.moved") {
         setStatuses((prevStatuses) => {
@@ -157,10 +201,17 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         setStatuses((prev) => {
           // Payload carries TicketWithRelations; default missing relations
           // defensively in case an older client publishes a bare Ticket.
+          // Preserve imagePreviews from local state — the update payload
+          // doesn't carry them, and preview add/remove flows through their
+          // own events.
+          const existing = prev
+            .flatMap((s) => s.tickets)
+            .find((t) => t.id === event.ticket.id);
           const merged: TicketWithRelations = {
             ...event.ticket,
             assignee: event.ticket.assignee ?? null,
             labels: event.ticket.labels ?? [],
+            imagePreviews: event.ticket.imagePreviews ?? existing?.imagePreviews ?? [],
           };
           return prev.map((s) => {
             if (s.id !== merged.statusId) {
