@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { quickCreateTicket } from "@/actions/ticket";
@@ -101,12 +101,9 @@ export function QuickAddTicket({
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+        <DialogHeader className="sr-only">
           <DialogTitle>New ticket</DialogTitle>
-          <DialogDescription>
-            Describe what you want. The title and description will be drafted by AI and the ticket
-            will land in <span className="font-medium text-foreground">Backlog</span>.
-          </DialogDescription>
+          <DialogDescription>Quick add a ticket from a prompt.</DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-4" onSubmit={onSubmit}>
           <ImageUploadTextarea
@@ -120,12 +117,25 @@ export function QuickAddTicket({
             disabled={pending}
             onUploadError={(message) => toast.error(`Image upload failed: ${message}`)}
           />
+          {pending ? (
+            <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              <span>Creating ticket…</span>
+            </div>
+          ) : null}
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>
               Cancel
             </Button>
             <Button type="submit" disabled={pending || !prompt.trim()}>
-              {pending ? "Drafting…" : "Create ticket"}
+              {pending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  Creating ticket…
+                </>
+              ) : (
+                "Create ticket"
+              )}
             </Button>
           </DialogFooter>
         </form>
