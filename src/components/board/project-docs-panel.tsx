@@ -1,8 +1,21 @@
 "use client";
 
 import { ChevronDown, ChevronRight, Code2, FileText, Loader2, Pencil } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+
+const MarkdownWysiwygEditor = dynamic(
+  () => import("./markdown-wysiwyg-editor"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-64 items-center justify-center rounded-md border border-border/60 bg-background text-[12px] text-muted-foreground">
+        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Loading editor…
+      </div>
+    ),
+  },
+);
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -262,10 +275,9 @@ export function ProjectDocsPanel({ localPath }: Props): React.ReactElement {
                         placeholder={`# ${d.label}\n\nWrite project instructions here…`}
                       />
                     ) : (
-                      <Textarea
+                      <MarkdownWysiwygEditor
                         value={state.content}
-                        onChange={(e) => onChangeContent(e.target.value)}
-                        className="h-64 max-h-[60vh] resize-y overflow-auto text-[13px] leading-relaxed"
+                        onChange={onChangeContent}
                         placeholder={`Write ${d.label} here…`}
                       />
                     )}
