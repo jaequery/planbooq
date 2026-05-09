@@ -40,7 +40,12 @@ function extractTail(kind: "PLAN" | "EXECUTE" | "CHAT", text: string): string | 
   if (!trimmed) return null;
   if (kind === "PLAN") {
     const tail = trimmed.slice(-120);
-    return tail.replace(/[#*`_>\-]+/gu, " ").replace(/\s+/gu, " ").trim() || null;
+    return (
+      tail
+        .replace(/[#*`_>\-]+/gu, " ")
+        .replace(/\s+/gu, " ")
+        .trim() || null
+    );
   }
   return null;
 }
@@ -205,9 +210,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           // Preserve imagePreviews from local state — the update payload
           // doesn't carry them, and preview add/remove flows through their
           // own events.
-          const existing = prev
-            .flatMap((s) => s.tickets)
-            .find((t) => t.id === event.ticket.id);
+          const existing = prev.flatMap((s) => s.tickets).find((t) => t.id === event.ticket.id);
           const merged: TicketWithRelations = {
             ...event.ticket,
             assignee: event.ticket.assignee ?? null,
@@ -323,20 +326,22 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
     };
   }, [initialData.project.workspaceId]);
 
-  // Local-first stand-in for GitHub webhooks: every 30s ask the server to
+  // Local-first stand-in for GitHub webhooks: every 8s ask the server to
   // walk Review-status tickets with a prUrl and ask GitHub whether the PR
   // merged. Merged PRs trigger the same auto-complete path the webhook
   // would, including the Ably `ticket.moved` fanout that this board's
-  // existing handler picks up. Skips while tab is hidden.
+  // existing handler picks up. Skips while tab is hidden, and fires
+  // immediately on tab focus so a merge that happened off-screen lands as
+  // soon as the user looks at the board.
   useEffect(() => {
     const workspaceId = initialData.project.workspaceId;
+    const interval = 8_000;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const tick = async (): Promise<void> => {
-      if (stopped || document.visibilityState !== "visible") {
-        timer = setTimeout(tick, 30_000);
-        return;
-      }
+    let inFlight = false;
+    const runOnce = async (): Promise<void> => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         await fetch(`/api/workspaces/${workspaceId}/poll-prs`, {
           method: "POST",
@@ -344,13 +349,24 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         });
       } catch {
         // tolerated — next tick will retry
+      } finally {
+        inFlight = false;
       }
-      if (!stopped) timer = setTimeout(tick, 30_000);
     };
-    timer = setTimeout(tick, 5_000);
+    const tick = async (): Promise<void> => {
+      if (stopped) return;
+      if (document.visibilityState === "visible") await runOnce();
+      if (!stopped) timer = setTimeout(tick, interval);
+    };
+    void tick();
+    const onVisibility = (): void => {
+      if (document.visibilityState === "visible") void runOnce();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       stopped = true;
       if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [initialData.project.workspaceId]);
 
@@ -549,90 +565,90 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
 
   return (
     <LiveAgentsContext.Provider value={liveAgents}>
-    <div className="flex h-full min-h-0 flex-col">
-      <ProjectDocsPanel localPath={initialData.project.localPath ?? null} />
-      <div className="flex items-center gap-3 px-4 py-2">
-        <div className="relative max-w-sm flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/70" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search tickets…"
-            className="h-8 pl-8 pr-8 text-[15px]"
-          />
-          {query ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              className="absolute right-1 top-1/2 -translate-y-1/2"
-              onClick={() => setQuery("")}
-              aria-label="Clear search"
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          ) : null}
-        </div>
-        {isFiltered ? (
-          <span className="text-[14px] tabular-nums text-muted-foreground/70">
-            {visibleTicketCount} match{visibleTicketCount === 1 ? "" : "es"}
-          </span>
-        ) : null}
-        <div className="ml-auto flex items-center gap-2">
-          <RealtimeIndicator status={rtStatus} />
-        </div>
-      </div>
-      <DndContext
-        id="board-dnd"
-        sensors={sensors}
-        modifiers={[restrictToWindowEdges]}
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        onDragCancel={() => setActiveTicketId(null)}
-      >
-        <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-4 pb-4">
-          {visibleStatuses.map((status) => (
-            <Column
-              key={status.id}
-              status={status}
-              statuses={statusOptions}
-              tickets={status.tickets}
-              onTicketArchived={onTicketArchived}
-              onOpenDetail={onOpenDetail}
-              isFiltered={isFiltered}
+      <div className="flex h-full min-h-0 flex-col">
+        <ProjectDocsPanel localPath={initialData.project.localPath ?? null} />
+        <div className="flex items-center gap-3 px-4 py-2">
+          <div className="relative max-w-sm flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/70" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search tickets…"
+              className="h-8 pl-8 pr-8 text-[15px]"
             />
-          ))}
+            {query ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="absolute right-1 top-1/2 -translate-y-1/2"
+                onClick={() => setQuery("")}
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            ) : null}
+          </div>
+          {isFiltered ? (
+            <span className="text-[14px] tabular-nums text-muted-foreground/70">
+              {visibleTicketCount} match{visibleTicketCount === 1 ? "" : "es"}
+            </span>
+          ) : null}
+          <div className="ml-auto flex items-center gap-2">
+            <RealtimeIndicator status={rtStatus} />
+          </div>
         </div>
-        <DragOverlay dropAnimation={null}>
-          {activeTicket ? <TicketCard ticket={activeTicket} isOverlay /> : null}
-        </DragOverlay>
-      </DndContext>
-      <ChatOrb
-        projectId={currentProjectId}
-        workspaceId={initialData.project.workspaceId}
-        onCreated={onTicketCreated}
-      />
-      {detailTicket ? (
-        <TicketDetailDialog
-          ticket={detailTicket}
-          open={detailTicketId !== null}
-          onOpenChange={(open) => {
-            if (!open) {
-              setDetailTicketId(null);
-              setAutoRunOnOpen(false);
-            }
-          }}
-          autoRunAction={autoRunOnOpen}
-          onUpdated={onTicketUpdated}
-          onDeleted={onTicketDeleted}
-          statuses={statusOptions}
-          projectName={initialData.project.name}
-          projectColor={initialData.project.color}
-          projectSlug={initialData.project.slug}
-          currentUserId={currentUserId}
+        <DndContext
+          id="board-dnd"
+          sensors={sensors}
+          modifiers={[restrictToWindowEdges]}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          onDragCancel={() => setActiveTicketId(null)}
+        >
+          <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-4 pb-4">
+            {visibleStatuses.map((status) => (
+              <Column
+                key={status.id}
+                status={status}
+                statuses={statusOptions}
+                tickets={status.tickets}
+                onTicketArchived={onTicketArchived}
+                onOpenDetail={onOpenDetail}
+                isFiltered={isFiltered}
+              />
+            ))}
+          </div>
+          <DragOverlay dropAnimation={null}>
+            {activeTicket ? <TicketCard ticket={activeTicket} isOverlay /> : null}
+          </DragOverlay>
+        </DndContext>
+        <ChatOrb
+          projectId={currentProjectId}
+          workspaceId={initialData.project.workspaceId}
+          onCreated={onTicketCreated}
         />
-      ) : null}
-    </div>
+        {detailTicket ? (
+          <TicketDetailDialog
+            ticket={detailTicket}
+            open={detailTicketId !== null}
+            onOpenChange={(open) => {
+              if (!open) {
+                setDetailTicketId(null);
+                setAutoRunOnOpen(false);
+              }
+            }}
+            autoRunAction={autoRunOnOpen}
+            onUpdated={onTicketUpdated}
+            onDeleted={onTicketDeleted}
+            statuses={statusOptions}
+            projectName={initialData.project.name}
+            projectColor={initialData.project.color}
+            projectSlug={initialData.project.slug}
+            currentUserId={currentUserId}
+          />
+        ) : null}
+      </div>
     </LiveAgentsContext.Provider>
   );
 }
