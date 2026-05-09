@@ -26,9 +26,10 @@ import { TicketCard } from "@/components/board/ticket-card";
 import { TicketDetailDialog } from "@/components/board/ticket-detail-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LiveAgentsContext, type LiveAgentState } from "@/lib/live-agents-context";
+import { type LiveAgentState, LiveAgentsContext } from "@/lib/live-agents-context";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
 import type { BoardData, StatusWithTickets, Ticket, TicketWithRelations } from "@/lib/types";
+import { getDesktopBridge } from "@/lib/use-is-desktop";
 
 /**
  * Best-effort "last line" extraction for the live indicator. PLAN streams
@@ -43,7 +44,7 @@ function extractTail(kind: "PLAN" | "EXECUTE" | "CHAT", text: string): string | 
     const tail = trimmed.slice(-120);
     return (
       tail
-        .replace(/[#*`_>\-]+/gu, " ")
+        .replace(/[#*`_>-]+/gu, " ")
         .replace(/\s+/gu, " ")
         .trim() || null
     );
@@ -188,6 +189,25 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
               return next;
             });
           }
+          // PR merged on GitHub → server moved the ticket to Completed via
+          // webhook. If we're in the desktop app and have a local repo path,
+          // fast-forward the default branch so the local checkout reflects the
+          // merge without manual intervention.
+          if (
+            dest?.key === "completed" &&
+            event.by === "github-webhook" &&
+            initialData.project.localPath
+          ) {
+            const bridge = getDesktopBridge();
+            const localPath = initialData.project.localPath;
+            void bridge?.pullMain?.({ repoPath: localPath }).then((res) => {
+              if (res.ok && res.updated) {
+                toast.success(`Pulled latest ${res.branch}`);
+              } else if (!res.ok) {
+                toast.error(`Auto-pull failed: ${res.error}`);
+              }
+            });
+          }
           return prevStatuses;
         });
         setStatuses((prev) => {
@@ -250,7 +270,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         });
       }
     },
-    [currentProjectId, router],
+    [currentProjectId, router, initialData.project.localPath],
   );
 
   const { status: rtStatus, clientId: rtClientId } = useBoardChannel(

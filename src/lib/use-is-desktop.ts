@@ -69,6 +69,11 @@ type DesktopBridge = {
     dataBase64: string;
     ext: string;
   }) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  pullMain?: (input: {
+    repoPath: string;
+  }) => Promise<
+    { ok: true; branch: string; updated: boolean; output: string } | { ok: false; error: string }
+  >;
 };
 
 declare global {
