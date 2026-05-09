@@ -17,8 +17,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { moveTicket } from "@/actions/ticket";
+import { ChatOrb } from "@/components/board/chat-orb";
 import { Column } from "@/components/board/column";
-import { QuickAddTicket } from "@/components/board/quick-add-ticket";
 import { RealtimeIndicator } from "@/components/board/realtime-indicator";
 import { TicketCard } from "@/components/board/ticket-card";
 import { TicketDetailDialog } from "@/components/board/ticket-detail-dialog";
@@ -527,11 +527,6 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         ) : null}
         <div className="ml-auto flex items-center gap-2">
           <RealtimeIndicator status={rtStatus} />
-          <QuickAddTicket
-            workspaceId={initialData.project.workspaceId}
-            projectId={currentProjectId}
-            onCreated={onTicketCreated}
-          />
         </div>
       </div>
       <DndContext
@@ -559,6 +554,15 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           {activeTicket ? <TicketCard ticket={activeTicket} isOverlay /> : null}
         </DragOverlay>
       </DndContext>
+      <ChatOrb
+        projectId={currentProjectId}
+        projectName={initialData.project.name}
+        totalTickets={statuses.reduce((sum, s) => sum + s.tickets.length, 0)}
+        runningTickets={
+          statuses.find((s) => s.key === "building")?.tickets.length ?? 0
+        }
+        onCreated={onTicketCreated}
+      />
       {detailTicket ? (
         <TicketDetailDialog
           ticket={detailTicket}

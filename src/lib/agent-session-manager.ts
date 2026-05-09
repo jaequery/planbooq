@@ -91,14 +91,16 @@ function handle(e: AgentEvent): void {
         : { kind: "agent", line: e.line };
 
   if (e.type === "exit") {
-    // Flush any pending output together with the exit marker, then send the
-    // terminal status as a separate PATCH so finishedAt/exitCode land promptly.
+    // Atomic: flush pending output, exit marker, and terminal status in a
+    // single PATCH. Splitting them risks the status PATCH being lost (network
+    // drop, unmount), leaving the AgentJob row stuck in RUNNING and the panel
+    // stuck on "thinking…" after re-hydrate.
     const buf = buffers.get(reg.jobId);
     const pending = buf?.text ?? "";
     if (buf?.timer) clearTimeout(buf.timer);
     buffers.delete(reg.jobId);
-    patchJob(reg.jobId, { appendOutput: pending + serializeWire(wire) });
     patchJob(reg.jobId, {
+      appendOutput: pending + serializeWire(wire),
       status: e.code === 0 ? "SUCCEEDED" : "FAILED",
       exitCode: e.code,
     });

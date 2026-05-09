@@ -60,6 +60,7 @@ export default async function ProjectLayout({
         where: {
           workspaceId: membership.workspaceId,
           statusId: { in: trackedStatusIds },
+          archivedAt: null,
         },
         _count: { _all: true },
       })

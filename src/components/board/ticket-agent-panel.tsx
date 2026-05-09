@@ -247,10 +247,11 @@ function looksLikeAwaitingUser(text: string): boolean {
   // Strip fenced code blocks so a trailing "?" inside code doesn't trigger.
   const stripped = text.replace(/```[\s\S]*?```/g, "").trim();
   if (!stripped) return false;
-  // Look at the tail — questions/asks typically land there.
-  const tail = stripped.slice(-400);
-  if (/\?\s*$/.test(tail)) return true;
-  return /\b(should i|would you like|do you want|let me know|please (confirm|advise|clarify|provide|let me know|choose|pick|decide)|which (one|option|approach|do you)|need (your|you to) (input|confirmation|approval|decision|answer)|waiting (on|for) you|ready for you to|confirm( |\?|$)|approve( |\?|$))/i.test(
+  // Widen the window — agents often pose a question, list options, then close
+  // with a declarative "Default is A unless you say otherwise." footer.
+  const tail = stripped.slice(-1200);
+  if (/\?/.test(tail)) return true;
+  return /\b(should i|would you like|do you want|let me know|please (confirm|advise|clarify|provide|let me know|choose|pick|decide)|which (one|option|approach|do you)|need (your|you to) (input|confirmation|approval|decision|answer)|waiting (on|for) you|ready for you to|confirm( |\?|$)|approve( |\?|$)|default is\b[^.]*\bunless\b|unless you (say|tell|specify|prefer|want|choose)|say otherwise|tell me which|pick (one|a|an option))/i.test(
     tail,
   );
 }
@@ -362,7 +363,8 @@ function DesktopPanel({
         : "(no agent output)";
       const askPrompt = [
         "You are picking the kanban status for a ticket whose Claude Code session just ended.",
-        "Common status keys: backlog (not started), todo (planned), building (still working), blocked (awaiting user), review (PR open / ready to review), completed (done/merged).",
+        "Status keys (typical meanings): backlog (not started), todo (planned), building (agent is still actively working — only pick this if the session is mid-tool-call, NOT if it has stopped to ask the user something), blocked (the agent stopped its turn and is waiting on the user — includes any open question, choice between options, request to confirm/approve, or proposed default like 'Default is A unless you say otherwise'), review (PR open / ready to review), completed (done/merged).",
+        "Decision rule: if the last agent message poses ANY question, lists options for the user to pick, asks for confirmation/approval, or proposes a default while waiting for the user to override it, the answer is `blocked`. Only return `building` if the agent is clearly still mid-task with no user input expected.",
         'Reply with strict JSON only: {"statusKey":"<one of allowed>","reason":"short"}. No prose, no fences.',
         "",
         `Allowed status keys: ${allowed.join(", ")}`,
@@ -418,6 +420,22 @@ function DesktopPanel({
   const sessionIdRef = useRef<string | null>(null);
   sessionIdRef.current = sessionId;
   const workflowQueueRef = useRef<string[]>([]);
+  // Idle watchdog: if no bridge events arrive for IDLE_TIMEOUT_MS while busy,
+  // assume the agent stalled (child crashed without flushing `result`, network
+  // dropped, unknown event shape) and force the panel out of "thinking…" so
+  // the workflow queue can drain or the user can intervene.
+  const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const armIdleTimer = (onTimeout: () => void) => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(onTimeout, IDLE_TIMEOUT_MS);
+  };
+  const clearIdleTimer = () => {
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -521,6 +539,24 @@ function DesktopPanel({
     }).catch(() => undefined);
   };
 
+  const forceEndOnIdle = () => {
+    idleTimerRef.current = null;
+    // Treat as a synthetic end-of-turn: clear busy, surface a system message,
+    // and let the queue drain. Don't kill the underlying session — the user
+    // can still Stop/Send. If the child is genuinely dead, next user input
+    // will fail loudly via agentSend.
+    const stalledMsg: ChatMsg = {
+      id: crypto.randomUUID(),
+      role: "system",
+      text: `Agent idle for ${Math.round(IDLE_TIMEOUT_MS / 60000)} min — no events received. Marking turn ended; press Stop or send a new message to retry.`,
+    };
+    messagesRef.current = [...messagesRef.current, stalledMsg];
+    setMessages(messagesRef.current);
+    currentAssistantId.current = null;
+    setBusy(false);
+    toast.error("Claude Code went idle — see ticket panel");
+  };
+
   useEffect(() => {
     const bridge = getDesktopBridge();
     if (!bridge || typeof bridge.onAgentEvent !== "function") return;
@@ -529,6 +565,8 @@ function DesktopPanel({
       // Without this filter, a ticket's panel would render another ticket's
       // streaming output and PATCH its claudeSessionId onto the wrong job.
       if (e.sessionId !== sessionIdRef.current) return;
+      // Any event from our session = agent is alive. Reset the watchdog.
+      armIdleTimer(forceEndOnIdle);
       const wire: WireEvent =
         e.type === "exit"
           ? { kind: "exit", code: e.code }
@@ -550,6 +588,7 @@ function DesktopPanel({
         patchJob({ claudeSessionId: r.claudeSessionId });
       }
       if (r.ended) {
+        clearIdleTimer();
         setBusy(false);
         if (wire.kind === "exit") {
           setSessionId(null);
@@ -656,6 +695,7 @@ function DesktopPanel({
       const canResume =
         !!worktreePath && !!claudeSessionId && typeof bridge.agentResume === "function";
       setBusy(true);
+      armIdleTimer(forceEndOnIdle);
       setMessages((m) => {
         const next = [...m, { id: crypto.randomUUID(), role: "user", text: message } as ChatMsg];
         messagesRef.current = next;
@@ -794,6 +834,7 @@ function DesktopPanel({
     }
 
     setBusy(true);
+    armIdleTimer(forceEndOnIdle);
     setMessages((m) => [...m, { id: crypto.randomUUID(), role: "user", text: message }]);
     patchJob({ appendOutput: serializeWire({ kind: "user", text: message }) });
     setInput("");
@@ -814,8 +855,12 @@ function DesktopPanel({
   const stop = async () => {
     const bridge = getDesktopBridge();
     if (!bridge || !sessionId) return;
+    clearIdleTimer();
     await bridge.agentStop({ sessionId });
   };
+
+  // Clear watchdog on unmount so we don't fire after the panel is gone.
+  useEffect(() => clearIdleTimer, []);
 
   if (!repoPath) {
     return (

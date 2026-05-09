@@ -3,6 +3,7 @@ import { z } from "zod";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { reconcileBuildingTicket } from "@/server/services/ticket-status";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -102,6 +103,23 @@ export async function PATCH(
         status: parsed.data.status,
       });
     }
+  }
+
+  // Server-authoritative ticket-status reconciliation. The renderer-side
+  // `decideEndOfRun` only fires while the ticket dialog is mounted, so a
+  // user who closed the dialog mid-run would otherwise leave the card
+  // stranded in `building` forever. When the job hits a terminal status,
+  // demote the ticket here too.
+  const isTerminal =
+    parsed.data.status === "SUCCEEDED" ||
+    parsed.data.status === "FAILED" ||
+    parsed.data.status === "CANCELED";
+  if (isTerminal && job.ticketId) {
+    void reconcileBuildingTicket({
+      ticketId: job.ticketId,
+      byUserId: job.userId ?? userId,
+      excludeJobId: job.id,
+    }).catch(() => undefined);
   }
 
   return NextResponse.json({ ok: true });
