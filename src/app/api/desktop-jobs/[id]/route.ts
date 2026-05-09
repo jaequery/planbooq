@@ -3,6 +3,7 @@ import { z } from "zod";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { maybeLinkPrUrlFromText } from "@/server/services/link-pr-url";
 import { reconcileBuildingTicket } from "@/server/services/ticket-status";
 
 export const runtime = "nodejs";
@@ -68,6 +69,16 @@ export async function PATCH(
   }
 
   await prisma.agentJob.update({ where: { id }, data, select: { id: true } });
+
+  // Desktop chat output is free-form — the agent will frequently announce a
+  // newly-created PR in the chat stream (e.g. "Opened https://github.com/.../pull/42")
+  // without the post-tool-use hook ever firing on this path. Scan every
+  // append for a PR URL and link the ticket if it isn't already linked.
+  if (parsed.data.appendOutput && job.ticketId) {
+    void maybeLinkPrUrlFromText(job.ticketId, parsed.data.appendOutput).catch(
+      () => undefined,
+    );
+  }
 
   // Fanout for cross-tab/cross-client liveness.
   // Ably caps a single publish at 64KB; chunk large appendOutput so we stay under it.
