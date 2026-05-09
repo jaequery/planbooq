@@ -2,10 +2,10 @@
 
 import { Check } from "lucide-react";
 import { useState, useTransition } from "react";
-import { toast } from "sonner";
 import { moveTicket } from "@/actions/ticket";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { toastResult } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 export type StatusOption = { id: string; name: string; color: string; key?: string };
@@ -29,9 +29,8 @@ export function StatusPicker({ ticketId, value, options, onChange }: Props): Rea
     onChange(next);
     startTransition(async () => {
       const result = await moveTicket({ ticketId, toStatusId: next.id });
-      if (!result.ok) {
+      if (!toastResult(result, { errorPrefix: "Could not update status" })) {
         onChange(previous);
-        toast.error(`Could not update status: ${result.error}`);
       }
     });
   };
