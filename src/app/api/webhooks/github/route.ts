@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { env } from "@/env";
 import { logger } from "@/lib/logger";
+import { markPullRequestClosed } from "@/server/services/ticket-pull-requests";
 import {
   autoCompleteTicketByPrUrl,
   linkTicketPrUrlFromPrBody,
@@ -59,8 +60,16 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ ok: true, outcome: link.kind });
   }
 
-  if (parsed.action !== "closed" || !parsed.pull_request.merged) {
+  if (parsed.action !== "closed") {
     return new NextResponse(null, { status: 204 });
+  }
+
+  if (!parsed.pull_request.merged) {
+    // Closed without merging: keep history accurate but don't move the
+    // ticket. The user might re-open this PR or open a new one.
+    await markPullRequestClosed(prUrl);
+    logger.info("github.webhook.handled", { action: "closed", prUrl, outcome: "closed" });
+    return NextResponse.json({ ok: true, outcome: "closed" });
   }
 
   await linkTicketPrUrlFromPrBody(prUrl, parsed.pull_request.body);

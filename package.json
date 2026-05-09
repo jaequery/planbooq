@@ -79,12 +79,15 @@
   "packageManager": "pnpm@10.26.1",
   "pnpm": {
     "onlyBuiltDependencies": [
-      "macos-alias",
-      "fs-xattr",
+      "@prisma/engines",
       "electron",
       "esbuild",
-      "@prisma/client",
-      "prisma"
+      "fs-xattr",
+      "macos-alias",
+      "msw",
+      "prisma",
+      "protobufjs",
+      "sharp"
     ]
   }
 }

@@ -23,17 +23,19 @@ const ERROR_MESSAGES = {
   upload_failed: "Upload failed. Please check your connection and try again.",
 } as const;
 
+const FALLBACK_ERROR = "Upload failed. Please check your connection and try again.";
+
 function humanizeError(code: string): string {
   const direct = (ERROR_MESSAGES as Record<string, string | undefined>)[code];
   if (direct) return direct;
   if (code.startsWith("upload_failed_")) {
     const status = code.slice("upload_failed_".length);
-    if (status === "413") return ERROR_MESSAGES.file_too_large;
-    if (status === "401") return ERROR_MESSAGES.unauthorized;
-    if (status === "403") return ERROR_MESSAGES.forbidden;
+    if (status === "413") return ERROR_MESSAGES.file_too_large ?? FALLBACK_ERROR;
+    if (status === "401") return ERROR_MESSAGES.unauthorized ?? FALLBACK_ERROR;
+    if (status === "403") return ERROR_MESSAGES.forbidden ?? FALLBACK_ERROR;
     return `Upload failed (HTTP ${status}). Please try again.`;
   }
-  return ERROR_MESSAGES.upload_failed;
+  return ERROR_MESSAGES.upload_failed ?? FALLBACK_ERROR;
 }
 
 type ImageUploadTextareaProps = React.ComponentProps<typeof Textarea> & {

@@ -6,6 +6,7 @@ import type { ServerActionResult } from "@/lib/types";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
 import { createCommentSvc } from "@/server/services/comments";
+import { recordTicketPullRequest } from "@/server/services/ticket-pull-requests";
 import { moveTicketToStatusKey } from "@/server/services/ticket-status";
 
 /**
@@ -88,6 +89,17 @@ export async function shipTicketSvc(
     await prisma.ticket.update({
       where: { id: ticket.id },
       data: { prUrl: data.prUrl },
+    });
+
+    await recordTicketPullRequest({
+      ticketId: ticket.id,
+      url: data.prUrl,
+      branch: data.branch,
+      targetBranch: data.targetBranch,
+      summary: data.summary,
+      filesChanged: data.filesChanged,
+      additions: data.additions,
+      deletions: data.deletions,
     });
 
     await moveTicketToStatusKey({
