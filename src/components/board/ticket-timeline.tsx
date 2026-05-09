@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNowStrict } from "date-fns";
-import { CheckCircle2, GitCommit, GitPullRequest, Hammer, MessageSquare, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, GitCommit, GitPullRequest, Hammer, Trash2, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { createComment, deleteComment, listTicketComments } from "@/actions/comment";
@@ -110,7 +110,6 @@ function renderServerActivity(a: ServerActivity): React.ReactElement {
     default:
       return (
         <span className="inline-flex items-center gap-1.5">
-          <MessageSquare className="size-3.5 shrink-0 text-muted-foreground" />
           <span>{typeof p.text === "string" ? p.text : "Update"}</span>
         </span>
       );
