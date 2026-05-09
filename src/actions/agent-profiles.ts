@@ -9,6 +9,8 @@ import type {
   TicketAgentProfileLink,
 } from "@/lib/types";
 import { auth } from "@/server/auth";
+import { prisma } from "@/server/db";
+import { generateAgentProfileDraft } from "@/server/openrouter";
 import {
   type CreateAgentProfileSchema,
   createAgentProfileSvc,
@@ -98,6 +100,31 @@ export async function listTicketAgentProfiles(input: {
   try {
     const userId = await requireUser();
     return await listTicketAgentProfilesSvc(userId, input.ticketId);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "unknown" };
+  }
+}
+
+export async function draftAgentProfileWithAi(input: {
+  workspaceId: string;
+  prompt: string;
+}): Promise<ServerActionResult<{ name: string; description: string; body: string }>> {
+  try {
+    const userId = await requireUser();
+    const workspaceId = input.workspaceId?.trim();
+    const prompt = input.prompt?.trim() ?? "";
+    if (!workspaceId) return { ok: false, error: "workspaceId required" };
+    if (prompt.length < 3) return { ok: false, error: "prompt too short" };
+    if (prompt.length > 4000) return { ok: false, error: "prompt too long" };
+
+    const member = await prisma.member.findUnique({
+      where: { workspaceId_userId: { workspaceId, userId } },
+    });
+    if (!member) return { ok: false, error: "forbidden" };
+
+    const r = await generateAgentProfileDraft({ workspaceId, prompt });
+    if (!r.ok) return { ok: false, error: r.error };
+    return { ok: true, data: r.draft };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "unknown" };
   }
