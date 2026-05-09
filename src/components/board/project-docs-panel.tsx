@@ -13,9 +13,9 @@ import { getDesktopBridge } from "@/lib/use-is-desktop";
 type DocKey = "claude" | "agent" | "readme";
 
 const DOCS: ReadonlyArray<{ key: DocKey; label: string; relPath: string; fallback?: string }> = [
+  { key: "readme", label: "README.md", relPath: "README.md" },
   { key: "claude", label: "CLAUDE.md", relPath: "CLAUDE.md" },
   { key: "agent", label: "AGENT.md", relPath: "AGENT.md", fallback: "AGENTS.md" },
-  { key: "readme", label: "README.md", relPath: "README.md" },
 ];
 
 type ViewMode = "preview" | "code";
@@ -44,7 +44,7 @@ type Props = { localPath: string | null };
 
 export function ProjectDocsPanel({ localPath }: Props): React.ReactElement {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<DocKey>("claude");
+  const [activeTab, setActiveTab] = useState<DocKey>("readme");
   const [view, setView] = useState<ViewMode>("preview");
   const [docs, setDocs] = useState<Record<DocKey, DocState>>({
     claude: emptyDoc("CLAUDE.md"),
@@ -160,7 +160,7 @@ export function ProjectDocsPanel({ localPath }: Props): React.ReactElement {
     if (!mounted) return "";
     if (!supported) return "Desktop app required";
     if (!repo) return "Set project folder in settings";
-    return "CLAUDE.md · AGENT.md · README.md";
+    return "README.md · CLAUDE.md · AGENT.md";
   }, [mounted, supported, repo]);
 
   return (
