@@ -224,6 +224,14 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
             return { ...s, tickets: next };
           });
         });
+        // Status changes flip the workflow panel's terminal-status derivation
+        // (review/completed marks all preceding steps done). Fan out the same
+        // event the panel uses for prUrl updates so it refetches.
+        window.dispatchEvent(
+          new CustomEvent("planbooq:ticket-updated", {
+            detail: { ticketId: event.ticketId },
+          }),
+        );
       } else if (event.name === "ticket.updated") {
         setStatuses((prev) => {
           // Payload carries TicketWithRelations; default missing relations

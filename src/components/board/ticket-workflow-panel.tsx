@@ -162,16 +162,26 @@ export function TicketWorkflowPanel({
     refresh();
   }, [ticketId]);
 
-  // Refetch when the board reports a ticket.updated for this ticket — the
-  // payload may include a new prUrl that flips a "PR" step to completed.
+  // Refetch when the board reports a ticket.updated/moved for this ticket —
+  // the payload may include a new prUrl or a status change that flips steps
+  // to completed (review/completed status implies all preceding steps done).
   useEffect(() => {
     const onUpdated = (e: Event) => {
       const detail = (e as CustomEvent).detail as { ticketId?: string };
       if (detail?.ticketId !== ticketId) return;
       void refresh();
     };
+    const onFocus = () => {
+      // Browser tabs throttle background ably traffic; on refocus, force a
+      // re-derive so the panel is never strictly older than the DB.
+      void refresh();
+    };
     window.addEventListener("planbooq:ticket-updated", onUpdated);
-    return () => window.removeEventListener("planbooq:ticket-updated", onUpdated);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("planbooq:ticket-updated", onUpdated);
+      window.removeEventListener("focus", onFocus);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
 
