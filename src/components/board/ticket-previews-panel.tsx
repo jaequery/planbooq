@@ -109,7 +109,6 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
         <div className="h-[120px] w-full animate-pulse rounded-md bg-muted" />
       ) : items.length === 0 ? (
         <div className="flex flex-col items-start gap-2">
-          <div className="text-[12px] text-muted-foreground">No previews yet.</div>
           <button
             type="button"
             onClick={handleTakeScreenshots}
