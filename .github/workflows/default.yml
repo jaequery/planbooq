@@ -1,0 +1,80 @@
+name: Default
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: default-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/planbooq?schema=public
+      NEXTAUTH_SECRET: ci-placeholder-secret
+      NEXTAUTH_URL: http://localhost:3636
+      SKIP_ENV_VALIDATION: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build (Next.js only, skip prisma migrate deploy)
+        run: pnpm exec next build
+
+  open-pr:
+    name: Open PR to main
+    needs: build
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Open or update PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh pr view "$BRANCH" --json number --jq .number >/dev/null 2>&1; then
+            echo "PR already open for $BRANCH; skipping."
+            exit 0
+          fi
+          title="${BRANCH}"
+          body="Automated PR opened by the default workflow after a successful build on \`${BRANCH}\`."
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "$title" \
+            --body "$body" \
+            --draft
