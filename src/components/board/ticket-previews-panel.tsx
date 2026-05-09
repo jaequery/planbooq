@@ -161,6 +161,29 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
           ) : null}
         </div>
       ) : (
+        <>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleTakeScreenshots}
+            disabled={capturing}
+            className="rounded-md border border-border bg-background px-2.5 py-1 text-[12px] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {capturing ? "Retaking…" : "Retake"}
+          </button>
+          {capturing && !captureError ? (
+            <span className="text-[12px] text-muted-foreground">
+              {progress
+                ? `Capturing ${progress.done}/${progress.total}${progress.label ? ` — ${progress.label}` : ""}`
+                : "Queued…"}
+            </span>
+          ) : null}
+          {captureError ? (
+            <span className="text-[12px] text-destructive">
+              Retake failed: {captureError}
+            </span>
+          ) : null}
+        </div>
         <ul className="flex flex-col gap-3">
           {items.map((p) => (
             <li key={p.id} className="flex flex-col gap-1">
@@ -194,6 +217,7 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
             </li>
           ))}
         </ul>
+        </>
       )}
       {lightbox ? (
         <ImageLightbox
