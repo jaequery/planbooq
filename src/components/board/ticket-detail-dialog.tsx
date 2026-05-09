@@ -25,7 +25,13 @@ import { ImageUploadTextarea } from "@/components/ui/image-upload-textarea";
 import { Input } from "@/components/ui/input";
 import { Markdown } from "@/components/ui/markdown";
 import { formatTicketIdentifier } from "@/lib/ticket-identifier";
-import type { Priority, TicketAssignee, TicketLabel, TicketWithRelations } from "@/lib/types";
+import type {
+  Priority,
+  TicketAssignee,
+  TicketLabel,
+  TicketPullRequest,
+  TicketWithRelations,
+} from "@/lib/types";
 import { getDesktopBridge } from "@/lib/use-is-desktop";
 import { cn } from "@/lib/utils";
 import type { PrStatus } from "@/server/services/github-pr";
@@ -897,6 +903,7 @@ export function TicketDetailDialog({
                   Fix Merge failed: {fixState.reason}
                 </div>
               ) : null}
+              <PullRequestHistory pullRequests={ticket.pullRequests} currentPrUrl={ticket.prUrl} />
             </div>
             <TicketPreviewsPanel ticketId={ticket.id} workspaceId={ticket.workspaceId} />
 
@@ -914,5 +921,75 @@ export function TicketDetailDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function prShortLabel(url: string): string {
+  const m = url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+  if (m) return `${m[2]}#${m[3]}`;
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url;
+  }
+}
+
+function PullRequestHistory({
+  pullRequests,
+  currentPrUrl,
+}: {
+  pullRequests?: TicketPullRequest[];
+  currentPrUrl: string | null;
+}): React.ReactElement | null {
+  // Show only when there's more than one PR in history, or a single
+  // non-current entry — otherwise the existing "View PR / Merge" block
+  // already covers the common case.
+  if (!pullRequests || pullRequests.length === 0) return null;
+  const interesting =
+    pullRequests.length > 1 || (pullRequests[0] && pullRequests[0].url !== currentPrUrl);
+  if (!interesting) return null;
+
+  const toneFor = (status: TicketPullRequest["status"]): string => {
+    switch (status) {
+      case "MERGED":
+        return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+      case "CLOSED":
+        return "bg-muted text-muted-foreground";
+      case "SUPERSEDED":
+        return "bg-amber-500/10 text-amber-600 dark:text-amber-400";
+      default:
+        return "bg-blue-500/10 text-blue-600 dark:text-blue-400";
+    }
+  };
+
+  return (
+    <div className="mt-2 flex flex-col gap-1.5 border-t border-border/60 pt-3">
+      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        PR history
+      </span>
+      <ul className="flex flex-col gap-1">
+        {pullRequests.map((pr) => (
+          <li
+            key={pr.id}
+            className="flex items-center justify-between gap-2 text-[12px]"
+          >
+            <a
+              href={pr.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={pr.url}
+              className="truncate font-mono text-foreground hover:underline"
+            >
+              {prShortLabel(pr.url)}
+            </a>
+            <span
+              className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-medium ${toneFor(pr.status)}`}
+            >
+              {pr.status.toLowerCase()}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

@@ -6,11 +6,12 @@ import type {
   Role,
   Status,
   Ticket,
+  TicketPullRequest,
   User,
   Workspace,
 } from "@prisma/client";
 
-export type { Label, Member, Priority, Project, Role, Status, Ticket, User, Workspace };
+export type { Label, Member, Priority, Project, Role, Status, Ticket, TicketPullRequest, User, Workspace };
 
 export type TicketAssignee = Pick<User, "id" | "name" | "email" | "image">;
 export type TicketLabel = Pick<Label, "id" | "name" | "color">;
@@ -26,6 +27,7 @@ export type TicketWithRelations = Ticket & {
   labels?: TicketLabel[];
   project?: Pick<Project, "slug"> | null;
   imagePreviews?: TicketImagePreview[];
+  pullRequests?: TicketPullRequest[];
 };
 
 export type StatusWithTickets = Status & { tickets: TicketWithRelations[] };
