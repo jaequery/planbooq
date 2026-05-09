@@ -625,7 +625,12 @@ export async function triggerWorkflowRun(
   const wf = await getTicketWorkflow(ticketId);
   if (!wf.ok) return wf;
   const enabled = wf.steps.filter((s) => s.enabled);
-  if (enabled.length === 0) return { ok: false, error: "no_steps" };
+  // When no steps are configured, record a synthetic "build" step so the
+  // ticket still progresses (status move + audit row) under the default
+  // Execute behavior.
+  const recorded = enabled.length === 0
+    ? [{ name: "build", prompt: "Default build (no workflow steps configured)." }]
+    : enabled.map((s) => ({ name: s.name, prompt: s.prompt }));
 
   const now = new Date();
   const run = await prisma.workflowRun.create({
@@ -637,7 +642,7 @@ export async function triggerWorkflowRun(
       startedAt: now,
       finishedAt: now,
       stepRuns: {
-        create: enabled.map((s, i) => ({
+        create: recorded.map((s, i) => ({
           position: i,
           name: s.name,
           prompt: s.prompt,
@@ -692,7 +697,7 @@ export async function triggerWorkflowRun(
   }
 
   revalidatePath("/");
-  return { ok: true, runId: run.id, stepCount: enabled.length };
+  return { ok: true, runId: run.id, stepCount: recorded.length };
 }
 
 /**
