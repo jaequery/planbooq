@@ -9,7 +9,7 @@ const ACCEPTED_MIME_TYPES = "image/png,image/jpeg,image/webp,image/gif";
 const ACCEPTED_MIME_SET = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const MAX_SIZE_BYTES = 5 * 1024 * 1024;
 
-const ERROR_MESSAGES: Record<string, string> = {
+const ERROR_MESSAGES = {
   unsupported_mime_type: "That image format isn't supported. Please use PNG, JPEG, WebP, or GIF.",
   file_too_large: "Image is larger than 5 MB.",
   size_mismatch: "The upload was corrupted in transit. Please try again.",
@@ -21,12 +21,12 @@ const ERROR_MESSAGES: Record<string, string> = {
   storage_failed: "We couldn't save your image to storage. Please try again in a moment.",
   internal_error: "Something went wrong on our end. Please try again.",
   upload_failed: "Upload failed. Please check your connection and try again.",
-};
+} as const;
 
 const FALLBACK_ERROR = "Upload failed. Please check your connection and try again.";
 
 function humanizeError(code: string): string {
-  const direct = ERROR_MESSAGES[code];
+  const direct = (ERROR_MESSAGES as Record<string, string | undefined>)[code];
   if (direct) return direct;
   if (code.startsWith("upload_failed_")) {
     const status = code.slice("upload_failed_".length);
