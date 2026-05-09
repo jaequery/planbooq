@@ -48,7 +48,7 @@ type Props = {
 export function TicketAgentPanel(props: Props): React.ReactElement {
   const isDesktop = useIsDesktop();
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-2">
       <TicketWorkflowPanel
         ticketId={props.ticketId}
         workspaceId={props.workspaceId}
@@ -864,28 +864,20 @@ function DesktopPanel({
 
   if (!repoPath) {
     return (
-      <div className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium">Claude Code</h3>
-        <div className="flex flex-col items-center gap-3 rounded-lg bg-muted/30 px-6 py-8 text-center">
-          <Button size="sm" onClick={pickRepo}>
-            <Folder className="size-4" />
-            Choose Folder
-          </Button>
-          <p className="max-w-sm text-[12px] text-muted-foreground">
-            Choose this project's folder so Claude Code has a repo to work in. The folder is
-            remembered per project.
-          </p>
-        </div>
+      <div className="flex items-center gap-3 rounded-lg bg-muted/30 px-4 py-3">
+        <Button size="sm" onClick={pickRepo}>
+          <Folder className="size-4" />
+          Choose Folder
+        </Button>
+        <p className="text-[12px] text-muted-foreground">
+          Pick this project's folder so Claude Code has a repo to work in.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="mr-auto text-sm font-medium">Claude Code</h3>
-      </div>
-
       {messages.length > 0 && (
         <div
           ref={scrollRef}
@@ -1042,9 +1034,8 @@ function WebPanel({ ticketId, workspaceId }: Props): React.ReactElement {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="mr-auto text-sm font-medium">Run on a machine</h3>
         <select
-          className="min-w-[200px] rounded border bg-background px-2 py-1 text-sm"
+          className="min-w-[200px] flex-1 rounded border bg-background px-2 py-1 text-sm"
           value={selectedAgent ?? ""}
           onChange={(e) => setSelectedAgent(e.target.value || null)}
           disabled={agents.length === 0}
