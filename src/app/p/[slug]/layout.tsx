@@ -1,6 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { AgentSessionManagerMount } from "@/components/agent-session-manager-mount";
 import { Sidebar } from "@/components/sidebar/sidebar";
+import { SidebarProvider } from "@/components/sidebar/sidebar-state";
+import { SidebarToggle } from "@/components/sidebar/sidebar-toggle";
 import { UserMenu } from "@/components/user-menu";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
@@ -79,13 +81,15 @@ export default async function ProjectLayout({
   });
 
   return (
+    <SidebarProvider>
     <div className="flex h-screen min-h-0 bg-background">
       <AgentSessionManagerMount />
       <Sidebar projects={allProjects} workspaceId={membership.workspaceId} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-4">
-          <div className="flex items-center gap-2.5 text-[13px]">
-            <span className="text-muted-foreground/60">{membership.workspace.name}</span>
+        <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-2 pr-4">
+          <div className="flex items-center gap-1.5 text-[13px]">
+            <SidebarToggle />
+            <span className="ml-1 text-muted-foreground/60">{membership.workspace.name}</span>
             <span className="text-muted-foreground/40">/</span>
             <span
               aria-hidden
@@ -105,5 +109,6 @@ export default async function ProjectLayout({
         <div className="min-h-0 flex-1">{children}</div>
       </div>
     </div>
+    </SidebarProvider>
   );
 }
