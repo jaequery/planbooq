@@ -309,10 +309,6 @@ export function StepList({
 
   return (
     <div className="flex flex-col">
-      {steps.length === 0 && (
-        <p className="py-2 text-xs text-muted-foreground/70">No steps yet.</p>
-      )}
-
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={steps.map((s) => s.id)} strategy={verticalListSortingStrategy}>
           <ul className="flex flex-col">
@@ -330,7 +326,11 @@ export function StepList({
         </SortableContext>
       </DndContext>
 
-      <div className="flex items-center gap-2 border-t border-border/40 py-1.5">
+      <div
+        className={`flex items-center gap-2 py-1.5 ${
+          steps.length > 0 ? "border-t border-border/40" : ""
+        }`}
+      >
         <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground/40">
           {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
         </span>
