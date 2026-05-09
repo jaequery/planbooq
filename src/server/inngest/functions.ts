@@ -239,6 +239,66 @@ export const reapStaleAgentJobs = inngest.createFunction(
   },
 );
 
+/**
+ * Resolve a Vercel preview URL for a PR by walking GitHub's deployments API.
+ * Vercel's GitHub integration registers deployments with environment "Preview"
+ * keyed to the PR head SHA; the latest success status carries `environment_url`.
+ * Returns null if anything is missing — caller falls back to the PR page.
+ */
+async function resolveVercelPreviewUrl(opts: {
+  prUrl: string;
+  userId: string;
+}): Promise<string | null> {
+  const m = opts.prUrl.match(
+    /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/,
+  );
+  if (!m) return null;
+  const [, owner, repo, prNumber] = m;
+
+  const account = await prisma.account.findFirst({
+    where: { userId: opts.userId, provider: "github" },
+    select: { access_token: true },
+  });
+  const token = account?.access_token;
+  if (!token) return null;
+
+  const gh = async (path: string) => {
+    const res = await fetch(`https://api.github.com${path}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+    if (!res.ok) throw new Error(`gh ${path} ${res.status}`);
+    return res.json() as Promise<unknown>;
+  };
+
+  const pr = (await gh(`/repos/${owner}/${repo}/pulls/${prNumber}`)) as {
+    head?: { sha?: string };
+  };
+  const sha = pr.head?.sha;
+  if (!sha) return null;
+
+  const deployments = (await gh(
+    `/repos/${owner}/${repo}/deployments?sha=${sha}&environment=Preview&per_page=20`,
+  )) as Array<{ id: number; created_at: string }>;
+  if (!Array.isArray(deployments) || deployments.length === 0) return null;
+  // Newest first
+  deployments.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+
+  for (const dep of deployments) {
+    const statuses = (await gh(
+      `/repos/${owner}/${repo}/deployments/${dep.id}/statuses?per_page=20`,
+    )) as Array<{ state: string; environment_url?: string; target_url?: string }>;
+    const success = statuses.find(
+      (s) => s.state === "success" && (s.environment_url || s.target_url),
+    );
+    if (success) return success.environment_url ?? success.target_url ?? null;
+  }
+  return null;
+}
+
 type ScreenshotsRequestedPayload = {
   ticketId: string;
   workspaceId: string;
