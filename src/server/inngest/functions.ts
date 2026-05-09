@@ -239,4 +239,183 @@ export const reapStaleAgentJobs = inngest.createFunction(
   },
 );
 
-export const inngestFunctions = [ticketCreated, reapStaleAgentJobs];
+type ScreenshotsRequestedPayload = {
+  ticketId: string;
+  workspaceId: string;
+  projectId: string;
+  prUrl: string | null;
+  /** PR's deployed preview URL, if known. Falls back to prUrl. */
+  previewUrl?: string | null;
+  requestedByUserId: string;
+};
+
+const SHOTS: Array<{ label: string; width: number; height: number }> = [
+  { label: "Desktop", width: 1440, height: 900 },
+  { label: "Tablet", width: 834, height: 1112 },
+  { label: "Mobile", width: 390, height: 844 },
+];
+
+export const captureTicketScreenshots = inngest.createFunction(
+  {
+    id: "ticket-screenshots-capture",
+    name: "Capture ticket screenshots",
+    triggers: [{ event: "ticket.screenshots.requested" }],
+    concurrency: { limit: 2 },
+  },
+  async ({ event, step }) => {
+    const data = event.data as ScreenshotsRequestedPayload;
+    const resolvedPreview = await step.run("resolve-vercel-preview", async () => {
+      if (data.previewUrl) return data.previewUrl;
+      if (!data.prUrl) return null;
+      try {
+        return await resolveVercelPreviewUrl({
+          prUrl: data.prUrl,
+          userId: data.requestedByUserId,
+        });
+      } catch (error) {
+        logger.warn("vercel.preview.resolve.failed", {
+          prUrl: data.prUrl,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      }
+    });
+    const target = resolvedPreview ?? data.prUrl;
+
+    const fail = async (reason: string) => {
+      await publishWorkspaceEvent(data.workspaceId, {
+        name: "ticket.screenshots.failed",
+        workspaceId: data.workspaceId,
+        ticketId: data.ticketId,
+        reason,
+      });
+      return { ok: false, reason };
+    };
+
+    if (!target) return fail("no_preview_url");
+
+    await step.run("publish-started", () =>
+      publishWorkspaceEvent(data.workspaceId, {
+        name: "ticket.screenshots.started",
+        workspaceId: data.workspaceId,
+        ticketId: data.ticketId,
+        total: SHOTS.length,
+        by: data.requestedByUserId,
+      }),
+    );
+
+    // Synthetic caller — the user who requested this run. addTicketPreviewSvc
+    // re-checks workspace membership before writing.
+    const caller = {
+      userId: data.requestedByUserId,
+      workspaceScope: null,
+      via: "session" as const,
+    };
+
+    // Shell out to @playwright/cli — same browser session is reused across
+    // viewports so we get one continuous video with chapter markers.
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const os = await import("node:os");
+    const run = promisify(execFile);
+
+    const session = `pbq-${data.ticketId}`;
+    const outDir = await fs.mkdtemp(path.join(os.tmpdir(), `pbq-shots-${data.ticketId}-`));
+    const videoFile = path.join(outDir, "session.webm");
+    const PCLI_BIN = path.join(process.cwd(), "node_modules", ".bin", "playwright-cli");
+    // Force a short TMPDIR for the child: macOS caps Unix-domain socket paths
+    // at 104 bytes, and the default `/var/folders/...` TMPDIR plus Playwright's
+    // session sock filename overflows that limit, causing `listen EINVAL`.
+    const pcliEnv = { ...process.env, TMPDIR: "/tmp/" };
+    const pcli = (...args: string[]) =>
+      run(PCLI_BIN, [`-s=${session}`, ...args], { timeout: 60_000, env: pcliEnv });
+
+    try {
+      await pcli("open", target);
+      await pcli("video-start", videoFile);
+
+      for (let i = 0; i < SHOTS.length; i += 1) {
+        const shot = SHOTS[i]!;
+        const shotPath = path.join(outDir, `${shot.label.toLowerCase()}.png`);
+
+        const stepResult: { ok: boolean; error?: string } = await step.run(
+          `shot-${shot.label}`,
+          async () => {
+            try {
+              await pcli("resize", String(shot.width), String(shot.height));
+              await pcli("video-chapter", shot.label);
+              await pcli("goto", target);
+              await pcli("screenshot", `--filename=${shotPath}`);
+              const buf = await fs.readFile(shotPath);
+              const { addTicketPreviewSvc } = await import(
+                "@/server/services/ticket-preview"
+              );
+              const res = await addTicketPreviewSvc({
+                caller,
+                ticketId: data.ticketId,
+                file: { mimeType: "image/png", size: buf.byteLength, data: buf },
+                label: shot.label,
+              });
+              if (!res.ok) return { ok: false, error: res.error };
+              return { ok: true };
+            } catch (err) {
+              return {
+                ok: false,
+                error: err instanceof Error ? err.message : "cli_failed",
+              };
+            }
+          },
+        );
+
+        await publishWorkspaceEvent(data.workspaceId, {
+          name: "ticket.screenshots.progress",
+          workspaceId: data.workspaceId,
+          ticketId: data.ticketId,
+          done: i + 1,
+          total: SHOTS.length,
+          label: shot.label,
+        });
+
+        if (!stepResult.ok) {
+          await pcli("video-stop").catch(() => {});
+          await pcli("close").catch(() => {});
+          return fail(stepResult.error ?? "shot_failed");
+        }
+      }
+
+      // Stop recording and ship the video as a final preview.
+      await step.run("upload-video", async () => {
+        await pcli("video-stop");
+        const buf = await fs.readFile(videoFile).catch(() => null);
+        if (!buf || buf.byteLength === 0) return { ok: false, reason: "empty_video" };
+        const { addTicketPreviewSvc } = await import("@/server/services/ticket-preview");
+        await addTicketPreviewSvc({
+          caller,
+          ticketId: data.ticketId,
+          file: { mimeType: "video/webm", size: buf.byteLength, data: buf },
+          label: "Walkthrough",
+        });
+        return { ok: true };
+      });
+    } catch (err) {
+      logger.error("ticket.screenshots.failed", {
+        ticketId: data.ticketId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return fail(err instanceof Error ? err.message : "capture_failed");
+    } finally {
+      await run(PCLI_BIN, [`-s=${session}`, "close"]).catch(() => {});
+      await fs.rm(outDir, { recursive: true, force: true }).catch(() => {});
+    }
+
+    return { ok: true, ticketId: data.ticketId, shots: SHOTS.length };
+  },
+);
+
+export const inngestFunctions = [
+  ticketCreated,
+  reapStaleAgentJobs,
+  captureTicketScreenshots,
+];

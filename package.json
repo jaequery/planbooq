@@ -38,6 +38,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.2.2",
     "@mdxeditor/editor": "^4.0.0",
+    "@playwright/cli": "^0.1.13",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@t3-oss/env-nextjs": "^0.13.11",

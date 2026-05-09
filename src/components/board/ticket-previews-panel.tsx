@@ -33,6 +33,7 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
   const [loading, setLoading] = useState(true);
   const [capturing, setCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number; label: string | null } | null>(null);
 
   const handleTakeScreenshots = useCallback(async () => {
     setCapturing(true);
@@ -98,6 +99,26 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
       }
       if (event.name === "ticket.preview.removed" && event.ticketId === ticketId) {
         setItems((prev) => prev.filter((p) => p.id !== event.previewId));
+        return;
+      }
+      if (event.name === "ticket.screenshots.started" && event.ticketId === ticketId) {
+        setCapturing(true);
+        setCaptureError(null);
+        setProgress({ done: 0, total: event.total, label: null });
+        return;
+      }
+      if (event.name === "ticket.screenshots.progress" && event.ticketId === ticketId) {
+        setProgress({ done: event.done, total: event.total, label: event.label });
+        if (event.done >= event.total) {
+          setCapturing(false);
+          setProgress(null);
+        }
+        return;
+      }
+      if (event.name === "ticket.screenshots.failed" && event.ticketId === ticketId) {
+        setCapturing(false);
+        setProgress(null);
+        setCaptureError(event.reason);
       }
     },
     [ticketId],
@@ -122,7 +143,9 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
           </button>
           {capturing && !captureError ? (
             <div className="text-[12px] text-muted-foreground">
-              Queued — previews will appear here when ready.
+              {progress
+                ? `Capturing ${progress.done}/${progress.total}${progress.label ? ` — ${progress.label}` : ""}`
+                : "Queued — previews will appear here when ready."}
             </div>
           ) : null}
           {captureError ? (

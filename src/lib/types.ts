@@ -178,6 +178,27 @@ export type AblyChannelEvent =
       by: string;
     }
   | {
+      name: "ticket.screenshots.started";
+      workspaceId: string;
+      ticketId: string;
+      total: number;
+      by: string;
+    }
+  | {
+      name: "ticket.screenshots.progress";
+      workspaceId: string;
+      ticketId: string;
+      done: number;
+      total: number;
+      label: string | null;
+    }
+  | {
+      name: "ticket.screenshots.failed";
+      workspaceId: string;
+      ticketId: string;
+      reason: string;
+    }
+  | {
       name: "ticket.preview.removed";
       workspaceId: string;
       ticketId: string;
