@@ -1039,6 +1039,25 @@ function WebPanel({ ticketId, workspaceId }: Props): React.ReactElement {
     });
   };
 
+  const cancelJob = async (jobId: string): Promise<void> => {
+    // Optimistic flip so the badge updates instantly even if the agent is
+    // slow to ack; the next 2.5s poll will reconcile from the DB.
+    setJobs((prev) =>
+      prev.map((j) => (j.id === jobId ? { ...j, status: "CANCELED" as const } : j)),
+    );
+    try {
+      const res = await fetch(`/api/tickets/${ticketId}/jobs/${jobId}/cancel`, { method: "POST" });
+      const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !body.ok) {
+        toast.error(body.error ?? `Cancel failed (${res.status})`);
+        return;
+      }
+      toast.success("Stopped");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Cancel failed");
+    }
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -1075,14 +1094,29 @@ function WebPanel({ ticketId, workspaceId }: Props): React.ReactElement {
               className="rounded border bg-muted/20 p-2 text-xs"
               open={j.status === "RUNNING" || j.status === "PENDING"}
             >
-              <summary className="cursor-pointer select-none">
+              <summary className="flex cursor-pointer select-none items-center gap-2">
                 <span className="font-mono">{j.status}</span>
-                {j.agent && <span className="ml-2">on {j.agent.name}</span>}
-                <span className="ml-2 text-muted-foreground">
+                {j.agent && <span>on {j.agent.name}</span>}
+                <span className="text-muted-foreground">
                   {new Date(j.createdAt).toLocaleString()}
                 </span>
                 {typeof j.exitCode === "number" && (
-                  <span className="ml-2 text-muted-foreground">exit {j.exitCode}</span>
+                  <span className="text-muted-foreground">exit {j.exitCode}</span>
+                )}
+                {(j.status === "RUNNING" || j.status === "PENDING") && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="ml-auto h-6 px-2 text-[11px]"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void cancelJob(j.id);
+                    }}
+                  >
+                    <Square className="size-3" />
+                    Stop
+                  </Button>
                 )}
               </summary>
               <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px]">

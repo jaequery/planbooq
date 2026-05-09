@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Play, Sparkles } from "lucide-react";
+import { Loader2, Play, Sparkles, Square } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { mintAgentApiKey } from "@/actions/api-keys";
@@ -257,6 +257,28 @@ export function TicketPlanRunner({
     }
   }, [isDesktop, projectId, ticketId, workspaceId, identifier, title]);
 
+  const cancelPlan = useCallback(async (): Promise<void> => {
+    // Abort the in-flight POST stream first so the UI stops appending
+    // tokens immediately. Then PATCH the server so any other open client
+    // (and the persisted job row) flips to CANCELED too.
+    abortRef.current?.abort();
+    abortRef.current = null;
+    const id = jobIdRef.current;
+    setBusy(false);
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/tickets/${ticketId}/jobs/${id}/cancel`, { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}) as { error?: string });
+        toast.error(body.error ?? `Cancel failed (${res.status})`);
+        return;
+      }
+      toast.success("Stopped");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Cancel failed");
+    }
+  }, [ticketId]);
+
   useEffect(() => {
     if (!autoRun || firedRef.current || !mode) return;
     firedRef.current = true;
@@ -304,10 +326,17 @@ export function TicketPlanRunner({
                 : "Generate an implementation plan and move to Todo."}
           </div>
         </div>
-        <Button size="sm" onClick={runPlan} disabled={busy}>
-          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-          {streamed && !busy ? "Replan" : "Plan"}
-        </Button>
+        {busy ? (
+          <Button size="sm" variant="outline" onClick={cancelPlan}>
+            <Square className="size-3.5" />
+            Stop
+          </Button>
+        ) : (
+          <Button size="sm" onClick={runPlan}>
+            <Sparkles className="size-3.5" />
+            {streamed ? "Replan" : "Plan"}
+          </Button>
+        )}
       </div>
       {(streamed || busy) && (
         <div className="mt-3 max-h-[320px] overflow-y-auto rounded-md bg-background px-3 py-2">
