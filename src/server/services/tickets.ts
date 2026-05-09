@@ -35,6 +35,7 @@ export const CreateTicketSchema = z.object({
   statusId: z.string().min(1),
   title: z.string().min(1).max(200),
   description: z.string().max(5000).optional(),
+  plan: z.string().max(20000).optional(),
 });
 
 export async function createTicketSvc(
@@ -82,6 +83,7 @@ export async function createTicketSvc(
         statusId: data.statusId,
         title: data.title,
         description: data.description,
+        plan: data.plan?.trim() ? data.plan : null,
         position,
         createdById: userId,
       },

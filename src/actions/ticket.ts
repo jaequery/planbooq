@@ -177,6 +177,7 @@ const CreateSchema = z.object({
   statusId: z.string().min(1),
   title: z.string().min(1).max(200),
   description: z.string().max(5000).optional(),
+  plan: z.string().max(20000).optional(),
 });
 
 export async function createTicket(
@@ -227,6 +228,7 @@ export async function createTicket(
         statusId: data.statusId,
         title: data.title,
         description: data.description,
+        plan: data.plan?.trim() ? data.plan : null,
         position,
         createdById: userId,
       },
@@ -306,11 +308,14 @@ export async function quickCreateTicket(
         ? `${draftDesc}${draftDesc ? "\n\n" : ""}${images.join("\n\n")}`.slice(0, 5000)
         : draftDesc;
 
+    const plan = draftResult.draft.plan?.trim() ? draftResult.draft.plan : undefined;
+
     return await createTicket({
       projectId: project.id,
       statusId: backlog.id,
       title: draftResult.draft.title,
       description: composed || undefined,
+      plan,
     });
   } catch (error) {
     logger.error("quickCreateTicket.failed", {
