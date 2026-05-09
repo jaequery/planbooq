@@ -189,18 +189,48 @@ async function isGitRepo(p: string): Promise<boolean> {
   }
 }
 
-function runOnce(cmd: string, args: string[], cwd: string, sessionId: string): Promise<number> {
+function runOnce(
+  cmd: string,
+  args: string[],
+  cwd: string,
+  sessionId: string,
+): Promise<{ code: number; stderr: string; stdout: string }> {
   return new Promise((resolve, reject) => {
     const proc = spawn(cmd, args, { cwd, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
-    proc.stdout?.on("data", (b: Buffer) =>
-      emit({ type: "stderr", sessionId, line: b.toString() }),
-    );
-    proc.stderr?.on("data", (b: Buffer) =>
-      emit({ type: "stderr", sessionId, line: b.toString() }),
-    );
+    let stdout = "";
+    let stderr = "";
+    proc.stdout?.on("data", (b: Buffer) => {
+      const s = b.toString();
+      stdout += s;
+      emit({ type: "stderr", sessionId, line: s });
+    });
+    proc.stderr?.on("data", (b: Buffer) => {
+      const s = b.toString();
+      stderr += s;
+      emit({ type: "stderr", sessionId, line: s });
+    });
     proc.on("error", reject);
-    proc.on("exit", (code) => resolve(code ?? 0));
+    proc.on("exit", (code) => resolve({ code: code ?? 0, stderr, stdout }));
   });
+}
+
+function lastNonEmptyLine(s: string): string {
+  const lines = s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  return lines[lines.length - 1] ?? "";
+}
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await fs.stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function branchExists(repoPath: string, branch: string, sessionId: string): Promise<boolean> {
+  const r = await runOnce("git", ["rev-parse", "--verify", `refs/heads/${branch}`], repoPath, sessionId);
+  return r.code === 0;
 }
 
 function userMessage(text: string): string {
@@ -295,14 +325,52 @@ export function registerAgentIpc(): void {
       }
       const wtPath = path.join(path.dirname(input.repoPath), wtName);
 
-      emit({ type: "stderr", sessionId, line: `$ git worktree add -b ${input.branch} ${wtPath}\n` });
-      const code = await runOnce(
-        "git",
-        ["worktree", "add", "-b", input.branch, wtPath],
-        input.repoPath,
-        sessionId,
-      );
-      if (code !== 0) return { ok: false, error: `git worktree add exited ${code}` };
+      // Make `git worktree add` idempotent. Retries on the same ticket would
+      // otherwise collide on either the branch (`-b` refuses to create over an
+      // existing ref) or the worktree path (must not exist), surfacing as a
+      // bare `exited 128` toast.
+      const wtExists = await pathExists(wtPath);
+      const brExists = await branchExists(input.repoPath, input.branch, sessionId);
+
+      let result: { code: number; stderr: string; stdout: string };
+      if (wtExists) {
+        const list = await runOnce(
+          "git",
+          ["worktree", "list", "--porcelain"],
+          input.repoPath,
+          sessionId,
+        );
+        if (list.stdout.includes(`worktree ${wtPath}`)) {
+          emit({ type: "stderr", sessionId, line: `(reusing existing worktree at ${wtPath})\n` });
+          result = { code: 0, stderr: "", stdout: "" };
+        } else {
+          return {
+            ok: false,
+            error: `path ${wtPath} exists but is not a registered worktree — remove it and retry`,
+          };
+        }
+      } else if (brExists) {
+        emit({ type: "stderr", sessionId, line: `$ git worktree add ${wtPath} ${input.branch}\n` });
+        result = await runOnce(
+          "git",
+          ["worktree", "add", wtPath, input.branch],
+          input.repoPath,
+          sessionId,
+        );
+      } else {
+        emit({ type: "stderr", sessionId, line: `$ git worktree add -b ${input.branch} ${wtPath}\n` });
+        result = await runOnce(
+          "git",
+          ["worktree", "add", "-b", input.branch, wtPath],
+          input.repoPath,
+          sessionId,
+        );
+      }
+
+      if (result.code !== 0) {
+        const detail = lastNonEmptyLine(result.stderr) || `exit ${result.code}`;
+        return { ok: false, error: `git worktree add failed: ${detail}` };
+      }
 
       if (input.ticket) {
         try {
