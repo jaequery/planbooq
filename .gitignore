@@ -51,4 +51,5 @@ yarn-error.log*
 # team-build worktree artifacts
 .team-build/
 .playwright-mcp/
+.playwright-cli/
 qa-evidence/
