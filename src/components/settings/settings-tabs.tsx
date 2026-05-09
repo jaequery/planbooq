@@ -1,9 +1,9 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tabs as TabsPrimitive } from "radix-ui";
 import type * as React from "react";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useIsDesktop } from "@/lib/use-is-desktop";
 import { cn } from "@/lib/utils";
 
@@ -33,11 +33,13 @@ export function SettingsTabs({
   localAgents,
 }: Props): React.ReactElement {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const isDesktop = useIsDesktop();
   const TABS = isDesktop ? ALL_TABS.filter((t) => t.value !== "local-agents") : ALL_TABS;
+  const onSettingsRoute = pathname === "/settings";
   const param = searchParams.get("tab");
-  const active: TabValue =
+  const fromUrl: TabValue =
     param === "api-keys"
       ? "api-keys"
       : param === "workflows"
@@ -47,16 +49,23 @@ export function SettingsTabs({
           : param === "local-agents" && !isDesktop
             ? "local-agents"
             : "appearance";
+  const [internalActive, setInternalActive] = useState<TabValue>(fromUrl);
+  const active: TabValue = onSettingsRoute ? fromUrl : internalActive;
 
   const onValueChange = useCallback(
     (value: string) => {
+      const next = value as TabValue;
+      if (!onSettingsRoute) {
+        setInternalActive(next);
+        return;
+      }
       const params = new URLSearchParams(searchParams.toString());
-      if (value === "appearance") params.delete("tab");
-      else params.set("tab", value);
+      if (next === "appearance") params.delete("tab");
+      else params.set("tab", next);
       const qs = params.toString();
       router.replace(qs ? `/settings?${qs}` : "/settings", { scroll: false });
     },
-    [router, searchParams],
+    [onSettingsRoute, router, searchParams],
   );
 
   return (

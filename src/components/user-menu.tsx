@@ -1,10 +1,17 @@
 "use client";
 
 import { LogOut, Settings } from "lucide-react";
-import Link from "next/link";
 import { signOut } from "next-auth/react";
+import { useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,43 +25,59 @@ type Props = {
   email: string;
   name?: string | null;
   image?: string | null;
+  settingsContent: React.ReactNode;
 };
 
-export function UserMenu({ email, name, image }: Props): React.ReactElement {
+export function UserMenu({ email, name, image, settingsContent }: Props): React.ReactElement {
   const initial = (name?.[0] ?? email[0] ?? "?").toUpperCase();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="rounded-full" aria-label="User menu">
-          <Avatar className="h-7 w-7">
-            {image ? <AvatarImage src={image} alt={name ?? email} /> : null}
-            <AvatarFallback className="text-xs">{initial}</AvatarFallback>
-          </Avatar>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="flex flex-col gap-0.5">
-          {name ? <span className="text-sm">{name}</span> : null}
-          <span className="text-xs font-normal text-muted-foreground">{email}</span>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/settings">
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="rounded-full" aria-label="User menu">
+            <Avatar className="h-7 w-7">
+              {image ? <AvatarImage src={image} alt={name ?? email} /> : null}
+              <AvatarFallback className="text-xs">{initial}</AvatarFallback>
+            </Avatar>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel className="flex flex-col gap-0.5">
+            {name ? <span className="text-sm">{name}</span> : null}
+            <span className="text-xs font-normal text-muted-foreground">{email}</span>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+              setSettingsOpen(true);
+            }}
+          >
             <Settings className="mr-2 h-4 w-4" />
             Settings
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onSelect={(e) => {
-            e.preventDefault();
-            void signOut({ callbackUrl: "/" });
-          }}
-        >
-          <LogOut className="mr-2 h-4 w-4" />
-          Sign out
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+              void signOut({ callbackUrl: "/" });
+            }}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Sign out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Settings</DialogTitle>
+            <DialogDescription>Manage your workspace preferences.</DialogDescription>
+          </DialogHeader>
+          {settingsContent}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

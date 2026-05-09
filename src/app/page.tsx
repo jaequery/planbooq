@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { SettingsContent } from "@/components/settings/settings-content";
 import { EmptyProjectsState } from "@/components/sidebar/empty-projects-state";
 import { Button } from "@/components/ui/button";
 import { UserMenu } from "@/components/user-menu";
@@ -39,6 +40,7 @@ export default async function Home(): Promise<React.ReactElement> {
                 email={session.user.email}
                 name={session.user.name}
                 image={session.user.image}
+                settingsContent={<SettingsContent />}
               />
             </div>
           </header>
