@@ -315,9 +315,14 @@ function DesktopPanel({
   // Track current statusKey via ref so the streaming-event handler (mounted
   // once with [] deps) can read the latest value without resubscribing. We
   // also mutate the ref locally when we apply Blocked/Running so back-to-back
-  // events don't all fire status writes against a stale cache.
+  // events don't all fire status writes against a stale cache. Sync from the
+  // prop only when it actually changes — render-time assignment would clobber
+  // a just-applied local override (e.g. "blocked") before the server-driven
+  // prop refresh catches up, leaving the card stuck in Running.
   const statusKeyRef = useRef<string | undefined>(statusKey);
-  statusKeyRef.current = statusKey;
+  useEffect(() => {
+    statusKeyRef.current = statusKey;
+  }, [statusKey]);
   const messagesRef = useRef<ChatMsg[]>([]);
   const setBlockedIfAwaiting = () => {
     if (statusKeyRef.current !== "building") return;
