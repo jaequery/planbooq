@@ -328,7 +328,7 @@ function EditorDialog({
 
   return (
     <Dialog open onOpenChange={(o) => (!o ? onClose() : null)}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{editingId ? "Edit agent" : "New agent"}</DialogTitle>
           <DialogDescription>
@@ -336,7 +336,7 @@ function EditorDialog({
             receive.
           </DialogDescription>
         </DialogHeader>
-        <form className="flex flex-col gap-3" onSubmit={submit}>
+        <form className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto" onSubmit={submit}>
           {!editingId && (
             <div className="flex flex-col gap-1.5 rounded-md border border-dashed bg-muted/40 p-3">
               <div className="flex items-center gap-1.5">
