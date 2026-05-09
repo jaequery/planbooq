@@ -55,6 +55,8 @@ export function ChatOrb({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const uploadCounterRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const isActive = isFocused || isDragging || prompt.length > 0 || pending;
 
   useEffect(() => {
     const handler = (event: KeyboardEvent): void => {
@@ -209,17 +211,15 @@ export function ChatOrb({
       <div className="pointer-events-auto relative w-full max-w-[520px]">
         <div
           aria-hidden
-          className="-inset-px absolute rounded-2xl opacity-60 blur-xl"
-          style={{
-            background:
-              "linear-gradient(120deg, rgba(245,158,11,0.5), rgba(16,185,129,0.4), rgba(99,102,241,0.4))",
-            zIndex: -1,
-          }}
+          className={`-inset-1 absolute rounded-2xl chat-orb-glow ${
+            isActive ? "chat-orb-glow-active" : ""
+          }`}
+          style={{ zIndex: -1 }}
         />
         <div
-          className={`rounded-2xl border bg-background/95 px-4 py-3 shadow-[0_16px_40px_rgba(0,0,0,0.10)] backdrop-blur ${
+          className={`rounded-2xl border bg-background/95 px-4 py-3 shadow-[0_16px_40px_rgba(0,0,0,0.10)] backdrop-blur transition-shadow duration-300 ${
             isDragging ? "border-ring ring-2 ring-ring/60" : "border-border/70"
-          }`}
+          } ${isActive ? "chat-orb-shell-active" : ""}`}
           onDrop={onDrop}
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
@@ -273,6 +273,8 @@ export function ChatOrb({
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={onKeyDown}
               onPaste={onPaste}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
               placeholder={
                 pending ? "Drafting…" : "What should we ship next? (Enter to create)"
               }

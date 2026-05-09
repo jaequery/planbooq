@@ -136,3 +136,67 @@
     cursor: pointer;
   }
 }
+
+@keyframes chat-orb-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+    transform: scale(1);
+    filter: blur(20px);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+    filter: blur(26px);
+  }
+}
+
+@keyframes chat-orb-glow-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.chat-orb-glow {
+  background: linear-gradient(
+    120deg,
+    rgba(245, 158, 11, 0.5),
+    rgba(16, 185, 129, 0.4),
+    rgba(99, 102, 241, 0.4)
+  );
+  opacity: 0.6;
+  filter: blur(20px);
+  transition:
+    opacity 300ms ease,
+    filter 300ms ease,
+    transform 300ms ease;
+}
+
+.chat-orb-glow-active {
+  background: conic-gradient(
+    from 0deg,
+    rgba(245, 158, 11, 0.95),
+    rgba(236, 72, 153, 0.9),
+    rgba(99, 102, 241, 0.95),
+    rgba(16, 185, 129, 0.9),
+    rgba(245, 158, 11, 0.95)
+  );
+  opacity: 1;
+  animation:
+    chat-orb-glow-pulse 2.4s ease-in-out infinite,
+    chat-orb-glow-spin 6s linear infinite;
+}
+
+.chat-orb-shell-active {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 8px 24px rgba(99, 102, 241, 0.25),
+    0 16px 48px rgba(236, 72, 153, 0.18),
+    0 24px 64px rgba(16, 185, 129, 0.15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-orb-glow-active {
+    animation: none;
+  }
+}
