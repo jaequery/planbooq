@@ -94,13 +94,25 @@ export async function pullMain(repoPath: string): Promise<PullResult> {
   let output = fetched.stderr;
 
   if (cur === branch) {
-    // Default branch is checked out here — fast-forward via pull.
-    const pulled = await exec("git", ["pull", "--ff-only", "origin", branch], repoPath);
-    output += pulled.stdout + pulled.stderr;
-    if (pulled.code !== 0) {
+    // Default branch is checked out — fast-forward against the unambiguous
+    // remote-tracking ref. Avoid `git pull --ff-only`: if the user's
+    // remote.origin.fetch config produces multiple "for-merge" entries in
+    // FETCH_HEAD, pull's implicit merge fails with "Cannot fast-forward to
+    // multiple branches".
+    const merged = await exec(
+      "git",
+      ["merge", "--ff-only", `refs/remotes/origin/${branch}`],
+      repoPath,
+    );
+    output += merged.stdout + merged.stderr;
+    if (merged.code !== 0) {
+      const stderr = merged.stderr.trim();
+      const hint = /multiple branches/i.test(stderr)
+        ? ` — multiple FETCH_HEAD entries; check 'git config --get-all remote.origin.fetch'`
+        : "";
       return {
         ok: false,
-        error: `git pull --ff-only failed: ${pulled.stderr.trim() || `exit ${pulled.code}`}`,
+        error: `git merge --ff-only origin/${branch} failed: ${stderr || `exit ${merged.code}`}${hint}`,
       };
     }
   } else {
