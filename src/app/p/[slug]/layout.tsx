@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { AgentSessionManagerMount } from "@/components/agent-session-manager-mount";
+import { SettingsContent } from "@/components/settings/settings-content";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { SidebarProvider } from "@/components/sidebar/sidebar-state";
 import { SidebarToggle } from "@/components/sidebar/sidebar-toggle";
@@ -103,6 +104,7 @@ export default async function ProjectLayout({
               email={session.user.email}
               name={session.user.name}
               image={session.user.image}
+              settingsContent={<SettingsContent />}
             />
           </div>
         </header>
