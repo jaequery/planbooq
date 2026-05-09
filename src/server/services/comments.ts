@@ -4,6 +4,7 @@ import { logger } from "@/lib/logger";
 import type { ServerActionResult } from "@/lib/types";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
+import { maybeLinkPrUrlFromText } from "@/server/services/link-pr-url";
 
 const COMMENT_INCLUDE = {
   author: { select: { id: true, name: true, email: true, image: true } },
@@ -59,6 +60,13 @@ export async function createCommentSvc(
       comment,
       by: userId,
     });
+
+    // Comments are the third place a PR URL surfaces (alongside chat output
+    // and activity payloads). The "ship" flow already sets prUrl explicitly,
+    // but a human or agent leaving a plain comment with a PR link should also
+    // link the ticket.
+    void maybeLinkPrUrlFromText(ticket.id, data.body).catch(() => undefined);
+
     return { ok: true, data: comment };
   } catch (error) {
     logger.error("createCommentSvc.failed", {

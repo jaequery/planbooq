@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireAgent } from "@/server/agent-auth";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
+import { maybeLinkPrUrlFromText } from "@/server/services/link-pr-url";
 
 const KindSchema = z.enum(["PR_CREATED", "COMMIT_PUSHED", "TEST_RUN", "BUILD", "NOTE"]);
 
@@ -52,24 +53,11 @@ export async function POST(
     select: { id: true, kind: true, payload: true, jobId: true, createdAt: true },
   });
 
-  if (parsed.data.kind === "PR_CREATED" && typeof parsed.data.payload.url === "string") {
-    const updated = await prisma.ticket.update({
-      where: { id: job.ticketId },
-      data: { prUrl: parsed.data.payload.url },
-      include: {
-        assignee: { select: { id: true, name: true, email: true, image: true } },
-        labels: { select: { id: true, name: true, color: true } },
-      },
-    });
-    await publishWorkspaceEvent(job.ticket.workspaceId, {
-      name: "ticket.updated",
-      ticketId: updated.id,
-      workspaceId: updated.workspaceId,
-      projectId: updated.projectId,
-      ticket: updated,
-      by: "agent",
-    });
-  }
+  // Any activity payload may contain a PR URL — not just PR_CREATED. Common
+  // failure mode: hook fires COMMIT_PUSHED with the PR URL captured from
+  // `git push` output, or NOTE with free-form text. Funnel everything through
+  // the same linker so a PR mention anywhere lands on the ticket.
+  await maybeLinkPrUrlFromText(job.ticketId, JSON.stringify(parsed.data.payload));
 
   await publishWorkspaceEvent(job.ticket.workspaceId, {
     name: "ticket.activity",
