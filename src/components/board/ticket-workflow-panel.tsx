@@ -221,7 +221,26 @@ export function TicketWorkflowPanel({
     if (!wf) return;
     const enabled = wf.steps.filter((s) => s.enabled);
     if (enabled.length === 0) {
-      toast.error("Add at least one enabled step");
+      if (!hasLocalPath) {
+        toast.error("Choose this project's folder first");
+        return;
+      }
+      const defaultName = "build";
+      const shipLine = hasLocalPath
+        ? "When the build is complete, follow the shipping steps in CLAUDE.local.md to open a PR (commit, push, gh pr create, then ./.planbooq/pbq ship)."
+        : "";
+      const defaultPrompt = [
+        "[Workflow 1/1: build]",
+        "No workflow steps are configured for this ticket. Build the project to satisfy the ticket's title and description.",
+        shipLine,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const queueWasEmpty = pendingStepsRef.current.length === 0;
+      pendingStepsRef.current.push(defaultName);
+      if (queueWasEmpty) logStarted(defaultName);
+      runPrompts([defaultPrompt]);
+      toast.success("Running default build");
       return;
     }
     const prompts = enabled.map(
