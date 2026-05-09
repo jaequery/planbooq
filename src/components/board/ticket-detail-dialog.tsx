@@ -648,8 +648,8 @@ export function TicketDetailDialog({
                 )}
               </div>
 
-              <div className="mt-6">
-                <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <div className="mt-8 rounded-md border border-border/60 border-l-2 border-l-primary/60 bg-muted/40 px-4 py-3">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/80">
                   Plan
                 </div>
                 {isEditingPlan ? (

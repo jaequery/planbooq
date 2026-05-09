@@ -10,7 +10,7 @@
 
 usage() {
   cat <<EOF
-Planbooq REST wrapper · ticket PLAN-793B9A (${PLANBOOQ_TICKET_ID})
+Planbooq REST wrapper · ticket PLAN-FIE7KD (${PLANBOOQ_TICKET_ID})
 Usage:
   ./.planbooq/pbq get
   ./.planbooq/pbq update '{"description":"..."}'   # PATCH this ticket
