@@ -15,6 +15,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset --force",
+    "db:fresh": "prisma migrate reset --force --skip-seed && prisma migrate deploy && prisma db seed",
     "db:generate": "prisma generate",
     "inngest": "npx inngest-cli@latest dev -u http://localhost:3636/api/inngest",
     "desktop": "pnpm --filter @planbooq/desktop start",
