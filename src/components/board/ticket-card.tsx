@@ -58,11 +58,28 @@ export function TicketCard({
   const [archiveOpen, setArchiveOpen] = useState(false);
   const ticketStatusKey = statuses.find((s) => s.id === ticket.statusId)?.key;
   const [pendingArchive, startArchiveTransition] = useTransition();
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
+    activeIndex,
+    index,
+  } = useSortable({
     id: ticket.id,
     data: { type: "ticket", statusId: ticket.statusId },
     disabled: isOverlay,
   });
+  // Insertion-line indicator: dnd-kit's sortable inserts before the hovered
+  // card when dragging from below it, and after when dragging from above.
+  // Mirror that here so the visible line matches where the drop will land.
+  const showInsertBefore =
+    !isOverlay && isOver && !isDragging && activeIndex !== -1 && activeIndex > index;
+  const showInsertAfter =
+    !isOverlay && isOver && !isDragging && activeIndex !== -1 && activeIndex < index;
 
   const style: React.CSSProperties = {
     transform: CSS.Translate.toString(transform),
@@ -139,16 +156,29 @@ export function TicketCard({
           }
         }}
         className={cn(
-          "group w-full min-w-0 select-none rounded-md border border-border/70 bg-card px-3 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.02)] outline-none",
+          "group relative w-full min-w-0 select-none rounded-md border border-border/70 bg-card px-3 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.02)] outline-none touch-manipulation",
           "transition-[transform,box-shadow,border-color] duration-150",
           "hover:border-border hover:shadow-[0_1px_2px_rgba(0,0,0,0.06),0_4px_8px_-4px_rgba(0,0,0,0.08)]",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           !isOverlay && "cursor-pointer",
-          isDragging && !isOverlay && "opacity-40",
-          isOverlay && "scale-[1.02] cursor-grabbing border-border shadow-lg ring-1 ring-black/5",
+          isDragging && !isOverlay && "opacity-40 border-dashed",
+          isOverlay &&
+            "scale-[1.03] rotate-[0.5deg] cursor-grabbing border-border shadow-2xl ring-1 ring-black/10",
           isOptimistic && "animate-pulse opacity-70 pointer-events-none",
         )}
       >
+        {showInsertBefore ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 -top-1 h-0.5 rounded-full bg-primary"
+          />
+        ) : null}
+        {showInsertAfter ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 -bottom-1 h-0.5 rounded-full bg-primary"
+          />
+        ) : null}
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-start gap-1.5">

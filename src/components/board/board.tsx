@@ -7,6 +7,7 @@ import {
   type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -372,6 +373,9 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 6 },
+    }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -641,7 +645,12 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
               />
             ))}
           </div>
-          <DragOverlay dropAnimation={null}>
+          <DragOverlay
+            dropAnimation={{
+              duration: 220,
+              easing: "cubic-bezier(0.18, 0.67, 0.32, 1)",
+            }}
+          >
             {activeTicket ? <TicketCard ticket={activeTicket} isOverlay /> : null}
           </DragOverlay>
         </DndContext>

@@ -29,7 +29,7 @@ export function Column({
     id: status.id,
     data: { type: "column", statusId: status.id },
   });
-  const isCompact = tickets.length === 0 && !isFiltered;
+  const isCompact = tickets.length === 0 && !isFiltered && !isOver;
 
   return (
     <div
@@ -56,9 +56,9 @@ export function Column({
       <div
         ref={setNodeRef}
         className={cn(
-          "flex min-h-0 flex-1 flex-col rounded-lg border border-dashed border-border/40 bg-muted/20 transition-colors",
+          "flex min-h-0 flex-1 flex-col rounded-lg border border-dashed border-border/40 bg-muted/20 transition-[background-color,border-color,box-shadow] duration-150",
           !isCompact && "border-solid bg-muted/30",
-          isOver && "border-solid border-border/80 bg-muted/50",
+          isOver && "border-solid border-primary/60 bg-primary/5 ring-1 ring-primary/30",
         )}
       >
         {isCompact ? null : (
@@ -67,10 +67,17 @@ export function Column({
               items={tickets.map((t) => t.id)}
               strategy={verticalListSortingStrategy}
             >
-              <div className="flex flex-col gap-1.5 p-2">
+              <div className="flex min-h-[120px] flex-col gap-1.5 p-2">
                 {tickets.length === 0 ? (
-                  <div className="flex h-20 items-center justify-center rounded-md border border-dashed border-border/40 text-[14px] text-muted-foreground/70">
-                    No matching tickets
+                  <div
+                    className={cn(
+                      "flex h-24 items-center justify-center rounded-md border border-dashed text-[14px] transition-colors",
+                      isOver
+                        ? "border-primary/60 bg-primary/5 text-primary"
+                        : "border-border/40 text-muted-foreground/70",
+                    )}
+                  >
+                    {isOver ? "Drop here" : "No matching tickets"}
                   </div>
                 ) : (
                   tickets.map((ticket) => (
