@@ -505,7 +505,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search tickets…"
-            className="h-8 pl-8 pr-8 text-[13px]"
+            className="h-8 pl-8 pr-8 text-[15px]"
           />
           {query ? (
             <Button
@@ -521,7 +521,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           ) : null}
         </div>
         {isFiltered ? (
-          <span className="text-[12px] tabular-nums text-muted-foreground/70">
+          <span className="text-[14px] tabular-nums text-muted-foreground/70">
             {visibleTicketCount} match{visibleTicketCount === 1 ? "" : "es"}
           </span>
         ) : null}

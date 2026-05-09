@@ -45,10 +45,10 @@ export function Column({
             className="h-2 w-2 rounded-full"
             style={{ backgroundColor: status.color }}
           />
-          <h3 className="text-[13px] font-semibold tracking-tight text-foreground">
+          <h3 className="text-[15px] font-semibold tracking-tight text-foreground">
             {status.name}
           </h3>
-          <span className="text-[12px] tabular-nums text-muted-foreground/80">
+          <span className="text-[14px] tabular-nums text-muted-foreground/80">
             {tickets.length}
           </span>
         </div>
@@ -69,7 +69,7 @@ export function Column({
             >
               <div className="flex flex-col gap-1.5 p-2">
                 {tickets.length === 0 ? (
-                  <div className="flex h-20 items-center justify-center rounded-md border border-dashed border-border/40 text-[12px] text-muted-foreground/70">
+                  <div className="flex h-20 items-center justify-center rounded-md border border-dashed border-border/40 text-[14px] text-muted-foreground/70">
                     No matching tickets
                   </div>
                 ) : (
