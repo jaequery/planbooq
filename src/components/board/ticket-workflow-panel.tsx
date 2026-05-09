@@ -317,7 +317,7 @@ export function TicketWorkflowPanel({
           ) : (
             <Play className="size-4" />
           )}
-          {running ? "Running…" : "Run"}
+          {running ? "Running…" : "Execute"}
         </Button>
       </header>
 
