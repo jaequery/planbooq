@@ -52,8 +52,12 @@ export function ProjectDocsPanel({ localPath }: Props): React.ReactElement {
     readme: emptyDoc("README.md"),
   });
 
-  const bridge = typeof window !== "undefined" ? getDesktopBridge() : null;
-  const supported = !!bridge?.readProjectFile && !!bridge?.writeProjectFile;
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  const bridge = mounted ? getDesktopBridge() : null;
+  const supported = mounted && !!bridge?.readProjectFile && !!bridge?.writeProjectFile;
   const repo = localPath?.trim() ?? "";
 
   const loadDoc = useCallback(
@@ -153,10 +157,11 @@ export function ProjectDocsPanel({ localPath }: Props): React.ReactElement {
   };
 
   const summary = useMemo(() => {
+    if (!mounted) return "";
     if (!supported) return "Desktop app required";
     if (!repo) return "Set project folder in settings";
     return "CLAUDE.md · AGENT.md · README.md";
-  }, [supported, repo]);
+  }, [mounted, supported, repo]);
 
   return (
     <div className="border-b border-border/60 bg-card/30">
