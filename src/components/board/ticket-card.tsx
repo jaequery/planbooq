@@ -3,14 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { formatDistanceToNowStrict } from "date-fns";
-import {
-  AlertCircle,
-  Archive,
-  Clock3,
-  FileText,
-  MoreHorizontal,
-  Pencil,
-} from "lucide-react";
+import { AlertCircle, Archive, Clock3, FileText, MoreHorizontal, Pencil } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { archiveTicket } from "@/actions/ticket";
@@ -108,6 +101,7 @@ export function TicketCard({
   const labels = ticket.labels ?? [];
   const visibleLabels = labels.slice(0, 3);
   const hiddenLabelCount = labels.length - visibleLabels.length;
+  const isOptimistic = ticket.id.startsWith("temp_");
   const liveAgent = useLiveAgent(ticket.id);
   // Suppress the "running" indicator for tickets that have already moved to a
   // terminal column. Without a server hydration of job state, a missed
@@ -115,8 +109,7 @@ export function TicketCard({
   // RUNNING for a ticket that is plainly done.
   const liveStatusEligible = ticketStatusKey !== "completed" && ticketStatusKey !== "review";
   const isLive =
-    liveStatusEligible &&
-    (liveAgent?.status === "RUNNING" || liveAgent?.status === "PENDING");
+    liveStatusEligible && (liveAgent?.status === "RUNNING" || liveAgent?.status === "PENDING");
   const liveKindLabel = liveAgent
     ? liveAgent.kind === "PLAN"
       ? "planning"
@@ -153,6 +146,7 @@ export function TicketCard({
           !isOverlay && "cursor-pointer",
           isDragging && !isOverlay && "opacity-40",
           isOverlay && "scale-[1.02] cursor-grabbing border-border shadow-lg ring-1 ring-black/5",
+          isOptimistic && "animate-pulse opacity-70 pointer-events-none",
         )}
       >
         <div className="flex items-start gap-2">

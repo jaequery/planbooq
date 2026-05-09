@@ -381,23 +381,45 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
     [statuses],
   );
 
-  const onTicketCreated = useCallback((ticket: Ticket) => {
-    const enriched: TicketWithRelations = { ...ticket, assignee: null, labels: [] };
+  const insertOptimisticTicket = useCallback((ticket: TicketWithRelations) => {
     setStatuses((prev) => {
-      // De-dupe defensively: if the realtime echo arrived first, skip the
-      // optimistic insert (and vice versa in the realtime handler).
       const alreadyPresent = prev.some((s) => s.tickets.some((t) => t.id === ticket.id));
       if (alreadyPresent) return prev;
       return prev.map((s) =>
         s.id === ticket.statusId
-          ? {
-              ...s,
-              tickets: [...s.tickets, enriched].sort(byUpdatedDesc),
-            }
+          ? { ...s, tickets: [...s.tickets, ticket].sort(byUpdatedDesc) }
           : s,
       );
     });
   }, []);
+
+  const replaceOptimisticTicket = useCallback((tempId: string, real: Ticket) => {
+    const enriched: TicketWithRelations = { ...real, assignee: null, labels: [] };
+    setStatuses((prev) => {
+      const stripped = prev.map((s) => ({
+        ...s,
+        tickets: s.tickets.filter((t) => t.id !== tempId),
+      }));
+      const alreadyPresent = stripped.some((s) => s.tickets.some((t) => t.id === enriched.id));
+      if (alreadyPresent) return stripped;
+      return stripped.map((s) =>
+        s.id === enriched.statusId
+          ? { ...s, tickets: [...s.tickets, enriched].sort(byUpdatedDesc) }
+          : s,
+      );
+    });
+  }, []);
+
+  const rollbackOptimisticTicket = useCallback((tempId: string) => {
+    setStatuses((prev) =>
+      prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== tempId) })),
+    );
+  }, []);
+
+  const backlogStatusId = useMemo(
+    () => statuses.find((s) => s.key === "backlog")?.id ?? null,
+    [statuses],
+  );
 
   const onTicketUpdated = useCallback((ticket: TicketWithRelations) => {
     setStatuses((prev) =>
@@ -626,7 +648,11 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         <ChatOrb
           projectId={currentProjectId}
           workspaceId={initialData.project.workspaceId}
-          onCreated={onTicketCreated}
+          backlogStatusId={backlogStatusId}
+          currentUserId={currentUserId}
+          onOptimisticInsert={insertOptimisticTicket}
+          onOptimisticReplace={replaceOptimisticTicket}
+          onOptimisticRollback={rollbackOptimisticTicket}
         />
         {detailTicket ? (
           <TicketDetailDialog

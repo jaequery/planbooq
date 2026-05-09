@@ -4,13 +4,24 @@ import { ImageIcon, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { quickCreateTicket } from "@/actions/ticket";
-import type { Ticket } from "@/lib/types";
+import type { Ticket, TicketWithRelations } from "@/lib/types";
 
 type Props = {
   projectId: string;
   workspaceId: string;
-  onCreated: (ticket: Ticket) => void;
+  backlogStatusId: string | null;
+  currentUserId: string;
+  onOptimisticInsert: (ticket: TicketWithRelations) => void;
+  onOptimisticReplace: (tempId: string, real: Ticket) => void;
+  onOptimisticRollback: (tempId: string) => void;
 };
+
+function makeTempId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `temp_${crypto.randomUUID()}`;
+  }
+  return `temp_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+}
 
 const ACCEPTED_MIME_TYPES = "image/png,image/jpeg,image/webp,image/gif";
 const MAX_SIZE_BYTES = 5 * 1024 * 1024;
@@ -46,7 +57,11 @@ function imageMarkdown(name: string, url: string): string {
 export function ChatOrb({
   projectId,
   workspaceId,
-  onCreated,
+  backlogStatusId,
+  currentUserId,
+  onOptimisticInsert,
+  onOptimisticReplace,
+  onOptimisticRollback,
 }: Props): React.ReactElement {
   const [prompt, setPrompt] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -77,9 +92,7 @@ export function ChatOrb({
   }, []);
 
   const updateAttachment = (uploadId: number, patch: Partial<Attachment>): void => {
-    setAttachments((prev) =>
-      prev.map((a) => (a.uploadId === uploadId ? { ...a, ...patch } : a)),
-    );
+    setAttachments((prev) => prev.map((a) => (a.uploadId === uploadId ? { ...a, ...patch } : a)));
   };
 
   const removeAttachment = (uploadId: number): void => {
@@ -185,17 +198,56 @@ export function ChatOrb({
     const imageMd = ready.map((a) => imageMarkdown(a.name, a.remoteUrl as string)).join("\n");
     const composedPrompt = [trimmed, imageMd].filter(Boolean).join("\n\n");
 
+    // Build a temp ticket for an optimistic board insert. Title is a preview
+    // of the prompt; the LLM-drafted real title arrives via onOptimisticReplace.
+    const tempId = makeTempId();
+    const previewTitle = (trimmed || "New ticket").slice(0, 120);
+    const now = new Date();
+    const optimisticTicket: TicketWithRelations | null = backlogStatusId
+      ? {
+          id: tempId,
+          workspaceId,
+          projectId,
+          statusId: backlogStatusId,
+          title: previewTitle,
+          description: null,
+          plan: null,
+          priority: "NO_PRIORITY",
+          assigneeId: null,
+          dueDate: null,
+          position: Number.MAX_SAFE_INTEGER,
+          prUrl: null,
+          createdById: currentUserId,
+          createdAt: now,
+          updatedAt: now,
+          archivedAt: null,
+          assignee: null,
+          labels: [],
+        }
+      : null;
+
+    if (optimisticTicket) onOptimisticInsert(optimisticTicket);
+
+    // Clear input + attachments immediately so the orb is ready for the next
+    // prompt while the LLM draft is still in flight.
+    setPrompt("");
+    for (const a of attachments) URL.revokeObjectURL(a.previewUrl);
+    setAttachments([]);
+
     startTransition(async () => {
       const result = await quickCreateTicket({ projectId, prompt: composedPrompt });
       if (!result.ok) {
+        if (optimisticTicket) onOptimisticRollback(tempId);
         toast.error(describeError(result.error));
         return;
       }
-      onCreated(result.data);
+      if (optimisticTicket) {
+        onOptimisticReplace(tempId, result.data);
+      } else {
+        // No backlog column resolved client-side — fall back to plain insert.
+        onOptimisticInsert({ ...result.data, assignee: null, labels: [] });
+      }
       toast.success("Ticket created in Backlog");
-      setPrompt("");
-      for (const a of attachments) URL.revokeObjectURL(a.previewUrl);
-      setAttachments([]);
     });
   };
 
@@ -238,11 +290,7 @@ export function ChatOrb({
                   title={a.name}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={a.previewUrl}
-                    alt={a.name}
-                    className="h-full w-full object-cover"
-                  />
+                  <img src={a.previewUrl} alt={a.name} className="h-full w-full object-cover" />
                   {a.status === "uploading" ? (
                     <div className="absolute inset-0 flex items-center justify-center bg-background/60">
                       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden />
@@ -281,9 +329,7 @@ export function ChatOrb({
               onPaste={onPaste}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
-              placeholder={
-                pending ? "Drafting…" : "What should we ship next? (Enter to create)"
-              }
+              placeholder={pending ? "Drafting…" : "What should we ship next? (Enter to create)"}
               disabled={pending}
               className="field-sizing-content max-h-60 min-h-6 flex-1 resize-none bg-transparent text-[13px] leading-6 outline-none placeholder:text-muted-foreground disabled:opacity-60"
             />
