@@ -108,6 +108,19 @@ export function ProjectDocsPanel({ localPath }: Props): React.ReactElement {
     }
   }, [open, supported, repo, activeTab, docs, loadDoc]);
 
+  // ESC closes the expanded panel.
+  useEffect(() => {
+    if (!open) return;
+    const handler = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [open]);
+
   const current = docs[activeTab];
   const isDirty = current.loaded && current.content !== current.initial;
 

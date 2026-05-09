@@ -203,6 +203,11 @@ export function ChatOrb({
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       submit();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      inputRef.current?.blur();
     }
   };
 
