@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
 import { friendlyError, toast } from "@/lib/toast";
 import type { AblyChannelEvent } from "@/lib/types";
@@ -33,7 +34,12 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
   const [loading, setLoading] = useState(true);
   const [capturing, setCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<{ done: number; total: number; label: string | null } | null>(null);
+  const [progress, setProgress] = useState<{
+    done: number;
+    total: number;
+    label: string | null;
+  } | null>(null);
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
 
   const handleTakeScreenshots = useCallback(async () => {
     setCapturing(true);
@@ -159,12 +165,19 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
           {items.map((p) => (
             <li key={p.id} className="flex flex-col gap-1">
               {p.mimeType.startsWith("image/") ? (
-                <img
-                  src={p.url}
-                  alt={p.label ?? ""}
-                  loading="lazy"
-                  className="w-full rounded-md border border-border"
-                />
+                <button
+                  type="button"
+                  onClick={() => setLightbox({ src: p.url, alt: p.label ?? "" })}
+                  className="block w-full overflow-hidden rounded-md border border-border outline-none transition-colors hover:border-ring focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={p.label ? `Enlarge ${p.label}` : "Enlarge preview"}
+                >
+                  <img
+                    src={p.url}
+                    alt={p.label ?? ""}
+                    loading="lazy"
+                    className="w-full cursor-zoom-in"
+                  />
+                </button>
               ) : p.mimeType.startsWith("video/") ? (
                 <video
                   src={p.url}
@@ -182,6 +195,16 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
           ))}
         </ul>
       )}
+      {lightbox ? (
+        <ImageLightbox
+          open={lightbox !== null}
+          onOpenChange={(open) => {
+            if (!open) setLightbox(null);
+          }}
+          src={lightbox.src}
+          alt={lightbox.alt}
+        />
+      ) : null}
     </div>
   );
 }
