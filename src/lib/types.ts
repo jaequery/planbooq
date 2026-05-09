@@ -132,7 +132,13 @@ export type AblyChannelEvent =
       workspaceId: string;
       projectId: string;
       ticketId: string;
-      comment: { id: string; body: string; authorId: string; createdAt: Date };
+      comment: {
+        id: string;
+        body: string;
+        authorId: string;
+        createdAt: Date;
+        author: { id: string; name: string | null; email: string; image: string | null } | null;
+      };
       by: string;
     }
   | {
@@ -140,7 +146,13 @@ export type AblyChannelEvent =
       workspaceId: string;
       projectId: string;
       ticketId: string;
-      comment: { id: string; body: string; authorId: string; updatedAt: Date };
+      comment: {
+        id: string;
+        body: string;
+        authorId: string;
+        updatedAt: Date;
+        author: { id: string; name: string | null; email: string; image: string | null } | null;
+      };
       by: string;
     }
   | {
