@@ -21,6 +21,7 @@ model User {
   image         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  preferences   Json?
 
   accounts        Account[]
   sessions        Session[]

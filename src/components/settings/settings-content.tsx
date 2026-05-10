@@ -6,7 +6,9 @@ import { AgentsClient } from "@/components/settings/agents-client";
 import { ApiKeysClient } from "@/components/settings/api-keys-client";
 import { AppearancePicker } from "@/components/settings/appearance-picker";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
+import { ShortcutsClient } from "@/components/settings/shortcuts-client";
 import { WorkflowsClient } from "@/components/settings/workflows-client";
+import { extractShortcuts } from "@/lib/shortcuts/defaults";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 
@@ -14,11 +16,18 @@ export async function SettingsContent(): Promise<React.ReactElement | null> {
   const session = await auth();
   if (!session?.user?.id) return null;
 
-  const membership = await prisma.member.findFirst({
-    where: { userId: session.user.id },
-    select: { workspaceId: true, workspace: { select: { name: true, slug: true } } },
-  });
+  const [membership, currentUser] = await Promise.all([
+    prisma.member.findFirst({
+      where: { userId: session.user.id },
+      select: { workspaceId: true, workspace: { select: { name: true, slug: true } } },
+    }),
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { preferences: true },
+    }),
+  ]);
   if (!membership) notFound();
+  const initialShortcuts = extractShortcuts(currentUser?.preferences);
 
   const agents = await prisma.agent.findMany({
     where: { workspaceId: membership.workspaceId, userId: session.user.id },
@@ -81,6 +90,7 @@ export async function SettingsContent(): Promise<React.ReactElement | null> {
             <AppearancePicker />
           </section>
         }
+        shortcuts={<ShortcutsClient initialShortcuts={initialShortcuts} />}
         apiKeys={
           <ApiKeysClient
             workspaceId={membership.workspaceId}

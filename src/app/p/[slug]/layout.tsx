@@ -5,6 +5,8 @@ import { Sidebar } from "@/components/sidebar/sidebar";
 import { SidebarProvider } from "@/components/sidebar/sidebar-state";
 import { SidebarToggle } from "@/components/sidebar/sidebar-toggle";
 import { UserMenu } from "@/components/user-menu";
+import { extractShortcuts } from "@/lib/shortcuts/defaults";
+import { ShortcutsProvider } from "@/lib/shortcuts/provider";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 
@@ -24,11 +26,18 @@ export default async function ProjectLayout({
 
   const { slug } = await params;
 
-  const membership = await prisma.member.findFirst({
-    where: { userId: session.user.id },
-    select: { workspaceId: true, workspace: { select: { name: true } } },
-  });
+  const [membership, currentUser] = await Promise.all([
+    prisma.member.findFirst({
+      where: { userId: session.user.id },
+      select: { workspaceId: true, workspace: { select: { name: true } } },
+    }),
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { preferences: true },
+    }),
+  ]);
   if (!membership) notFound();
+  const shortcuts = extractShortcuts(currentUser?.preferences);
 
   const [project, projectRows, statusRows] = await Promise.all([
     prisma.project.findUnique({
@@ -83,34 +92,36 @@ export default async function ProjectLayout({
 
   return (
     <SidebarProvider>
-    <div className="flex h-screen min-h-0 bg-background">
-      <AgentSessionManagerMount />
-      <Sidebar projects={allProjects} workspaceId={membership.workspaceId} />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-2 pr-4">
-          <div className="flex items-center gap-1.5 text-[13px]">
-            <SidebarToggle />
-            <span className="ml-1 text-muted-foreground/60">{membership.workspace.name}</span>
-            <span className="text-muted-foreground/40">/</span>
-            <span
-              aria-hidden
-              className="h-2 w-2 rounded-full"
-              style={{ backgroundColor: project.color }}
-            />
-            <span className="font-medium text-foreground">{project.name}</span>
+      <ShortcutsProvider shortcuts={shortcuts}>
+        <div className="flex h-screen min-h-0 bg-background">
+          <AgentSessionManagerMount />
+          <Sidebar projects={allProjects} workspaceId={membership.workspaceId} />
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-2 pr-4">
+              <div className="flex items-center gap-1.5 text-[13px]">
+                <SidebarToggle />
+                <span className="ml-1 text-muted-foreground/60">{membership.workspace.name}</span>
+                <span className="text-muted-foreground/40">/</span>
+                <span
+                  aria-hidden
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: project.color }}
+                />
+                <span className="font-medium text-foreground">{project.name}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <UserMenu
+                  email={session.user.email}
+                  name={session.user.name}
+                  image={session.user.image}
+                  settingsContent={<SettingsContent />}
+                />
+              </div>
+            </header>
+            <div className="min-h-0 flex-1">{children}</div>
           </div>
-          <div className="flex items-center gap-1">
-            <UserMenu
-              email={session.user.email}
-              name={session.user.name}
-              image={session.user.image}
-              settingsContent={<SettingsContent />}
-            />
-          </div>
-        </header>
-        <div className="min-h-0 flex-1">{children}</div>
-      </div>
-    </div>
+        </div>
+      </ShortcutsProvider>
     </SidebarProvider>
   );
 }

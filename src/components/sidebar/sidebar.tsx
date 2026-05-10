@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NewProjectDialog } from "@/components/sidebar/new-project-dialog";
 import { ProjectActionsMenu } from "@/components/sidebar/project-actions-menu";
+import { ProjectHotkeys } from "@/components/sidebar/project-hotkeys";
 import { useSidebarState } from "@/components/sidebar/sidebar-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
@@ -152,6 +153,7 @@ export function Sidebar({ projects, workspaceId }: Props): React.ReactElement {
         </div>
       </div>
       <NewProjectDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+      <ProjectHotkeys projects={projects} />
     </aside>
   );
 }
