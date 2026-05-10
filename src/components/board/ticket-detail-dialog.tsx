@@ -18,7 +18,7 @@ import { type StatusOption, StatusPicker } from "@/components/board/status-picke
 import { TicketActionsMenu } from "@/components/board/ticket-actions-menu";
 import { TicketAgentPanel } from "@/components/board/ticket-agent-panel";
 import { TicketPreviewsPanel } from "@/components/board/ticket-previews-panel";
-import { ConversationThread } from "@/components/conversation/conversation-thread";
+import { TicketTimeline } from "@/components/board/ticket-timeline";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { ImageUploadTextarea } from "@/components/ui/image-upload-textarea";
@@ -946,14 +946,15 @@ export function TicketDetailDialog({
             </div>
             <TicketPreviewsPanel ticketId={ticket.id} workspaceId={ticket.workspaceId} />
 
-            <div className="mt-4 flex h-[560px] flex-col gap-2 pt-4">
-              <div className="flex-1 overflow-hidden">
-                <ConversationThread
-                  ticketId={ticket.id}
-                  workspaceId={ticket.workspaceId}
-                  conversationId={null}
-                />
-              </div>
+            <div className="mt-4 pt-4">
+              <TicketTimeline
+                ticketId={ticket.id}
+                workspaceId={ticket.workspaceId}
+                currentUserId={currentUserId}
+                createdAt={createdAt}
+                updatedAt={updatedAt}
+                wasEdited={wasEdited}
+              />
             </div>
           </aside>
         </div>
