@@ -329,7 +329,7 @@ const SYSTEM_DEFAULT_WORKFLOW_STEPS: Array<{ name: string; prompt: string }> = [
   {
     name: "Issue PR",
     prompt:
-      "Follow the shipping steps in CLAUDE.local.md to commit, push, open a GitHub PR, and call `./.planbooq/pbq ship` with the PR URL.",
+      "Follow the shipping steps in PLANBOOQ.md to commit, push, open a GitHub PR, and call `./.planbooq/pbq ship` with the PR URL.",
   },
 ];
 

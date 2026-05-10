@@ -292,7 +292,7 @@ export function TicketWorkflowPanel({
       }
       const defaultName = "build";
       const shipLine = hasLocalPath
-        ? "When the build is complete, follow the shipping steps in CLAUDE.local.md to open a PR (commit, push, gh pr create, then ./.planbooq/pbq ship)."
+        ? "When the build is complete, follow the shipping steps in PLANBOOQ.md to open a PR (commit, push, gh pr create, then ./.planbooq/pbq ship)."
         : "";
       const defaultPrompt = [
         "[Workflow 1/1: build]",

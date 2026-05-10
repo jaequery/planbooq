@@ -176,9 +176,16 @@ Hard rules:
 - Never modify the ticket's \`statusId\` directly with \`pbq update\` —
   \`ship\` and \`error\` are the only correct status mutators in this flow.
 - Never call \`ship\` and \`error\` in the same session. Pick one terminal call.
+- **If this ticket already has a PR** (check \`pbq get\` for a recorded \`prUrl\`,
+  or \`gh pr list --search "${ctx.identifier}"\`), do NOT push more commits to
+  the existing PR branch. Each fix session ships as its own new PR: branch
+  fresh from \`$BASE\` with a distinct name (e.g. suffix \`-fix-2\`, \`-fix-3\`),
+  then run the shipping flow above. \`pbq ship\` will record the new PR on the
+  ticket alongside the prior one.
 `;
-  // Write as CLAUDE.local.md so we don't clobber a project's CLAUDE.md.
-  await fs.writeFile(path.join(wtPath, "CLAUDE.local.md"), claudeMd);
+  // Write as PLANBOOQ.md — agent-agnostic ticket context that won't clobber
+  // a project's CLAUDE.md or any other tool-specific instruction file.
+  await fs.writeFile(path.join(wtPath, "PLANBOOQ.md"), claudeMd);
 }
 
 async function isGitRepo(p: string): Promise<boolean> {
@@ -410,7 +417,9 @@ export function registerAgentIpc(): void {
 
       const proc = spawnClaude(wtPath, sessionId, { ticket: input.ticket });
       sessions.set(sessionId, { proc, cwd: wtPath });
-      proc.stdin?.write(userMessage(firstMessage));
+      const preamble =
+        "Before doing anything else, read `PLANBOOQ.md` in the worktree root — it contains the ticket context, the `./.planbooq/pbq` CLI, and the exact shipping/error flow you must follow. Apply its rules for the entire session.\n\n";
+      proc.stdin?.write(userMessage(preamble + firstMessage));
 
       return { ok: true, sessionId, worktreePath: wtPath };
     },
