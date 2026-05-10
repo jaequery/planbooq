@@ -108,20 +108,20 @@ export function WorkflowsClient({ workspaceId, initialTemplates }: Props): React
   }
 
   return (
-    <section className="flex flex-col gap-3">
-      <div>
-        <h2 className="text-sm font-medium">Workflows</h2>
+    <section className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-base font-semibold">Workflows</h2>
         <p className="text-sm text-muted-foreground">
-          Reusable lists of AI instructions. Apply a workflow to a project or ticket and each step
-          runs in order.
+          Reusable lists of AI instructions. Apply one to a project or ticket and each step runs in
+          order.
         </p>
       </div>
-      <div className="grid gap-6 md:grid-cols-[260px_1fr]">
-        <aside className="flex flex-col gap-2">
-          <div className="flex flex-col gap-1">
+      <div className="grid gap-6 md:grid-cols-[220px_1fr]">
+        <aside className="flex flex-col gap-3">
+          <div className="flex flex-col gap-0.5">
             {templates.length === 0 && (
-              <div className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
-                No templates yet. Name one below to create your first.
+              <div className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
+                No templates yet.
               </div>
             )}
             {templates.map((t) => (
@@ -129,18 +129,18 @@ export function WorkflowsClient({ workspaceId, initialTemplates }: Props): React
                 key={t.id}
                 type="button"
                 onClick={() => setActiveId(t.id)}
-                className={`flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                  activeId === t.id ? "border-foreground bg-muted/50" : "hover:bg-muted/30"
+                className={`flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+                  activeId === t.id
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                 }`}
               >
                 <span className="truncate">{t.name}</span>
-                <span className="ml-2 shrink-0 text-xs text-muted-foreground">
-                  {t.stepCount} step{t.stepCount === 1 ? "" : "s"}
-                </span>
+                <span className="shrink-0 text-xs text-muted-foreground/70">{t.stepCount}</span>
               </button>
             ))}
           </div>
-          <div className="mt-2 flex gap-2">
+          <div className="flex gap-2">
             <Input
               ref={createInputRef}
               placeholder="New template name"
@@ -210,32 +210,47 @@ function TemplateEditor({
   }
 
   return (
-    <section className="flex flex-col gap-5">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 space-y-2">
-          <div>
-            <Label htmlFor="wf-name">Name</Label>
-            <Input
-              id="wf-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onBlur={saveMeta}
-            />
-          </div>
-          <div>
-            <Label htmlFor="wf-desc">Description</Label>
-            <Textarea
-              id="wf-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              onBlur={saveMeta}
-              placeholder="What this workflow is for"
-              rows={2}
-            />
-          </div>
+    <section className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="wf-name" className="text-xs text-muted-foreground">
+            Name
+          </Label>
+          <Input
+            id="wf-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={saveMeta}
+          />
         </div>
-        <Button variant="ghost" size="sm" onClick={onDelete} disabled={pending}>
-          <Trash2 className="size-4" />
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="wf-desc" className="text-xs text-muted-foreground">
+            Description
+          </Label>
+          <Textarea
+            id="wf-desc"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            onBlur={saveMeta}
+            placeholder="What this workflow is for"
+            rows={2}
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between border-t pt-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Steps
+        </h3>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onDelete}
+          disabled={pending}
+          className="-mr-2 h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-destructive"
+        >
+          <Trash2 className="size-3.5" />
+          Delete template
         </Button>
       </div>
 

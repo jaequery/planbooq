@@ -131,13 +131,13 @@ export function AgentProfilesClient({ workspaceId, initialProfiles }: Props): Re
   };
 
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-sm font-medium">Agents</h2>
+    <section className="flex flex-col gap-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-base font-semibold">Agents</h2>
           <p className="text-sm text-muted-foreground">
-            AGENTS.md-style personas. Assign one or more to a ticket; each becomes a parallel worker
-            when the ticket runs.
+            AGENTS.md-style personas. Assign one or more to a ticket — each becomes a parallel
+            worker when the ticket runs.
           </p>
         </div>
         <Button size="sm" onClick={onCreate} disabled={pending}>

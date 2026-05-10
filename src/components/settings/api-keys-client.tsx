@@ -86,14 +86,13 @@ export function ApiKeysClient({
   };
 
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-sm font-medium">API keys</h2>
+        <div className="flex flex-col gap-1">
+          <h2 className="text-base font-semibold">API keys</h2>
           <p className="text-sm text-muted-foreground">
-            Tokens for the {workspaceName} workspace. Used by the Planbooq Claude skill and external
-            automations. Treat them like passwords — anyone with a token can read and change
-            tickets.
+            Tokens for the {workspaceName} workspace. Used by the Planbooq Claude skill and other
+            integrations — treat them like passwords.
           </p>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
