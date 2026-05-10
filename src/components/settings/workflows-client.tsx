@@ -312,7 +312,13 @@ export function StepList({
   stepStatus?: (step: Step) => "pending" | "running" | "completed";
 }): React.ReactElement {
   const [newName, setNewName] = useState("");
+  const [adding, setAdding] = useState(false);
+  const addInputRef = useRef<HTMLInputElement | null>(null);
   const [pending, start] = useTransition();
+
+  useEffect(() => {
+    if (adding) addInputRef.current?.focus();
+  }, [adding]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -333,10 +339,16 @@ export function StepList({
 
   function addStep() {
     const n = newName.trim();
-    if (!n) return;
+    if (!n) {
+      setAdding(false);
+      return;
+    }
     start(async () => {
       const ok = await onAdd(n, "Describe what this step should do.");
-      if (ok) setNewName("");
+      if (ok) {
+        setNewName("");
+        setAdding(false);
+      }
     });
   }
 
@@ -365,22 +377,46 @@ export function StepList({
           steps.length > 0 ? "border-t border-border/40" : ""
         }`}
       >
-        <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground/40">
-          {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
-        </span>
-        <input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              addStep();
-            }
-          }}
-          onBlur={addStep}
-          placeholder="Add a step…"
-          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50"
-        />
+        {adding ? (
+          <>
+            <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground/40">
+              {pending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Plus className="size-3.5" />
+              )}
+            </span>
+            <input
+              ref={addInputRef}
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addStep();
+                } else if (e.key === "Escape") {
+                  setNewName("");
+                  setAdding(false);
+                }
+              }}
+              onBlur={addStep}
+              placeholder="Step name"
+              className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50"
+            />
+          </>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setAdding(true)}
+            disabled={pending}
+            className="-ml-1 h-7 gap-1.5 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <Plus className="size-3.5" />
+            Add Step
+          </Button>
+        )}
       </div>
     </div>
   );
