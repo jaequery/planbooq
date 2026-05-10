@@ -91,6 +91,20 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
   }, [statuses]);
 
   const localClientIdRef = useRef<string | null>(null);
+  // Mirror of `statuses` for callbacks that don't (and shouldn't) re-bind on
+  // every state change. Used inside the realtime handler to look up the
+  // destination column without making the whole handleEvent depend on
+  // `statuses`.
+  const statusesRef = useRef<StatusWithTickets[]>(statuses);
+  useEffect(() => {
+    statusesRef.current = statuses;
+  }, [statuses]);
+  // Dedupe auto-pull triggers: Ably can deliver the same `ticket.moved` event
+  // more than once (multi-tab, reconnect replay, React strict-mode double
+  // invoke) and the desktop git IPC will then race on `.git/index.lock`. Key
+  // by ticketId with a short TTL so a *later* re-merge of the same ticket
+  // still pulls.
+  const autoPullDedupeRef = useRef<Map<string, number>>(new Map());
 
   const handleEvent = useCallback(
     (event: Parameters<Parameters<typeof useBoardChannel>[1]>[0], fromClientId: string | null) => {
@@ -177,27 +191,31 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
       }
       if (!("projectId" in event) || event.projectId !== currentProjectId) return;
       if (event.name === "ticket.moved") {
-        setStatuses((prevStatuses) => {
-          // If the ticket landed in a terminal column, drop any lingering
-          // live-agent state so the card doesn't render a stale "running" pill.
-          const dest = prevStatuses.find((s) => s.id === event.toStatusId);
-          if (dest && (dest.key === "completed" || dest.key === "review")) {
-            setLiveAgents((prev) => {
-              if (!prev.has(event.ticketId)) return prev;
-              const next = new Map(prev);
-              next.delete(event.ticketId);
-              return next;
-            });
-          }
-          // PR merged on GitHub → server moved the ticket to Completed via
-          // webhook. If we're in the desktop app and have a local repo path,
-          // fast-forward the default branch so the local checkout reflects the
-          // merge without manual intervention.
-          if (
-            dest?.key === "completed" &&
-            event.by === "github-webhook" &&
-            initialData.project.localPath
-          ) {
+        const destStatus = statusesRef.current.find((s) => s.id === event.toStatusId);
+        if (destStatus && (destStatus.key === "completed" || destStatus.key === "review")) {
+          setLiveAgents((prev) => {
+            if (!prev.has(event.ticketId)) return prev;
+            const next = new Map(prev);
+            next.delete(event.ticketId);
+            return next;
+          });
+        }
+        // PR merged on GitHub → server moved the ticket to Completed via
+        // webhook. If we're in the desktop app and have a local repo path,
+        // fast-forward the default branch so the local checkout reflects the
+        // merge without manual intervention. Side effect lives outside the
+        // setStatuses updater because updaters can run more than once (strict
+        // mode, concurrent renders) and would otherwise spawn parallel
+        // `git fetch` calls that race on `.git/index.lock`.
+        if (
+          destStatus?.key === "completed" &&
+          event.by === "github-webhook" &&
+          initialData.project.localPath
+        ) {
+          const now = Date.now();
+          const last = autoPullDedupeRef.current.get(event.ticketId);
+          if (last === undefined || now - last > 30_000) {
+            autoPullDedupeRef.current.set(event.ticketId, now);
             const bridge = getDesktopBridge();
             const localPath = initialData.project.localPath;
             void bridge?.pullMain?.({ repoPath: localPath }).then((res) => {
@@ -208,8 +226,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
               }
             });
           }
-          return prevStatuses;
-        });
+        }
         setStatuses((prev) => {
           let moving: Ticket | null = null;
           const stripped = prev.map((s) => {
