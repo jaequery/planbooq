@@ -283,6 +283,7 @@ export async function createTicket(
 const QuickCreateSchema = z.object({
   projectId: z.string().min(1),
   prompt: z.string().min(1).max(2000),
+  autoPlan: z.boolean().optional().default(true),
 });
 
 export async function quickCreateTicket(
@@ -321,7 +322,8 @@ export async function quickCreateTicket(
         ? `${draftDesc}${draftDesc ? "\n\n" : ""}${images.join("\n\n")}`.slice(0, 5000)
         : draftDesc;
 
-    const plan = draftResult.draft.plan?.trim() ? draftResult.draft.plan : undefined;
+    const plan =
+      data.autoPlan && draftResult.draft.plan?.trim() ? draftResult.draft.plan : undefined;
 
     return await createTicket({
       projectId: project.id,
