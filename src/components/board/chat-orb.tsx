@@ -60,6 +60,21 @@ export function ChatOrb({
     }
   }, []);
 
+  useEffect(() => {
+    function handle(event: KeyboardEvent): void {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.altKey || event.shiftKey) return;
+      if (event.key.toLowerCase() !== "n") return;
+      const input = inputRef.current;
+      if (!input || input.disabled) return;
+      event.preventDefault();
+      input.focus();
+      input.select();
+    }
+    window.addEventListener("keydown", handle);
+    return () => window.removeEventListener("keydown", handle);
+  }, []);
+
   const toggleAutoPlan = (): void => {
     setAutoPlan((prev) => {
       const next = !prev;
