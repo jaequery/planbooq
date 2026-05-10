@@ -107,12 +107,41 @@ export async function mirrorJobTerminal(args: {
   finalOutput: string;
 }): Promise<void> {
   try {
-    const paired = await prisma.message.findUnique({
+    const messageStatus = args.status === "SUCCEEDED" ? "COMPLETE" : "ERROR";
+    let paired = await prisma.message.findUnique({
       where: { agentJobId: args.job.id },
       select: { id: true, authorAgentId: true },
     });
-    if (!paired) return;
-    const messageStatus = args.status === "SUCCEEDED" ? "COMPLETE" : "ERROR";
+    // Self-heal: if the terminal call raced ahead of the first append,
+    // no paired message exists yet. Create it directly in the terminal
+    // state so the row never gets stuck in STREAMING/PENDING.
+    if (!paired) {
+      if (!args.job.workspaceId || !args.job.ticketId) return;
+      const conversation = await getOrCreateConversationForTicket(args.job.ticketId);
+      const role = args.job.agentId ? "AGENT" : "SYSTEM";
+      const created = await prisma.message.upsert({
+        where: { agentJobId: args.job.id },
+        create: {
+          idempotencyKey: `agent-job:${args.job.id}`,
+          conversationId: conversation.id,
+          workspaceId: args.job.workspaceId,
+          role,
+          authorAgentId: role === "AGENT" ? args.job.agentId : null,
+          agentJobId: args.job.id,
+          body: args.finalOutput,
+          status: messageStatus,
+        },
+        update: {},
+        select: { id: true, authorAgentId: true, status: true },
+      });
+      // If upsert hit the existing row created by a racing append, fall
+      // through to the finalize path below; otherwise we're done.
+      if (created.status === messageStatus) {
+        sequenceCursors.delete(created.id);
+        return;
+      }
+      paired = { id: created.id, authorAgentId: created.authorAgentId };
+    }
     if (paired.authorAgentId) {
       await finalizeMessageSvc({
         messageId: paired.id,

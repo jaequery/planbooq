@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDistanceToNowStrict } from "date-fns";
 import { Folder, Loader2, Play, Send, Square } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -60,9 +61,9 @@ export function TicketAgentPanel(props: Props): React.ReactElement {
 }
 
 type ChatMsg =
-  | { id: string; role: "user"; text: string }
-  | { id: string; role: "assistant"; text: string }
-  | { id: string; role: "system"; text: string };
+  | { id: string; role: "user"; text: string; createdAt: number }
+  | { id: string; role: "assistant"; text: string; createdAt: number }
+  | { id: string; role: "system"; text: string; createdAt: number };
 
 type AssistantBlock = {
   type: string;
@@ -85,10 +86,10 @@ type ParsedEvent = {
 };
 
 type WireEvent =
-  | { kind: "agent"; line: string }
-  | { kind: "stderr"; line: string }
-  | { kind: "exit"; code: number }
-  | { kind: "user"; text: string };
+  | { kind: "agent"; line: string; at?: number }
+  | { kind: "stderr"; line: string; at?: number }
+  | { kind: "exit"; code: number; at?: number }
+  | { kind: "user"; text: string; at?: number };
 
 function formatToolUse(name: string, input: Record<string, unknown> | undefined): string {
   const arg = (() => {
@@ -140,15 +141,26 @@ function applyWireEvent(
   msgs: ChatMsg[],
   currentAssistantIdRef: { current: string | null },
 ): { msgs: ChatMsg[]; claudeSessionId?: string | null; ended?: boolean } {
+  const at = ev.at ?? Date.now();
   if (ev.kind === "user") {
-    return { msgs: [...msgs, { id: crypto.randomUUID(), role: "user", text: ev.text }] };
+    return {
+      msgs: [
+        ...msgs,
+        { id: crypto.randomUUID(), role: "user", text: ev.text, createdAt: at },
+      ],
+    };
   }
   if (ev.kind === "exit") {
     currentAssistantIdRef.current = null;
     return {
       msgs: [
         ...msgs,
-        { id: crypto.randomUUID(), role: "system", text: `Session ended (exit ${ev.code})` },
+        {
+          id: crypto.randomUUID(),
+          role: "system",
+          text: `Session ended (exit ${ev.code})`,
+          createdAt: at,
+        },
       ],
       ended: true,
     };
@@ -156,7 +168,15 @@ function applyWireEvent(
   if (ev.kind === "stderr") {
     if (/error|fatal|fail/i.test(ev.line)) {
       return {
-        msgs: [...msgs, { id: crypto.randomUUID(), role: "system", text: ev.line.trim() }],
+        msgs: [
+          ...msgs,
+          {
+            id: crypto.randomUUID(),
+            role: "system",
+            text: ev.line.trim(),
+            createdAt: at,
+          },
+        ],
       };
     }
     return { msgs };
@@ -182,7 +202,7 @@ function applyWireEvent(
     }
     const newId = crypto.randomUUID();
     currentAssistantIdRef.current = newId;
-    return [...msgs, { id: newId, role: "assistant", text }];
+    return [...msgs, { id: newId, role: "assistant", text, createdAt: at }];
   };
 
   if (parsed.type === "stream_event" && parsed.event) {
@@ -221,6 +241,7 @@ function applyWireEvent(
           id: crypto.randomUUID(),
           role: "system" as const,
           text: line,
+          createdAt: at,
         })),
       ];
     }
@@ -257,7 +278,8 @@ function looksLikeAwaitingUser(text: string): boolean {
 }
 
 function serializeWire(ev: WireEvent): string {
-  return `${JSON.stringify(ev)}\n`;
+  const stamped = ev.at ? ev : { ...ev, at: Date.now() };
+  return `${JSON.stringify(stamped)}\n`;
 }
 
 /**
@@ -289,12 +311,13 @@ function summarizeAssistant(text: string, maxChars = 200): string {
   return out;
 }
 
-function parseStoredOutput(output: string): WireEvent[] {
+function parseStoredOutput(output: string, fallbackAt?: number): WireEvent[] {
   const out: WireEvent[] = [];
   for (const raw of output.split("\n")) {
     if (!raw) continue;
     try {
       const parsed = JSON.parse(raw) as WireEvent;
+      if (parsed.at == null && fallbackAt != null) parsed.at = fallbackAt;
       out.push(parsed);
     } catch {
       // skip
@@ -478,11 +501,13 @@ function DesktopPanel({
             output: string;
             worktreePath: string | null;
             claudeSessionId: string | null;
+            createdAt?: string;
           } | null;
         };
         if (cancelled || !body.ok || !body.data) return;
         const job = body.data;
-        const events = parseStoredOutput(job.output);
+        const fallbackAt = job.createdAt ? new Date(job.createdAt).getTime() : undefined;
+        const events = parseStoredOutput(job.output, fallbackAt);
         const cursor = { current: null as string | null };
         let acc: ChatMsg[] = [];
         let resolvedClaudeSession: string | null = null;
@@ -554,6 +579,7 @@ function DesktopPanel({
       id: crypto.randomUUID(),
       role: "system",
       text: `Agent idle for ${Math.round(IDLE_TIMEOUT_MS / 60000)} min — no events received. Marking turn ended; press Stop or send a new message to retry.`,
+      createdAt: Date.now(),
     };
     messagesRef.current = [...messagesRef.current, stalledMsg];
     setMessages(messagesRef.current);
@@ -702,7 +728,15 @@ function DesktopPanel({
       setBusy(true);
       armIdleTimer(forceEndOnIdle);
       setMessages((m) => {
-        const next = [...m, { id: crypto.randomUUID(), role: "user", text: message } as ChatMsg];
+        const next = [
+          ...m,
+          {
+            id: crypto.randomUUID(),
+            role: "user",
+            text: message,
+            createdAt: Date.now(),
+          } as ChatMsg,
+        ];
         messagesRef.current = next;
         return next;
       });
@@ -840,7 +874,10 @@ function DesktopPanel({
 
     setBusy(true);
     armIdleTimer(forceEndOnIdle);
-    setMessages((m) => [...m, { id: crypto.randomUUID(), role: "user", text: message }]);
+    setMessages((m) => [
+      ...m,
+      { id: crypto.randomUUID(), role: "user", text: message, createdAt: Date.now() },
+    ]);
     patchJob({ appendOutput: serializeWire({ kind: "user", text: message }) });
     setInput("");
     try {
@@ -893,29 +930,36 @@ function DesktopPanel({
               busy && m.role === "assistant" && i === messages.length - 1;
             const isAssistant = m.role === "assistant";
             const displayText = m.text;
+            const author =
+              m.role === "user" ? "You" : m.role === "assistant" ? "Claude" : "System";
+            const align = m.role === "user" ? "self-end items-end" : "self-start items-start";
+            const time = formatDistanceToNowStrict(new Date(m.createdAt), { addSuffix: true });
             return (
-              <div
-                key={m.id}
-                className={
-                  m.role === "user"
-                    ? "self-end max-w-[85%] rounded-lg bg-primary/10 px-3 py-2 text-[13px] whitespace-pre-wrap"
-                    : m.role === "system"
-                      ? "self-start max-w-full pl-1 text-[11px] font-mono text-muted-foreground/80 break-all leading-snug"
-                      : isStreaming
-                        ? "self-start max-w-[85%] min-w-0 rounded-lg bg-background px-3 py-2 break-words"
-                        : "self-start max-w-[85%] min-w-0 rounded-lg bg-background px-3 py-2 break-words"
-                }
-              >
-                {isAssistant ? (
-                  <Markdown className="text-[13px]">{displayText}</Markdown>
-                ) : (
-                  m.text
-                )}
-                {isStreaming && (
-                  <span className="ml-1 inline-block align-middle">
-                    <Loader2 className="inline size-3 animate-spin" />
-                  </span>
-                )}
+              <div key={m.id} className={`flex max-w-[85%] flex-col gap-1 ${align}`}>
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <span className="font-medium">{author}</span>
+                  <span title={new Date(m.createdAt).toLocaleString()}>{time}</span>
+                </div>
+                <div
+                  className={
+                    m.role === "user"
+                      ? "rounded-lg bg-primary/10 px-3 py-2 text-[13px] whitespace-pre-wrap"
+                      : m.role === "system"
+                        ? "max-w-full pl-1 text-[11px] font-mono text-muted-foreground/80 break-all leading-snug"
+                        : "min-w-0 rounded-lg bg-background px-3 py-2 break-words"
+                  }
+                >
+                  {isAssistant ? (
+                    <Markdown className="text-[13px]">{displayText}</Markdown>
+                  ) : (
+                    m.text
+                  )}
+                  {isStreaming && (
+                    <span className="ml-1 inline-block align-middle">
+                      <Loader2 className="inline size-3 animate-spin" />
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })}

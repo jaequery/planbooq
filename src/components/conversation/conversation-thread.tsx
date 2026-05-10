@@ -232,14 +232,14 @@ export function ConversationThread({
 
   return (
     <div className="flex h-full flex-col">
-      <div ref={scrollerRef} className="flex-1 space-y-3 overflow-y-auto p-4">
+      <div ref={scrollerRef} className="flex-1 space-y-4 overflow-y-auto px-1 py-2">
         {!loaded ? (
           <div className="flex justify-center py-6 text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
           </div>
         ) : rows.length === 0 ? (
-          <div className="py-6 text-center text-sm text-muted-foreground">
-            No messages yet.
+          <div className="py-6 text-center text-xs text-muted-foreground">
+            No activity yet.
           </div>
         ) : (
           rows.map((r) =>
@@ -251,7 +251,7 @@ export function ConversationThread({
           )
         )}
       </div>
-      <div className="border-t p-3">
+      <div className="pt-3">
         {composerMentions.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {composerMentions.map((m) => (
@@ -287,11 +287,17 @@ export function ConversationThread({
                 void send();
               }
             }}
-            placeholder="Type a message… (⌘↩ to send)"
-            className="min-h-[60px] flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            placeholder="Message… (⌘↩)"
+            className="min-h-[44px] flex-1 resize-none bg-transparent px-1 py-2 text-sm placeholder:text-muted-foreground/60 focus:outline-none"
             disabled={sending}
           />
-          <Button onClick={() => void send()} disabled={sending || !composerBody.trim()} size="sm">
+          <Button
+            onClick={() => void send()}
+            disabled={sending || !composerBody.trim()}
+            size="sm"
+            variant="ghost"
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
             {sending ? <Loader2 className="size-4 animate-spin" /> : "Send"}
           </Button>
         </div>
@@ -362,9 +368,9 @@ function ActivityRow({ activity }: { activity: ServerActivity }): React.ReactEle
     }
   })();
   return (
-    <div className="flex items-center gap-2 pl-10 text-xs text-muted-foreground">
+    <div className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground/80">
       {inner}
-      <span className="ml-auto">{time}</span>
+      <span className="ml-auto tabular-nums">{time}</span>
     </div>
   );
 }
@@ -386,39 +392,26 @@ function MessageRow({ message }: { message: ClientMessage }): React.ReactElement
   const isStreaming = message.status === "STREAMING" || message.status === "PENDING";
 
   return (
-    <div className="flex gap-3">
-      <div className="size-7 shrink-0 rounded-full bg-muted flex items-center justify-center">
-        {message.role === "AGENT" ? (
-          <Bot className="size-4 text-muted-foreground" />
-        ) : message.authorUser?.image ? (
-          // biome-ignore lint/performance/noImgElement: avatar is small, no LCP concern
-          <img src={message.authorUser.image} alt="" className="size-7 rounded-full" />
-        ) : (
-          <span className="text-xs font-medium text-muted-foreground">
-            {authorLabel.slice(0, 1).toUpperCase()}
+    <div className="px-1">
+      <div className="flex items-baseline gap-2 text-[11px] text-muted-foreground/80">
+        <span className="font-medium text-foreground/90">{authorLabel}</span>
+        {isStreaming && (
+          <span className="inline-flex items-center gap-1 text-[10px] text-cyan-500">
+            <Loader2 className="size-2.5 animate-spin" />
+            {message.status === "PENDING" ? "starting" : "running"}
           </span>
         )}
+        {message.status === "ERROR" && (
+          <span className="text-[10px] text-red-500">error</span>
+        )}
+        <span
+          className="ml-auto tabular-nums"
+          title={new Date(message.createdAt).toLocaleString()}
+        >
+          {formatDistanceToNowStrict(message.createdAt, { addSuffix: true })}
+        </span>
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 text-xs">
-          <span className="font-medium">{authorLabel}</span>
-          {isStreaming && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] font-medium text-cyan-500">
-              <Loader2 className="size-2.5 animate-spin" />
-              {message.status === "PENDING" ? "starting" : "running"}
-            </span>
-          )}
-          {message.status === "ERROR" && (
-            <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-500">
-              error
-            </span>
-          )}
-          <span className="text-muted-foreground">
-            {formatDistanceToNowStrict(message.createdAt, { addSuffix: true })}
-          </span>
-        </div>
-        <div className="whitespace-pre-wrap text-sm leading-relaxed">{body}</div>
-      </div>
+      <div className="mt-0.5 whitespace-pre-wrap text-sm leading-relaxed">{body}</div>
     </div>
   );
 }
