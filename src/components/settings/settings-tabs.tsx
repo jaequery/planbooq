@@ -8,7 +8,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useIsDesktop } from "@/lib/use-is-desktop";
 import { cn } from "@/lib/utils";
 
-type TabValue = "appearance" | "api-keys" | "workflows" | "agents" | "local-agents";
+type TabValue = "appearance" | "shortcuts" | "api-keys" | "workflows" | "agents" | "local-agents";
 
 type TabDef = {
   value: TabValue;
@@ -33,6 +33,12 @@ const GROUPS: GroupDef[] = [
         label: "Appearance",
         description: "Theme and display",
         keywords: "appearance theme dark light system display",
+      },
+      {
+        value: "shortcuts",
+        label: "Shortcuts",
+        description: "Keyboard shortcuts",
+        keywords: "shortcuts keyboard hotkey keybinding cmd ctrl",
       },
     ],
   },
@@ -76,6 +82,7 @@ const GROUPS: GroupDef[] = [
 
 type Props = {
   appearance: React.ReactNode;
+  shortcuts: React.ReactNode;
   apiKeys: React.ReactNode;
   workflows: React.ReactNode;
   agents: React.ReactNode;
@@ -84,6 +91,7 @@ type Props = {
 
 export function SettingsTabs({
   appearance,
+  shortcuts,
   apiKeys,
   workflows,
   agents,
@@ -198,6 +206,9 @@ export function SettingsTabs({
       <div className="min-w-0 flex-1">
         <TabsPrimitive.Content value="appearance" className="focus-visible:outline-none">
           {appearance}
+        </TabsPrimitive.Content>
+        <TabsPrimitive.Content value="shortcuts" className="focus-visible:outline-none">
+          {shortcuts}
         </TabsPrimitive.Content>
         <TabsPrimitive.Content value="api-keys" className="focus-visible:outline-none">
           {apiKeys}
