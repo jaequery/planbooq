@@ -37,20 +37,29 @@ type RecordInput = {
 export async function recordTicketPullRequest(
   input: RecordInput,
   client: Prisma.TransactionClient | typeof prisma = prisma,
-): Promise<TicketPullRequest> {
+): Promise<{ row: TicketPullRequest; supersededUrls: string[] }> {
   const now = new Date();
 
-  // Supersede prior open PRs on this ticket, except the one we're recording.
-  await client.ticketPullRequest.updateMany({
+  const superseded = await client.ticketPullRequest.findMany({
     where: {
       ticketId: input.ticketId,
       status: "OPEN",
       url: { not: input.url },
     },
-    data: { status: "SUPERSEDED", supersededAt: now },
+    select: { url: true },
   });
+  if (superseded.length > 0) {
+    await client.ticketPullRequest.updateMany({
+      where: {
+        ticketId: input.ticketId,
+        status: "OPEN",
+        url: { not: input.url },
+      },
+      data: { status: "SUPERSEDED", supersededAt: now },
+    });
+  }
 
-  return client.ticketPullRequest.upsert({
+  const row = await client.ticketPullRequest.upsert({
     where: { ticketId_url: { ticketId: input.ticketId, url: input.url } },
     create: {
       ticketId: input.ticketId,
@@ -72,6 +81,25 @@ export async function recordTicketPullRequest(
       additions: input.additions ?? undefined,
       deletions: input.deletions ?? undefined,
     },
+  });
+
+  return { row, supersededUrls: superseded.map((s) => s.url) };
+}
+
+/**
+ * Backfill: tickets created before the TicketPullRequest table existed have
+ * a `Ticket.prUrl` set but no history row. Insert a best-effort row so the
+ * UI's PR history list isn't empty. We don't know the original status, so
+ * mark it OPEN — a subsequent webhook (or manual fix) will correct it.
+ */
+export async function ensureLegacyPrRecorded(
+  ticketId: string,
+  prUrl: string,
+): Promise<void> {
+  await prisma.ticketPullRequest.upsert({
+    where: { ticketId_url: { ticketId, url: prUrl } },
+    create: { ticketId, url: prUrl, status: "OPEN" },
+    update: {},
   });
 }
 

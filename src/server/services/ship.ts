@@ -91,7 +91,7 @@ export async function shipTicketSvc(
       data: { prUrl: data.prUrl },
     });
 
-    await recordTicketPullRequest({
+    const { supersededUrls } = await recordTicketPullRequest({
       ticketId: ticket.id,
       url: data.prUrl,
       branch: data.branch,
@@ -179,6 +179,14 @@ export async function shipTicketSvc(
     if (data.summary) {
       lines.push("");
       lines.push("> " + data.summary.replace(/\n+/g, " ").trim());
+    }
+    if (supersededUrls.length > 0) {
+      lines.push("");
+      lines.push(
+        `- **Superseded prior open PR${supersededUrls.length === 1 ? "" : "s"}:** ${supersededUrls
+          .map((u) => u)
+          .join(", ")} — close on GitHub manually if you want this branch to fully replace ${supersededUrls.length === 1 ? "it" : "them"}.`,
+      );
     }
     lines.push("");
     lines.push("Next: a human reviews the PR. Merging is intentionally manual.");
