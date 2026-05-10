@@ -135,17 +135,29 @@ echo or log the contents of \`./.planbooq/pbq\`.
 When you've finished the work and are ready for human review, run THIS EXACT
 sequence — no improvisation, no skipping steps:
 
-1. **Detect the default branch.** \`gh repo view --json defaultBranchRef --jq .defaultBranchRef.name\`.
-   Cache as \`$BASE\`. If \`gh\` reports an error (no remote, not authenticated,
-   not a GitHub repo), call \`pbq error\` with \`where:"detect-base"\` and stop.
+1. **Detect the default branch.** Try in this order; cache the first
+   success as \`$BASE\`:
+   - \`gh repo view --json defaultBranchRef --jq .defaultBranchRef.name\`
+     (GitHub repos with \`gh\` installed and authed),
+   - \`git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'\`
+     (works for any remote: GitLab, Bitbucket, self-hosted),
+   - \`git remote show origin | awk '/HEAD branch/ {print $NF}'\` as a last resort.
+   If all three fail (no remote at all, or unreachable), call \`pbq error\`
+   with \`where:"detect-base"\` and stop.
 2. **Stage + commit** all your changes. Use a clear, conventional commit
    message — subject ≤ 72 chars, imperative mood. Body explains *why* the
    change is needed. Multiple logical changes → multiple commits.
 3. **Push the working branch.** \`git push -u origin HEAD\`. If the remote
    rejects (non-fast-forward, protected branch, auth), call \`pbq error\` with
    \`where:"push"\` and stop.
-4. **Open the PR.** \`gh pr create --base "$BASE" --title "<short, ticket-style title>" --body "<body>"\`.
-   The body should:
+4. **Open the PR.** Prefer \`gh pr create --base "$BASE" --title "<short, ticket-style title>" --body "<body>"\`
+   for GitHub remotes. If \`gh\` is unavailable or the remote is GitLab /
+   Bitbucket / self-hosted, derive the compare URL from
+   \`git remote get-url origin\` (e.g. GitLab:
+   \`<host>/<repo>/-/merge_requests/new?merge_request[source_branch]=<branch>\`,
+   Bitbucket: \`<host>/<repo>/pull-requests/new?source=<branch>&dest=$BASE\`)
+   and ask the user to open it; capture the resulting PR/MR URL once they
+   paste it back, then continue to step 5. The body should:
    - one-sentence summary of the change,
    - bulleted "What changed" list (3–6 items max),
    - any screenshots/asset links if relevant,
@@ -186,6 +198,49 @@ Hard rules:
   // Write as PLANBOOQ.md — agent-agnostic ticket context that won't clobber
   // a project's CLAUDE.md or any other tool-specific instruction file.
   await fs.writeFile(path.join(wtPath, "PLANBOOQ.md"), claudeMd);
+
+  // Hide bootstrap files from the user's `git status` without touching the
+  // project's tracked .gitignore. .git/info/exclude is worktree-local and
+  // never committed — exactly what we want for ephemeral session artifacts.
+  // Also defends against accidental commit of the 7-day API token in pbq.
+  try {
+    // In a git worktree, $GIT_DIR is .git/worktrees/<name>/. The exclude file
+    // we want is the one in *that* dir so the rules are scoped to this
+    // worktree only, not leaked into other worktrees of the same repo.
+    const gitFile = path.join(wtPath, ".git");
+    let gitDir = gitFile;
+    try {
+      const stat = await fs.stat(gitFile);
+      if (stat.isFile()) {
+        // worktree: .git is a pointer file like "gitdir: /abs/path/.git/worktrees/foo"
+        const contents = await fs.readFile(gitFile, "utf8");
+        const m = contents.match(/^gitdir:\s*(.+)$/m);
+        if (m?.[1]) gitDir = m[1].trim();
+      }
+    } catch {
+      // .git doesn't exist (non-git project) — skip silently.
+      gitDir = "";
+    }
+    if (gitDir) {
+      const infoDir = path.join(gitDir, "info");
+      const excludePath = path.join(infoDir, "exclude");
+      await fs.mkdir(infoDir, { recursive: true });
+      let existing = "";
+      try {
+        existing = await fs.readFile(excludePath, "utf8");
+      } catch {
+        // file may not exist yet
+      }
+      const marker = "# planbooq-bootstrap";
+      if (!existing.includes(marker)) {
+        const block = `\n${marker}\nPLANBOOQ.md\n.planbooq/\n`;
+        await fs.writeFile(excludePath, existing + block);
+      }
+    }
+  } catch {
+    // Non-fatal — bootstrap files just show up as untracked. Don't block
+    // the session start over a cosmetic issue.
+  }
 }
 
 async function isGitRepo(p: string): Promise<boolean> {
