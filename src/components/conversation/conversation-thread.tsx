@@ -80,7 +80,9 @@ export function ConversationThread({
       const json = (await r.json()) as { ok: boolean; data?: { items: ServerTimelineRow[] } };
       const items = json.ok && json.data ? json.data.items : [];
       const messageIds = items
-        .filter((row): row is Extract<ServerTimelineRow, { kind: "message" }> => row.kind === "message")
+        .filter(
+          (row): row is Extract<ServerTimelineRow, { kind: "message" }> => row.kind === "message",
+        )
         .map((row) => row.messageId);
       if (messageIds.length > 0) {
         // Hydrate via the per-conversation list endpoint (one query, includes
@@ -186,7 +188,20 @@ export function ConversationThread({
     const out: Row[] = [];
     for (const id of order) {
       const m = messages.get(id);
-      if (m) out.push({ kind: "message", createdAt: new Date(m.createdAt).getTime(), message: m });
+      if (!m) continue;
+      // Legacy: pre-rewrite mirror wrote the entire WireEvent JSONL transcript
+      // into a single SYSTEM message body. Those rows are still in the DB but
+      // are now superseded by the per-turn USER/AGENT rows the new mirror
+      // emits — so don't render them. Detected by a body that starts with a
+      // WireEvent JSON envelope, OR an empty SYSTEM row left over from the
+      // old "create paired message up front, append later" path that never
+      // received any chunks.
+      if (m.role === "SYSTEM" && m.agentJobId) {
+        const body = typeof m.body === "string" ? m.body : "";
+        if (body.length === 0) continue;
+        if (/^\s*\{"kind":"(user|agent|stderr|exit)"/.test(body)) continue;
+      }
+      out.push({ kind: "message", createdAt: new Date(m.createdAt).getTime(), message: m });
     }
     for (const a of activities) {
       out.push({ kind: "activity", createdAt: new Date(a.createdAt).getTime(), activity: a });
@@ -238,9 +253,7 @@ export function ConversationThread({
             <Loader2 className="size-4 animate-spin" />
           </div>
         ) : rows.length === 0 ? (
-          <div className="py-6 text-center text-xs text-muted-foreground">
-            No activity yet.
-          </div>
+          <div className="py-6 text-center text-xs text-muted-foreground">No activity yet.</div>
         ) : (
           rows.map((r) =>
             r.kind === "message" ? (
@@ -265,7 +278,9 @@ export function ConversationThread({
                   type="button"
                   onClick={() =>
                     setComposerMentions((prev) =>
-                      prev.filter((x) => !(x.targetType === m.targetType && x.targetId === m.targetId)),
+                      prev.filter(
+                        (x) => !(x.targetType === m.targetType && x.targetId === m.targetId),
+                      ),
                     )
                   }
                   className="ml-1 text-muted-foreground hover:text-foreground"
@@ -362,9 +377,7 @@ function ActivityRow({ activity }: { activity: ServerActivity }): React.ReactEle
         );
       }
       default:
-        return (
-          <span>{typeof p.text === "string" ? p.text : "Update"}</span>
-        );
+        return <span>{typeof p.text === "string" ? p.text : "Update"}</span>;
     }
   })();
   return (
@@ -384,10 +397,10 @@ function MessageRow({ message }: { message: ClientMessage }): React.ReactElement
 
   const authorLabel =
     message.role === "AGENT"
-      ? message.authorAgent?.name ?? "Agent"
+      ? (message.authorAgent?.name ?? "Agent")
       : message.role === "SYSTEM"
         ? "System"
-        : message.authorUser?.name ?? message.authorUser?.email ?? "User";
+        : (message.authorUser?.name ?? message.authorUser?.email ?? "User");
 
   const isStreaming = message.status === "STREAMING" || message.status === "PENDING";
 
@@ -401,13 +414,8 @@ function MessageRow({ message }: { message: ClientMessage }): React.ReactElement
             {message.status === "PENDING" ? "starting" : "running"}
           </span>
         )}
-        {message.status === "ERROR" && (
-          <span className="text-[10px] text-red-500">error</span>
-        )}
-        <span
-          className="ml-auto tabular-nums"
-          title={new Date(message.createdAt).toLocaleString()}
-        >
+        {message.status === "ERROR" && <span className="text-[10px] text-red-500">error</span>}
+        <span className="ml-auto tabular-nums" title={new Date(message.createdAt).toLocaleString()}>
           {formatDistanceToNowStrict(message.createdAt, { addSuffix: true })}
         </span>
       </div>

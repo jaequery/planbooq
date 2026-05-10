@@ -199,6 +199,7 @@ export const reapStaleAgentJobs = inngest.createFunction(
               workspaceId: job.workspaceId,
               ticketId: job.ticketId,
               agentId: job.agentId,
+              kind: job.kind,
             } as Parameters<typeof mirrorJobTerminal>[0]["job"],
             status: "FAILED",
             finalOutput: "",
@@ -306,6 +307,7 @@ export const reapStaleAgentJobs = inngest.createFunction(
               workspaceId: true,
               ticketId: true,
               agentId: true,
+              kind: true,
               status: true,
               output: true,
             },
@@ -327,6 +329,7 @@ export const reapStaleAgentJobs = inngest.createFunction(
               workspaceId: job.workspaceId,
               ticketId: job.ticketId,
               agentId: job.agentId,
+              kind: job.kind,
             } as Parameters<typeof mirrorJobTerminal>[0]["job"],
             status,
             finalOutput: job.output ?? "",
@@ -360,9 +363,7 @@ async function resolveVercelPreviewUrl(opts: {
   prUrl: string;
   userId: string;
 }): Promise<string | null> {
-  const m = opts.prUrl.match(
-    /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/,
-  );
+  const m = opts.prUrl.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
   if (!m) return null;
   const [, owner, repo, prNumber] = m;
 
@@ -542,9 +543,7 @@ export const captureTicketScreenshots = inngest.createFunction(
               await pcli("goto", target);
               await pcli("screenshot", `--filename=${shotPath}`);
               const buf = await fs.readFile(shotPath);
-              const { addTicketPreviewSvc } = await import(
-                "@/server/services/ticket-preview"
-              );
+              const { addTicketPreviewSvc } = await import("@/server/services/ticket-preview");
               const res = await addTicketPreviewSvc({
                 caller,
                 ticketId: data.ticketId,
@@ -607,8 +606,4 @@ export const captureTicketScreenshots = inngest.createFunction(
   },
 );
 
-export const inngestFunctions = [
-  ticketCreated,
-  reapStaleAgentJobs,
-  captureTicketScreenshots,
-];
+export const inngestFunctions = [ticketCreated, reapStaleAgentJobs, captureTicketScreenshots];
