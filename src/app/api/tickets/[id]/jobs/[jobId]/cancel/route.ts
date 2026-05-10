@@ -86,6 +86,7 @@ export async function POST(
     ticketId,
     byUserId: userId,
     excludeJobId: jobId,
+    jobStatus: "CANCELED",
   }).catch(() => undefined);
 
   return NextResponse.json({ ok: true, data: { status: "CANCELED" } });

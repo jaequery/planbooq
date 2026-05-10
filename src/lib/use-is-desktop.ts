@@ -27,6 +27,7 @@ type DesktopBridge = {
       apiBaseUrl: string;
       apiToken: string;
     };
+    attachments?: Array<{ id: string; ext: string; base64: string }>;
   }) => Promise<{
     ok: boolean;
     error?: string;
@@ -69,6 +70,13 @@ type DesktopBridge = {
     dataBase64: string;
     ext: string;
   }) => Promise<{ ok: boolean; path?: string; error?: string }>;
+  writeAttachments?: (input: {
+    worktreePath: string;
+    items: Array<{ id: string; ext: string; base64: string }>;
+  }) => Promise<
+    | { ok: true; items: Array<{ id: string; relPath: string }> }
+    | { ok: false; error: string }
+  >;
   pullMain?: (input: {
     repoPath: string;
   }) => Promise<

@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
 import {
   getAgentSessionByTicket,
+  markSessionStoppedByUser,
   registerAgentSession,
   unregisterAgentSession,
 } from "@/lib/agent-session-manager";
@@ -304,6 +305,89 @@ function looksLikeAwaitingUser(text: string): boolean {
   return /\b(should i|would you like|do you want|let me know|please (confirm|advise|clarify|provide|let me know|choose|pick|decide)|which (one|option|approach|do you)|need (your|you to) (input|confirmation|approval|decision|answer)|waiting (on|for) you|ready for you to|confirm( |\?|$)|approve( |\?|$)|default is\b[^.]*\bunless\b|unless you (say|tell|specify|prefer|want|choose)|say otherwise|tell me which|pick (one|a|an option))/i.test(
     tail,
   );
+}
+
+// Walk a chunk of outgoing user text for /api/attachments/<id> URLs, fetch the
+// bytes via the browser session (which has cookie auth), and ask the desktop
+// bridge to write them under <worktree>/.planbooq/attachments/<id>.<ext> so
+// the Claude subprocess can `Read` them as plain files instead of curling an
+// auth-protected HTTP URL. Returns the message with each URL rewritten to its
+// local relative path. Falls back to the original text on any failure — the
+// agent will see the raw URL and surface a clear error rather than silently
+// poisoning its session with garbage bytes.
+async function materializeAttachmentsAndRewrite(
+  text: string,
+  worktreePath: string | null,
+): Promise<{
+  text: string;
+  items: Array<{ id: string; ext: string; base64: string }>;
+}> {
+  const re = /\/api\/attachments\/([a-z0-9_-]+)/gi;
+  const ids = Array.from(
+    new Set(
+      Array.from(text.matchAll(re), (m) => m[1]).filter(
+        (s): s is string => typeof s === "string" && s.length > 0,
+      ),
+    ),
+  );
+  if (ids.length === 0) return { text, items: [] };
+
+  const items: Array<{ id: string; ext: string; base64: string }> = [];
+  for (const id of ids) {
+    try {
+      const r = await fetch(`/api/attachments/${id}`);
+      if (!r.ok) continue;
+      const ct = (r.headers.get("content-type") ?? "").toLowerCase();
+      const ext = ct.includes("png")
+        ? "png"
+        : ct.includes("jpeg") || ct.includes("jpg")
+          ? "jpg"
+          : ct.includes("gif")
+            ? "gif"
+            : ct.includes("webp")
+              ? "webp"
+              : ct.includes("svg")
+                ? "svg"
+                : "bin";
+      const buf = new Uint8Array(await r.arrayBuffer());
+      // btoa(String.fromCharCode(...)) blows the call-stack on large buffers;
+      // chunk through 32KB windows to keep arg counts safe.
+      let bin = "";
+      for (let i = 0; i < buf.length; i += 0x8000) {
+        bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+      }
+      items.push({ id, ext, base64: btoa(bin) });
+    } catch {
+      // skip — agent will surface the missing attachment normally.
+    }
+  }
+
+  if (items.length === 0) return { text, items: [] };
+
+  // If we already have a worktree, write now so the agent sees real files
+  // even if the cold-start path doesn't get to do it (mid-session sends).
+  // Cold start passes items={items} to bridge.agentStart and that path
+  // performs the same rewrite server-side after the worktree exists.
+  let rewritten = text;
+  if (worktreePath) {
+    const bridge = getDesktopBridge();
+    const w = await bridge?.writeAttachments?.({ worktreePath, items });
+    if (w?.ok) {
+      for (const it of w.items) {
+        const re2 = new RegExp(`/api/attachments/${it.id}\\b`, "g");
+        rewritten = rewritten.replace(re2, `./${it.relPath}`);
+      }
+    }
+  } else {
+    // No worktree yet — pre-rewrite to the conventional location the bridge
+    // will use. agent:start IPC will mirror this rewrite after creating the
+    // worktree, so the on-disk paths line up either way.
+    for (const it of items) {
+      const re2 = new RegExp(`/api/attachments/${it.id}\\b`, "g");
+      rewritten = rewritten.replace(re2, `./.planbooq/attachments/${it.id}.${it.ext}`);
+    }
+  }
+  return { text: rewritten, items };
 }
 
 function serializeWire(ev: WireEvent): string {
@@ -826,11 +910,17 @@ function DesktopPanel({
       } catch {}
 
       if (canResume) {
+        // Worktree exists — write any new attachments and rewrite URLs before
+        // the message reaches Claude.
+        const { text: resumeMessage } = await materializeAttachmentsAndRewrite(
+          message,
+          worktreePath!,
+        );
         try {
           const res = await bridge.agentResume({
             worktreePath: worktreePath!,
             claudeSessionId: claudeSessionId!,
-            message,
+            message: resumeMessage,
             ticket: ticketCtx,
           });
           if (!res.ok || !res.sessionId) {
@@ -881,13 +971,19 @@ function DesktopPanel({
         .trim();
       const branch = `pbq-${ticketId.slice(0, 8)}-${Date.now().toString(36)}`;
 
+      // No worktree yet — pre-rewrite the seed to the conventional path the
+      // bridge will use; the bridge then writes the files alongside.
+      const { text: rewrittenSeed, items: seedAttachments } =
+        await materializeAttachmentsAndRewrite(seed, null);
+
       let res: Awaited<ReturnType<typeof bridge.agentStart>>;
       try {
         res = await bridge.agentStart({
           repoPath: path,
           branch,
-          firstMessage: seed,
+          firstMessage: rewrittenSeed,
           ticket: ticketCtx,
+          attachments: seedAttachments,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -925,8 +1021,15 @@ function DesktopPanel({
     ]);
     patchJob({ appendOutput: serializeWire({ kind: "user", text: message }) });
     setInput("");
+    // Materialize attachments into the existing worktree before sending so
+    // the agent can `Read` them as local files instead of curling an
+    // auth-protected URL.
+    const { text: sendMessage } = await materializeAttachmentsAndRewrite(
+      message,
+      worktreePath,
+    );
     try {
-      const res = await bridge.agentSend({ sessionId, message });
+      const res = await bridge.agentSend({ sessionId, message: sendMessage });
       if (!res.ok) {
         toast.error(res.error ?? "Send failed");
         setBusy(false);
@@ -943,6 +1046,11 @@ function DesktopPanel({
     const bridge = getDesktopBridge();
     if (!bridge || !sessionId) return;
     clearIdleTimer();
+    // Mark BEFORE invoking agentStop so the resulting exit event is
+    // classified as CANCELED (user intent) instead of FAILED. Without this,
+    // the ticket would land in `blocked` even though the user explicitly
+    // stopped — we want `todo` in that case.
+    markSessionStoppedByUser(sessionId);
     await bridge.agentStop({ sessionId });
   };
 

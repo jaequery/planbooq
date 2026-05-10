@@ -72,4 +72,63 @@ export function registerFilesIpc(): void {
       }
     },
   );
+
+  ipcMain.handle(
+    "planbooq:files:writeAttachments",
+    async (
+      _,
+      input: {
+        worktreePath: string;
+        items: Array<{ id: string; ext: string; base64: string }>;
+      },
+    ) => {
+      const r = await writeAttachmentsToWorktree(
+        input?.worktreePath ?? "",
+        input?.items ?? [],
+      );
+      return r;
+    },
+  );
+}
+
+// Materialize attachments under <worktree>/.planbooq/attachments/<id>.<ext>
+// so the Claude subprocess can `Read` them as plain files instead of fetching
+// HTTP URLs that require browser session auth. Exported so the agent IPC can
+// call it directly during cold start (between worktree creation and the first
+// claude spawn) without bouncing through the renderer.
+export async function writeAttachmentsToWorktree(
+  worktreePath: string,
+  items: Array<{ id: string; ext: string; base64: string }>,
+): Promise<{ ok: true; items: Array<{ id: string; relPath: string }> } | { ok: false; error: string }> {
+  if (!worktreePath || !path.isAbsolute(worktreePath)) {
+    return { ok: false, error: "invalid_path" };
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    return { ok: true, items: [] };
+  }
+  try {
+    const dir = path.join(worktreePath, ".planbooq", "attachments");
+    await fs.mkdir(dir, { recursive: true });
+    const written: Array<{ id: string; relPath: string }> = [];
+    for (const item of items) {
+      if (!item || typeof item.id !== "string" || typeof item.base64 !== "string") continue;
+      const safeId = item.id.replace(/[^a-z0-9_-]/gi, "");
+      const safeExt = (item.ext ?? "")
+        .replace(/[^a-z0-9]/gi, "")
+        .toLowerCase()
+        .slice(0, 5) || "bin";
+      if (!safeId) continue;
+      const filename = `${safeId}.${safeExt}`;
+      const full = path.join(dir, filename);
+      // Defense-in-depth: ensure no escape from the attachments dir.
+      const resolved = path.resolve(full);
+      if (!resolved.startsWith(`${path.resolve(dir)}${path.sep}`)) continue;
+      await fs.writeFile(full, Buffer.from(item.base64, "base64"));
+      written.push({ id: safeId, relPath: path.posix.join(".planbooq", "attachments", filename) });
+    }
+    return { ok: true, items: written };
+  } catch (err: unknown) {
+    const code = (err as { code?: string }).code;
+    return { ok: false, error: code ?? "write_failed" };
+  }
 }

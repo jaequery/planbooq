@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld("planbooq", {
       apiBaseUrl: string;
       apiToken: string;
     };
+    attachments?: Array<{ id: string; ext: string; base64: string }>;
   }) => ipcRenderer.invoke("planbooq:agent:start", input),
   agentResume: (input: {
     worktreePath: string;
@@ -48,6 +49,10 @@ contextBridge.exposeInMainWorld("planbooq", {
     ipcRenderer.invoke("planbooq:files:write", input),
   saveClipboardImage: (input: { dataBase64: string; ext: string }) =>
     ipcRenderer.invoke("planbooq:files:saveClipboardImage", input),
+  writeAttachments: (input: {
+    worktreePath: string;
+    items: Array<{ id: string; ext: string; base64: string }>;
+  }) => ipcRenderer.invoke("planbooq:files:writeAttachments", input),
   pullMain: (input: { repoPath: string }) =>
     ipcRenderer.invoke("planbooq:git:pullMain", input),
   onAgentEvent: (cb: (e: unknown) => void) => {

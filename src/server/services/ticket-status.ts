@@ -122,14 +122,19 @@ export async function autoTransitionPlanningToTodo(args: {
  * unconditionally — no-ops unless the ticket is currently `building` and no
  * other RUNNING AgentJob exists for it.
  *
- * Status pick: PR-based when possible (review/completed/blocked); otherwise
- * `todo` so the card is no longer falsely "Running" and the user can decide
- * what to do next.
+ * Status pick:
+ *   - PR present: outcome of the PR (review/completed/blocked).
+ *   - No PR, jobStatus=CANCELED: user explicitly stopped → `todo`.
+ *   - No PR, jobStatus=SUCCEEDED or FAILED (or unknown): the agent yielded
+ *     its turn without shipping a PR, which in this product can only mean
+ *     "waiting on the human" → `blocked`. Erring toward `blocked` over `todo`
+ *     keeps stranded cards visible instead of silently bucketed.
  */
 export async function reconcileBuildingTicket(args: {
   ticketId: string;
   byUserId?: string | null;
   excludeJobId?: string | null;
+  jobStatus?: "SUCCEEDED" | "FAILED" | "CANCELED" | null;
 }): Promise<{ moved: string | null; reason: string }> {
   const ticket = await prisma.ticket.findUnique({
     where: { id: args.ticketId },
@@ -199,7 +204,19 @@ export async function reconcileBuildingTicket(args: {
     }
   }
 
-  if (!target) target = pick("todo");
+  if (!target) {
+    // No PR (or PR lookup failed). The triggering job's status decides the
+    // fallback: an explicit user-Stop = `todo`; any other terminal state
+    // (clean turn end with no PR, hard process failure, unknown) = `blocked`,
+    // because the agent has stopped and a human needs to look at the card.
+    if (args.jobStatus === "CANCELED") {
+      target = pick("todo");
+      reason = `${reason}-canceled`;
+    } else {
+      target = pick("blocked") ?? pick("todo");
+      reason = `${reason}-${args.jobStatus?.toLowerCase() ?? "unknown"}`;
+    }
+  }
   if (!target || target === "building") {
     return { moved: null, reason: `${reason}-noop` };
   }

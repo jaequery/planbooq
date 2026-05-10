@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import log from "electron-log/main";
+import { writeAttachmentsToWorktree } from "./files";
 import { WorktreeNameError, formatWorktreeName } from "./worktree-name";
 
 type Session = { proc: ChildProcess; cwd: string };
@@ -301,6 +302,7 @@ export function registerAgentIpc(): void {
         branch: string;
         firstMessage: string;
         ticket?: TicketContext;
+        attachments?: Array<{ id: string; ext: string; base64: string }>;
       },
     ) => {
       if (!input?.repoPath || !input?.branch || !input?.firstMessage)
@@ -385,9 +387,30 @@ export function registerAgentIpc(): void {
         }
       }
 
+      // Materialize any /api/attachments/<id> bytes into the worktree and
+      // rewrite the firstMessage URLs to relative paths the agent can `Read`
+      // directly. Without this the subprocess can't auth-fetch the URL and
+      // either saves a JSON 401 body as a "PNG" or corrupts the conversation.
+      let firstMessage = input.firstMessage;
+      if (Array.isArray(input.attachments) && input.attachments.length > 0) {
+        const written = await writeAttachmentsToWorktree(wtPath, input.attachments);
+        if (written.ok) {
+          for (const w of written.items) {
+            const re = new RegExp(`/api/attachments/${w.id}\\b`, "g");
+            firstMessage = firstMessage.replace(re, `./${w.relPath}`);
+          }
+        } else {
+          emit({
+            type: "stderr",
+            sessionId,
+            line: `[planbooq] could not write attachments: ${written.error}\n`,
+          });
+        }
+      }
+
       const proc = spawnClaude(wtPath, sessionId, { ticket: input.ticket });
       sessions.set(sessionId, { proc, cwd: wtPath });
-      proc.stdin?.write(userMessage(input.firstMessage));
+      proc.stdin?.write(userMessage(firstMessage));
 
       return { ok: true, sessionId, worktreePath: wtPath };
     },

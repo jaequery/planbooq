@@ -222,6 +222,7 @@ export const reapStaleAgentJobs = inngest.createFunction(
             ticketId: job.ticketId,
             byUserId: job.userId,
             excludeJobId: job.id,
+            jobStatus: "FAILED",
           }).catch((error: unknown) => {
             logger.warn("ticket.reconcile.failed", {
               ticketId: job.ticketId,

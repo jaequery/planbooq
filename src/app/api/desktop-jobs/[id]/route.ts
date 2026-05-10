@@ -148,6 +148,7 @@ export async function PATCH(
       ticketId: job.ticketId,
       byUserId: job.userId ?? userId,
       excludeJobId: job.id,
+      jobStatus: parsed.data.status as "SUCCEEDED" | "FAILED" | "CANCELED",
     }).catch(() => undefined);
   }
 

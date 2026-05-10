@@ -32,6 +32,14 @@ type WireEvent =
   | { kind: "user"; text: string };
 
 const sessions = new Map<string, Registration>();
+// Sessions the user explicitly Stopped (via the Stop button). Used to
+// disambiguate the resulting child-process exit from an OS-driven kill
+// (SIGKILL/OOM/crash) so the AgentJob terminal status reflects intent:
+// user-Stop → CANCELED → ticket moves to `todo`; OS-kill → FAILED →
+// ticket moves to `blocked` so a human notices. Without this, every
+// non-zero exit looked like a generic FAILED and every zero exit looked
+// like SUCCEEDED, regardless of who pulled the plug.
+const stoppedByUser = new Set<string>();
 let started = false;
 
 // Coalesce per-line appendOutput into ~250ms batches so a chatty `claude`
@@ -99,9 +107,15 @@ function handle(e: AgentEvent): void {
     const pending = buf?.text ?? "";
     if (buf?.timer) clearTimeout(buf.timer);
     buffers.delete(reg.jobId);
+    const userStopped = stoppedByUser.delete(e.sessionId);
+    const status: "SUCCEEDED" | "FAILED" | "CANCELED" = userStopped
+      ? "CANCELED"
+      : e.code === 0
+        ? "SUCCEEDED"
+        : "FAILED";
     patchJob(reg.jobId, {
       appendOutput: pending + serializeWire(wire),
-      status: e.code === 0 ? "SUCCEEDED" : "FAILED",
+      status,
       exitCode: e.code,
     });
     sessions.delete(e.sessionId);
@@ -135,6 +149,16 @@ export function registerAgentSession(sessionId: string, reg: Registration): void
 
 export function unregisterAgentSession(sessionId: string): void {
   sessions.delete(sessionId);
+  stoppedByUser.delete(sessionId);
+}
+
+/**
+ * Mark a session as being stopped by the user (via the Stop button) so the
+ * imminent `exit` event is classified as CANCELED instead of FAILED. Idempotent.
+ * Cleared automatically when the exit fires or the session is unregistered.
+ */
+export function markSessionStoppedByUser(sessionId: string): void {
+  stoppedByUser.add(sessionId);
 }
 
 export function isAgentSessionRegistered(sessionId: string): boolean {
