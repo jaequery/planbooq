@@ -12,6 +12,7 @@ import {
   decideEndOfRunStatus,
   getTicketWorkflow,
   getWorkflowStatusContext,
+  logWorkflowActivity,
 } from "@/actions/workflow";
 import { TicketWorkflowPanel } from "@/components/board/ticket-workflow-panel";
 import { Button } from "@/components/ui/button";
@@ -81,6 +82,9 @@ type ParsedEvent = {
   type?: string;
   subtype?: string;
   session_id?: string;
+  is_error?: boolean;
+  result?: string;
+  error?: string;
   message?: { content?: AssistantBlock[] };
   event?: StreamInner;
 };
@@ -140,7 +144,12 @@ function applyWireEvent(
   ev: WireEvent,
   msgs: ChatMsg[],
   currentAssistantIdRef: { current: string | null },
-): { msgs: ChatMsg[]; claudeSessionId?: string | null; ended?: boolean } {
+): {
+  msgs: ChatMsg[];
+  claudeSessionId?: string | null;
+  ended?: boolean;
+  errorEnd?: { subtype?: string; summary: string };
+} {
   const at = ev.at ?? Date.now();
   if (ev.kind === "user") {
     return {
@@ -252,6 +261,26 @@ function applyWireEvent(
   }
   if (parsed.type === "result") {
     currentAssistantIdRef.current = null;
+    const isError =
+      parsed.is_error === true ||
+      (typeof parsed.subtype === "string" && /^error/i.test(parsed.subtype));
+    if (isError) {
+      // Pick the best human-readable summary the SDK gave us. Falls back to
+      // the most recent assistant text — that's usually where the error
+      // surfaced (e.g. "API Error: 400 Could not process image").
+      const lastAssistant = [...msgs].reverse().find((m) => m.role === "assistant");
+      const summary =
+        (typeof parsed.error === "string" && parsed.error.trim()) ||
+        (typeof parsed.result === "string" && parsed.result.trim()) ||
+        (lastAssistant ? lastAssistant.text.slice(-300) : "") ||
+        parsed.subtype ||
+        "Run failed";
+      return {
+        msgs,
+        ended: true,
+        errorEnd: { subtype: parsed.subtype, summary },
+      };
+    }
     return { msgs, ended: true };
   }
   return { msgs };
@@ -623,6 +652,22 @@ function DesktopPanel({
         setBusy(false);
         if (wire.kind === "exit") {
           setSessionId(null);
+        }
+        // An error result (Claude SDK is_error / subtype error_*) is treated
+        // as "agent stopped, user must intervene": force Blocked, log a NOTE
+        // activity so the rail shows it, and skip the awaiting/decide path
+        // (which would otherwise try to land a normal terminal status).
+        if (r.errorEnd) {
+          if (statusKeyRef.current !== "blocked") {
+            statusKeyRef.current = "blocked";
+            void applyWorkflowStatusSuggestion(ticketId, "blocked").catch(() => {});
+          }
+          const summary = r.errorEnd.summary.replace(/\s+/g, " ").trim();
+          const note = summary
+            ? `Agent error: ${summary.slice(0, 480)}`
+            : `Agent error${r.errorEnd.subtype ? ` (${r.errorEnd.subtype})` : ""}`;
+          void logWorkflowActivity({ ticketId, text: note }).catch(() => {});
+          return;
         }
         // Only auto-block on a normal `result` end-of-turn — not on a
         // hard exit, where the process is gone and the user isn't really

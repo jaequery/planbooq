@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { AgentJob, MessageRole, MessageStatus } from "@prisma/client";
+import type { AgentJob, MessageRole, MessageStatus, Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
@@ -154,6 +154,9 @@ type AssistantBlock = {
 type ParsedClaude = {
   type?: string;
   subtype?: string;
+  is_error?: boolean;
+  result?: string;
+  error?: string;
   message?: { content?: AssistantBlock[] };
   event?: {
     type?: string;
@@ -552,6 +555,71 @@ async function applyClaudeLine(
 
   if (parsed.type === "result") {
     turnEnded = true;
+    const isError =
+      parsed.is_error === true ||
+      (typeof parsed.subtype === "string" && /^error/i.test(parsed.subtype));
+    if (isError) {
+      const summary =
+        (typeof parsed.error === "string" && parsed.error.trim()) ||
+        (typeof parsed.result === "string" && parsed.result.trim()) ||
+        state.agentBody.slice(-300).trim() ||
+        parsed.subtype ||
+        "Run failed";
+      // Mark the open agent turn as ERROR rather than COMPLETE so the bubble
+      // renders with the error treatment instead of looking like a normal
+      // reply, and broadcast so any open panel updates immediately.
+      if (state.agentMessageId) {
+        const messageId = state.agentMessageId;
+        await prisma.message.update({
+          where: { id: messageId },
+          data: { body: state.agentBody, status: "ERROR" },
+        });
+        await publishWorkspaceEvent(job.workspaceId!, {
+          name: "message.updated",
+          workspaceId: job.workspaceId!,
+          conversationId: state.conversationId,
+          ticketId: job.ticketId,
+          messageId,
+          status: "ERROR",
+          body: state.agentBody,
+        });
+        state.agentMessageId = null;
+        state.agentBody = "";
+        state.agentSealedByAssistant = false;
+      }
+      // Server-side activity log so the right rail records the failure even
+      // when the panel that produced the run is no longer open.
+      try {
+        const text = `Agent error: ${summary.replace(/\s+/g, " ").slice(0, 480)}`;
+        const activity = await prisma.ticketActivity.create({
+          data: {
+            ticketId: job.ticketId,
+            workspaceId: job.workspaceId!,
+            jobId: job.id,
+            kind: "NOTE",
+            payload: { text } as Prisma.InputJsonValue,
+          },
+          select: { id: true, kind: true, payload: true, jobId: true, createdAt: true },
+        });
+        await publishWorkspaceEvent(job.workspaceId!, {
+          name: "ticket.activity",
+          workspaceId: job.workspaceId!,
+          ticketId: job.ticketId,
+          activity: {
+            id: activity.id,
+            kind: activity.kind,
+            payload: activity.payload as Record<string, unknown>,
+            jobId: activity.jobId,
+            createdAt: activity.createdAt.toISOString(),
+          },
+        });
+      } catch (err) {
+        logger.warn("mirror.activity.error.failed", {
+          jobId: job.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
     return { textAppended, turnEnded };
   }
 
