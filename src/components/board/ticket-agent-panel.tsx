@@ -462,10 +462,26 @@ function DesktopPanel({
   const messagesRef = useRef<ChatMsg[]>([]);
   const setBlockedIfAwaiting = () => {
     if (statusKeyRef.current !== "building") return;
-    const lastAssistant = [...messagesRef.current]
-      .reverse()
-      .find((m) => m.role === "assistant");
-    if (!lastAssistant || !looksLikeAwaitingUser(lastAssistant.text)) return;
+    // Concatenate every assistant message since the last user message.
+    // Claude Code emits a fresh assistant bubble after every tool round-trip,
+    // so a single turn frequently looks like [big-bubble-with-question?,
+    // tool-call, tiny-trailing-bubble-with-no-?]. Reading only the last
+    // bubble silently misses the question — which is exactly how a ticket
+    // gets stranded in Running when the agent asked "should we X?" and
+    // then ended the turn with "Proceeding to Y."
+    const msgs = messagesRef.current;
+    const lastUserIdx = (() => {
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i]!.role === "user") return i;
+      }
+      return -1;
+    })();
+    const turnText = msgs
+      .slice(lastUserIdx + 1)
+      .filter((m) => m.role === "assistant")
+      .map((m) => m.text)
+      .join("\n\n");
+    if (!turnText || !looksLikeAwaitingUser(turnText)) return;
     statusKeyRef.current = "blocked";
     void applyWorkflowStatusSuggestion(ticketId, "blocked").catch(() => {});
   };
@@ -753,22 +769,33 @@ function DesktopPanel({
           void logWorkflowActivity({ ticketId, text: note }).catch(() => {});
           return;
         }
-        // Only auto-block on a normal `result` end-of-turn — not on a
-        // hard exit, where the process is gone and the user isn't really
-        // being prompted, just stranded. Skip while the workflow queue is
-        // still draining (the next prompt will fire immediately).
-        if (workflowQueueRef.current.length === 0) {
-          const wasBuilding = statusKeyRef.current === "building";
-          if (wire.kind !== "exit") {
-            setBlockedIfAwaiting();
-          }
-          // If setBlockedIfAwaiting didn't move us out of building (no
-          // question detected) — or this was a hard exit — try to land
-          // the ticket in the right terminal column. Without this, runs
-          // that finish cleanly strand the card in Running forever.
-          if (wasBuilding && statusKeyRef.current === "building") {
-            void decideEndOfRun();
-          }
+        // End-of-turn: always evaluate where the ticket should land. Workflow
+        // steps no longer auto-chain, so there is no "queue still draining"
+        // case to bail out for. If a workflow had remaining steps queued, the
+        // drain effect drops them and the ticket lands in Blocked here so the
+        // user can review and click Run to start the next step.
+        const hadQueuedNextStep = workflowQueueRef.current.length > 0;
+        const wasBuilding = statusKeyRef.current === "building";
+        // Always scan for an awaiting-user question on turn end — including
+        // wire.kind === "exit" with code 0, which is the *normal* end of a
+        // Claude CLI run in --print mode (one process per turn). Skipping it
+        // on every exit stranded tickets in Running whenever the model asked
+        // a question right before the process exited cleanly.
+        setBlockedIfAwaiting();
+        // If there were queued workflow steps OR the heuristic didn't catch
+        // a question, still gate on the human: force Blocked. Erring toward
+        // Blocked is intentional — a stranded Running card is invisible; a
+        // Blocked card the user dismisses with one click is not.
+        if (hadQueuedNextStep && statusKeyRef.current === "building") {
+          statusKeyRef.current = "blocked";
+          void applyWorkflowStatusSuggestion(ticketId, "blocked").catch(() => {});
+        }
+        // If neither the regex nor the workflow-gate moved us, fall back to
+        // the PR-based decision (open → review, merged → completed, conflict
+        // → blocked). Without this, clean runs that finish with no question
+        // and no PR would strand the card in Running forever.
+        if (wasBuilding && statusKeyRef.current === "building") {
+          void decideEndOfRun();
         }
       }
     });
@@ -811,13 +838,16 @@ function DesktopPanel({
     return () => window.removeEventListener("planbooq:workflow-run", onRun);
   }, [ticketId, busy]);
 
-  // Drain the queue whenever the agent goes idle.
+  // Workflow steps no longer auto-chain. When a step finishes, the queue is
+  // intentionally NOT drained — the ticket goes to Blocked and the user must
+  // click Run again to start the next step. This makes "agent done with step,
+  // human reviews, human decides" the explicit contract instead of letting
+  // the agent rubber-stamp itself by saying "Proceeding to Build." mid-turn.
+  // Any prompts left in the queue from a "Run all" click are dropped here.
   useEffect(() => {
     if (busy) return;
     if (workflowQueueRef.current.length === 0) return;
-    const next = workflowQueueRef.current.shift();
-    if (!next || !sendRef.current) return;
-    void sendRef.current(next);
+    workflowQueueRef.current = [];
   }, [busy]);
 
   // Broadcast busy/queue state so the workflow panel can reflect "running".
