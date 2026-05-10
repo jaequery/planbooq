@@ -109,9 +109,11 @@ export function AgentsClient({ workspaceId, initialAgents }: Props): React.React
         </Button>
       </div>
 
-      <div className="flex flex-col gap-2 rounded-lg border">
+      <div className="flex flex-col gap-2 rounded-md border">
         {agents.length === 0 && (
-          <div className="p-4 text-sm text-muted-foreground">No agents paired yet.</div>
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            No machines paired yet. Pair one to dispatch tickets to your local Claude Code.
+          </div>
         )}
         {agents.map((a) => (
           <div

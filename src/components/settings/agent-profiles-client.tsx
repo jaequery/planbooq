@@ -171,10 +171,10 @@ export function AgentProfilesClient({ workspaceId, initialProfiles }: Props): Re
                   </td>
                   <td className="px-3 py-2">
                     {p.isActive ? (
-                      <Badge variant="secondary">active</Badge>
+                      <Badge variant="secondary">Active</Badge>
                     ) : (
                       <Badge variant="outline" className="text-muted-foreground">
-                        inactive
+                        Inactive
                       </Badge>
                     )}
                   </td>
