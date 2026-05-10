@@ -50,6 +50,8 @@ type DocState = {
   error: string | null;
 };
 
+type DocPresence = { present: boolean; resolvedRel: string };
+
 const emptyDoc = (rel: string): DocState => ({
   loaded: false,
   loading: false,
@@ -80,6 +82,47 @@ export function ProjectDocsPanel({ projectId, localPath }: Props): React.ReactEl
   const bridge = mounted ? getDesktopBridge() : null;
   const supported = mounted && !!bridge?.readProjectFile && !!bridge?.writeProjectFile;
   const repo = localPath?.trim() ?? "";
+
+  const [presence, setPresence] = useState<Record<DocKey, DocPresence> | null>(null);
+  const [presenceLoading, setPresenceLoading] = useState(false);
+
+  const checkPresence = useCallback(async (): Promise<void> => {
+    const b = getDesktopBridge();
+    const read = b?.readProjectFile;
+    if (!read || !repo) {
+      setPresence(null);
+      return;
+    }
+    setPresenceLoading(true);
+    const results = await Promise.all(
+      DOCS.map(async (cfg): Promise<[DocKey, DocPresence]> => {
+        const tries = cfg.fallback ? [cfg.relPath, cfg.fallback] : [cfg.relPath];
+        for (const rel of tries) {
+          const r = await read({ repoPath: repo, relPath: rel });
+          if (r.ok && r.exists && (r.content ?? "").trim().length > 0) {
+            return [cfg.key, { present: true, resolvedRel: rel }];
+          }
+        }
+        return [cfg.key, { present: false, resolvedRel: cfg.relPath }];
+      }),
+    );
+    const next: Record<DocKey, DocPresence> = {
+      readme: { present: false, resolvedRel: "README.md" },
+      claude: { present: false, resolvedRel: "CLAUDE.md" },
+      agent: { present: false, resolvedRel: "AGENT.md" },
+    };
+    for (const [k, v] of results) next[k] = v;
+    setPresence(next);
+    setPresenceLoading(false);
+  }, [repo]);
+
+  useEffect(() => {
+    if (!supported || !repo) {
+      setPresence(null);
+      return;
+    }
+    void checkPresence();
+  }, [supported, repo, checkPresence]);
 
   const loadDoc = useCallback(
     async (key: DocKey): Promise<void> => {
@@ -172,7 +215,8 @@ export function ProjectDocsPanel({ projectId, localPath }: Props): React.ReactEl
       ...prev,
       [activeTab]: { ...prev[activeTab], saving: false, initial: prev[activeTab].content },
     }));
-  }, [activeTab, current.content, current.resolvedRel, repo]);
+    void checkPresence();
+  }, [activeTab, current.content, current.resolvedRel, repo, checkPresence]);
 
   const handleGenerate = useCallback(async (): Promise<void> => {
     setDocs((prev) => ({ ...prev, [activeTab]: { ...prev[activeTab], generating: true } }));
@@ -204,12 +248,28 @@ export function ProjectDocsPanel({ projectId, localPath }: Props): React.ReactEl
     setDocs((prev) => ({ ...prev, [activeTab]: { ...prev[activeTab], content: val } }));
   };
 
+  const meter = useMemo(() => {
+    if (!presence) return null;
+    const total = DOCS.length;
+    const present = DOCS.reduce((n, d) => n + (presence[d.key].present ? 1 : 0), 0);
+    const pct = total === 0 ? 0 : Math.round((present / total) * 100);
+    const missing = DOCS.filter((d) => !presence[d.key].present);
+    const tone =
+      pct >= 100
+        ? { bar: "bg-emerald-500", text: "text-emerald-500" }
+        : pct >= 50
+          ? { bar: "bg-amber-500", text: "text-amber-500" }
+          : { bar: "bg-destructive", text: "text-destructive" };
+    return { total, present, pct, missing, tone };
+  }, [presence]);
+
   const summary = useMemo(() => {
     if (!mounted) return "";
     if (!supported) return "Desktop app required";
     if (!repo) return "Set project folder in settings";
-    return "README.md · CLAUDE.md · AGENT.md";
-  }, [mounted, supported, repo]);
+    if (!meter) return presenceLoading ? "Checking…" : "README.md · CLAUDE.md · AGENT.md";
+    return `${meter.present}/${meter.total} docs`;
+  }, [mounted, supported, repo, meter, presenceLoading]);
 
   return (
     <div className="border-b border-border/60 bg-card/30">
@@ -222,6 +282,26 @@ export function ProjectDocsPanel({ projectId, localPath }: Props): React.ReactEl
         <FileText className="h-3.5 w-3.5" />
         <span className="text-foreground">Project docs</span>
         <span className="text-muted-foreground/70">— {summary}</span>
+        {meter ? (
+          <span className="ml-auto flex items-center gap-2">
+            <span
+              role="progressbar"
+              aria-label="Docs completion"
+              aria-valuenow={meter.pct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              className="relative inline-block h-1.5 w-24 overflow-hidden rounded-full bg-muted"
+            >
+              <span
+                className={cn("absolute inset-y-0 left-0 transition-all", meter.tone.bar)}
+                style={{ width: `${meter.pct}%` }}
+              />
+            </span>
+            <span className={cn("tabular-nums text-[11px] font-medium", meter.tone.text)}>
+              {meter.pct}%
+            </span>
+          </span>
+        ) : null}
       </button>
       {open ? (
         <div className="px-4 pb-3">
@@ -233,13 +313,32 @@ export function ProjectDocsPanel({ projectId, localPath }: Props): React.ReactEl
             </div>
           ) : (
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as DocKey)}>
+              {meter && meter.missing.length > 0 ? (
+                <div className="mb-2 text-[11px] text-muted-foreground">
+                  Missing:{" "}
+                  <span className={cn("font-medium", meter.tone.text)}>
+                    {meter.missing.map((d) => d.label).join(", ")}
+                  </span>
+                </div>
+              ) : null}
               <div className="flex items-center justify-between gap-2">
                 <TabsList>
-                  {DOCS.map((d) => (
-                    <TabsTrigger key={d.key} value={d.key}>
-                      {d.label}
-                    </TabsTrigger>
-                  ))}
+                  {DOCS.map((d) => {
+                    const missing = presence ? !presence[d.key].present : false;
+                    return (
+                      <TabsTrigger key={d.key} value={d.key}>
+                        <span className="inline-flex items-center gap-1.5">
+                          {d.label}
+                          {missing ? (
+                            <span
+                              className="inline-block h-1.5 w-1.5 rounded-full bg-destructive"
+                              title="missing"
+                            />
+                          ) : null}
+                        </span>
+                      </TabsTrigger>
+                    );
+                  })}
                 </TabsList>
                 <div className="flex items-center gap-1">
                   <div className="inline-flex h-7 items-center rounded-md border border-border/60 p-0.5">
