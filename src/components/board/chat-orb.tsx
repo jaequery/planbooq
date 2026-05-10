@@ -173,15 +173,13 @@ export function ChatOrb({
               disabled={pending}
               className="field-sizing-content max-h-60 min-h-6 flex-1 resize-none bg-transparent text-[13px] leading-6 outline-none placeholder:text-muted-foreground disabled:opacity-60"
             />
-          </div>
-          <div className="mt-2 flex items-center justify-center">
             <button
               type="button"
               role="switch"
               aria-checked={autoPlan}
               onClick={toggleAutoPlan}
               disabled={pending}
-              className="inline-flex items-center gap-2 rounded-full px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+              className="inline-flex flex-shrink-0 items-center gap-1.5 self-center rounded-full px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
               title={autoPlan ? "Auto-plan: on" : "Auto-plan: off"}
             >
               <span
