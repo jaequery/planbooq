@@ -6,6 +6,7 @@ import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
 import { inngest } from "@/server/inngest/client";
 import { autoTransitionPlanningToTodo } from "@/server/services/ticket-status";
+import { ensureLegacyPrRecorded } from "@/server/services/ticket-pull-requests";
 
 const TICKET_RELATIONS_INCLUDE = {
   assignee: { select: { id: true, name: true, email: true, image: true } },
@@ -404,6 +405,14 @@ export async function getTicketSvc(
     await requireMembership(ticket.workspaceId, userId);
   } catch {
     return { ok: false, error: "forbidden" };
+  }
+  if (ticket.prUrl && ticket.pullRequests.length === 0) {
+    await ensureLegacyPrRecorded(ticket.id, ticket.prUrl).catch(() => undefined);
+    const refreshed = await prisma.ticket.findUnique({
+      where: { id: ticket.id },
+      include: TICKET_RELATIONS_INCLUDE,
+    });
+    if (refreshed) return { ok: true, data: refreshed };
   }
   return { ok: true, data: ticket };
 }

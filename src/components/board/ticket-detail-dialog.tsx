@@ -980,13 +980,13 @@ function PullRequestHistory({
   pullRequests?: TicketPullRequest[];
   currentPrUrl: string | null;
 }): React.ReactElement | null {
-  // Show only when there's more than one PR in history, or a single
-  // non-current entry — otherwise the existing "View PR / Merge" block
-  // already covers the common case.
+  // Show whenever the ticket has any PR sibling to the current pointer.
+  // The "View PR / Merge" block above only renders `ticket.prUrl`, so we
+  // need this list to surface merged / superseded / additional PRs.
   if (!pullRequests || pullRequests.length === 0) return null;
-  const interesting =
+  const hasSibling =
     pullRequests.length > 1 || (pullRequests[0] && pullRequests[0].url !== currentPrUrl);
-  if (!interesting) return null;
+  if (!hasSibling) return null;
 
   const toneFor = (status: TicketPullRequest["status"]): string => {
     switch (status) {
