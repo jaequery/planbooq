@@ -11,8 +11,7 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-6">
       <header className="flex flex-col gap-2">
         <SettingsBackButton />
-        <h1 className="text-xl font-semibold">Settings</h1>
-        <p className="text-sm text-muted-foreground">Manage your workspace preferences.</p>
+        <h1 className="text-lg font-semibold">Settings</h1>
       </header>
       <SettingsContent />
     </div>
