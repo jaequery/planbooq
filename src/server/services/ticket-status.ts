@@ -92,10 +92,10 @@ export async function moveTicketToStatusKey(args: {
 }
 
 /**
- * Auto-transition a ticket out of a "planning" status once a plan exists.
- * No-op when the ticket is not currently in a status with key "planning",
- * or when the workspace has no "todo" status to land on. Returns true when
- * a move actually happened so callers can refetch the ticket.
+ * Auto-transition a ticket to "todo" once a plan exists. Fires when the
+ * ticket is currently sitting in a pre-work column ("backlog" or "planning").
+ * No-op otherwise, or when the workspace has no "todo" status to land on.
+ * Returns true when a move actually happened so callers can refetch.
  */
 export async function autoTransitionPlanningToTodo(args: {
   ticketId: string;
@@ -106,7 +106,8 @@ export async function autoTransitionPlanningToTodo(args: {
     select: { archivedAt: true, status: { select: { key: true } } },
   });
   if (!ticket || ticket.archivedAt) return false;
-  if (ticket.status?.key !== "planning") return false;
+  const fromKey = ticket.status?.key;
+  if (fromKey !== "backlog" && fromKey !== "planning") return false;
 
   const moved = await moveTicketToStatusKey({
     ticketId: args.ticketId,
