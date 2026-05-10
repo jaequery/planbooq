@@ -73,8 +73,26 @@ async function revParse(repoPath: string, ref: string): Promise<string | null> {
   return r.stdout.trim() || null;
 }
 
+// Per-repo serialization: multiple renderer windows (or rapid Ably event
+// redelivery) can fire `pullMain` for the same repo within milliseconds. The
+// concurrent calls race on `.git/index.lock` and on FETCH_HEAD, producing the
+// "auto-pull failed" toast storm reported after merge. Coalescing in-flight
+// calls per repoPath means the second caller piggybacks on the first result
+// instead of spawning a competing `git fetch`.
+const inFlightPulls = new Map<string, Promise<PullResult>>();
+
 export async function pullMain(repoPath: string): Promise<PullResult> {
   if (!repoPath) return { ok: false, error: "missing repoPath" };
+  const existing = inFlightPulls.get(repoPath);
+  if (existing) return existing;
+  const run = pullMainInner(repoPath).finally(() => {
+    inFlightPulls.delete(repoPath);
+  });
+  inFlightPulls.set(repoPath, run);
+  return run;
+}
+
+async function pullMainInner(repoPath: string): Promise<PullResult> {
   if (!(await isGitRepo(repoPath))) return { ok: false, error: "not a git repo" };
 
   const branch = await detectDefaultBranch(repoPath);
