@@ -2,7 +2,7 @@
 
 import { formatDistanceToNowStrict } from "date-fns";
 import { Folder, Loader2, Play, Send, Square } from "lucide-react";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { dispatchTicketToAgent, listAgents } from "@/actions/agents";
 import { mintAgentApiKey } from "@/actions/api-keys";
@@ -23,6 +23,8 @@ import {
   registerAgentSession,
   unregisterAgentSession,
 } from "@/lib/agent-session-manager";
+import { useBoardChannel } from "@/lib/realtime/use-board-channel";
+import type { AblyChannelEvent, MessageEventPayload } from "@/lib/types";
 import { type AgentEvent, getDesktopBridge, useIsDesktop } from "@/lib/use-is-desktop";
 
 type Job = {
@@ -119,9 +121,7 @@ function formatToolUse(name: string, input: Record<string, unknown> | undefined)
       case "Task":
         return pick("description");
       default: {
-        const first = Object.values(i).find((v) => typeof v === "string") as
-          | string
-          | undefined;
+        const first = Object.values(i).find((v) => typeof v === "string") as string | undefined;
         return first ?? "";
       }
     }
@@ -154,10 +154,7 @@ function applyWireEvent(
   const at = ev.at ?? Date.now();
   if (ev.kind === "user") {
     return {
-      msgs: [
-        ...msgs,
-        { id: crypto.randomUUID(), role: "user", text: ev.text, createdAt: at },
-      ],
+      msgs: [...msgs, { id: crypto.randomUUID(), role: "user", text: ev.text, createdAt: at }],
     };
   }
   if (ev.kind === "exit") {
@@ -424,6 +421,34 @@ function summarizeAssistant(text: string, maxChars = 200): string {
   return out;
 }
 
+/**
+ * Convert a server-side Message row into the local ChatMsg shape the panel
+ * already renders. Tool-call messages from the wire mirror are short bodies
+ * starting with "→ " — we route those to the `system` track so they render
+ * as the compact mono-font lines instead of full assistant bubbles.
+ */
+function messageEventToChat(
+  m: MessageEventPayload | (MessageEventPayload & { createdAt: string; updatedAt: string }),
+): ChatMsg | null {
+  const createdAt =
+    typeof m.createdAt === "string"
+      ? new Date(m.createdAt).getTime()
+      : m.createdAt instanceof Date
+        ? m.createdAt.getTime()
+        : Date.now();
+  const text = typeof m.body === "string" ? m.body : "";
+  if (m.role === "USER") return { id: m.id, role: "user", text, createdAt };
+  // Skip empty AGENT/SYSTEM rows — the server creates a placeholder ahead of
+  // streaming, and an empty bubble between turns is just noise.
+  if (!text) return null;
+  // Tool-call mirror rows are emitted as short lines starting with "→ ".
+  // Render them as compact system entries to match the live wire format.
+  if (text.startsWith("→ ")) {
+    return { id: m.id, role: "system", text, createdAt };
+  }
+  return { id: m.id, role: "assistant", text, createdAt };
+}
+
 function parseStoredOutput(output: string, fallbackAt?: number): WireEvent[] {
   const out: WireEvent[] = [];
   for (const raw of output.split("\n")) {
@@ -512,12 +537,8 @@ function DesktopPanel({
       const ctxRes = await getWorkflowStatusContext(ticketId);
       if (!ctxRes.ok || ctxRes.statuses.length === 0) return;
       const allowed = ctxRes.statuses.map((s) => s.key);
-      const lastAssistant = [...messagesRef.current]
-        .reverse()
-        .find((m) => m.role === "assistant");
-      const summary = lastAssistant
-        ? lastAssistant.text.slice(-1500)
-        : "(no agent output)";
+      const lastAssistant = [...messagesRef.current].reverse().find((m) => m.role === "assistant");
+      const summary = lastAssistant ? lastAssistant.text.slice(-1500) : "(no agent output)";
       const askPrompt = [
         "You are picking the kanban status for a ticket whose Claude Code session just ended.",
         "Status keys (typical meanings): backlog (not started), todo (planned), building (agent is still actively working — only pick this if the session is mid-tool-call, NOT if it has stopped to ask the user something), blocked (the agent stopped its turn and is waiting on the user — includes any open question, choice between options, request to confirm/approve, or proposed default like 'Default is A unless you say otherwise'), review (PR open / ready to review), completed (done/merged).",
@@ -607,8 +628,16 @@ function DesktopPanel({
     };
   }, [projectId]);
 
-  // Hydrate from server: replay the last desktop job's persisted JSONL into
-  // local message state. Survives page reloads.
+  // Hydrate from server in two passes:
+  //   1. /api/v1/tickets/:id/messages → durable per-ticket Conversation. This
+  //      is the source of truth for chat history and survives every kind of
+  //      session boundary (new AgentJob, workflow run, page refresh, fresh
+  //      browser). Replaces the old "replay latest AgentJob.output JSONL"
+  //      path that silently dropped prior conversations the moment any new
+  //      AgentJob row was created.
+  //   2. /api/tickets/:id/desktop-jobs → run-state only (worktreePath,
+  //      claudeSessionId, jobId, busy). The job's `output` blob is no longer
+  //      consulted for chat rendering.
   useEffect(() => {
     let cancelled = false;
     setMessages([]);
@@ -618,6 +647,33 @@ function DesktopPanel({
     setJobId(null);
     setBusy(false);
     currentAssistantId.current = null;
+    messagesRef.current = [];
+
+    void (async () => {
+      try {
+        const r = await fetch(`/api/v1/tickets/${ticketId}/messages?limit=200`, {
+          cache: "no-store",
+        });
+        if (cancelled || !r.ok) return;
+        const json = (await r.json()) as {
+          ok: boolean;
+          data?: {
+            items: (MessageEventPayload & { createdAt: string; updatedAt: string })[];
+          };
+        };
+        if (cancelled || !json.ok || !json.data) return;
+        const items = [...json.data.items].sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        );
+        const mapped = items
+          .map((m) => messageEventToChat(m))
+          .filter((m): m is ChatMsg => m !== null);
+        messagesRef.current = mapped;
+        setMessages(mapped);
+      } catch {
+        // tolerate — empty chat is fine; live wire events will populate
+      }
+    })();
 
     void (async () => {
       try {
@@ -635,28 +691,24 @@ function DesktopPanel({
         };
         if (cancelled || !body.ok || !body.data) return;
         const job = body.data;
+        // Parse the wire log for run-state signals only (claudeSessionId, did
+        // the run end). Don't push chat messages — that's now sourced from
+        // the Conversation hydration above.
         const fallbackAt = job.createdAt ? new Date(job.createdAt).getTime() : undefined;
         const events = parseStoredOutput(job.output, fallbackAt);
         const cursor = { current: null as string | null };
-        let acc: ChatMsg[] = [];
+        let throwaway: ChatMsg[] = [];
         let resolvedClaudeSession: string | null = null;
         let endedInEvents = false;
         for (const ev of events) {
-          const r = applyWireEvent(ev, acc, cursor);
-          acc = r.msgs;
+          const r = applyWireEvent(ev, throwaway, cursor);
+          throwaway = r.msgs;
           if (r.claudeSessionId !== undefined) resolvedClaudeSession = r.claudeSessionId;
           if (r.ended) endedInEvents = true;
         }
-        currentAssistantId.current = cursor.current;
-        messagesRef.current = acc;
-        setMessages(acc);
         setWorktreePath(job.worktreePath);
         setClaudeSessionId(resolvedClaudeSession ?? job.claudeSessionId);
         setJobId(job.id);
-        // Trust the persisted events over the DB status flag: if the wire log
-        // already contains a terminal `result` or `exit`, the underlying
-        // Claude process is idle (or gone) regardless of what the AgentJob
-        // row says. Otherwise honour the row's RUNNING.
         if (job.status === "RUNNING" && !endedInEvents) {
           // Re-attach to a live session the previous dialog instance started,
           // so Stop/Send work instead of being detached zombies. If no live
@@ -681,6 +733,48 @@ function DesktopPanel({
       cancelled = true;
     };
   }, [ticketId]);
+
+  // Realtime: workspace channel publishes message.created/updated whenever
+  // the server-side mirror writes a Message row. Upsert into local state so
+  // history from other browser tabs / desktop sessions / agent replies lands
+  // without a refresh. We dedupe by id; live wire events already optimistic-
+  // render the local turn so duplicates from realtime are absorbed.
+  const onRealtimeEvent = useCallback(
+    (event: AblyChannelEvent) => {
+      if (event.name === "message.created" && event.ticketId === ticketId) {
+        const next = messageEventToChat(event.message);
+        if (!next) return;
+        const prev = messagesRef.current;
+        if (prev.some((m) => m.id === next.id)) return;
+        // Dedupe local optimistic echoes: if we already have a same-role
+        // bubble with identical text within 10s of the server timestamp, drop
+        // the optimistic copy and keep the server-authoritative one.
+        const filtered = prev.filter(
+          (m) =>
+            !(
+              m.role === next.role &&
+              m.text === next.text &&
+              Math.abs(m.createdAt - next.createdAt) < 10_000
+            ),
+        );
+        const merged = [...filtered, next].sort((a, b) => a.createdAt - b.createdAt);
+        messagesRef.current = merged;
+        setMessages(merged);
+      } else if (event.name === "message.updated" && event.ticketId === ticketId) {
+        const prev = messagesRef.current;
+        const idx = prev.findIndex((m) => m.id === event.messageId);
+        if (idx === -1) return;
+        if (event.body === undefined) return;
+        const merged = prev.slice();
+        const cur = merged[idx]!;
+        merged[idx] = { ...cur, text: event.body } as ChatMsg;
+        messagesRef.current = merged;
+        setMessages(merged);
+      }
+    },
+    [ticketId],
+  );
+  useBoardChannel(workspaceId, onRealtimeEvent);
 
   const patchJob = (body: {
     appendOutput?: string;
@@ -853,9 +947,7 @@ function DesktopPanel({
   // Broadcast busy/queue state so the workflow panel can reflect "running".
   useEffect(() => {
     const running = busy || workflowQueueRef.current.length > 0;
-    window.dispatchEvent(
-      new CustomEvent("planbooq:agent-busy", { detail: { ticketId, running } }),
-    );
+    window.dispatchEvent(new CustomEvent("planbooq:agent-busy", { detail: { ticketId, running } }));
     // Whenever Claude is actively working, force the ticket into Running
     // regardless of its current column — the agent's live state is the
     // source of truth for "is work happening right now."
@@ -984,9 +1076,7 @@ function DesktopPanel({
       try {
         const wf = await getTicketWorkflow(ticketId);
         if (wf.ok && wf.steps.length > 0) {
-          const label = wf.templateName
-            ? `Workflow: ${wf.templateName}`
-            : "Workflow";
+          const label = wf.templateName ? `Workflow: ${wf.templateName}` : "Workflow";
           const lines = wf.steps.map((s, i) => {
             const tag = s.enabled ? "" : " (disabled)";
             const body = s.prompt?.trim() ? `\n   ${s.prompt.trim().replace(/\n/g, "\n   ")}` : "";
@@ -1054,10 +1144,7 @@ function DesktopPanel({
     // Materialize attachments into the existing worktree before sending so
     // the agent can `Read` them as local files instead of curling an
     // auth-protected URL.
-    const { text: sendMessage } = await materializeAttachmentsAndRewrite(
-      message,
-      worktreePath,
-    );
+    const { text: sendMessage } = await materializeAttachmentsAndRewrite(message, worktreePath);
     try {
       const res = await bridge.agentSend({ sessionId, message: sendMessage });
       if (!res.ok) {
@@ -1109,12 +1196,10 @@ function DesktopPanel({
           className="flex max-h-[420px] flex-col gap-3 overflow-y-auto rounded-lg bg-muted/20 p-3"
         >
           {messages.map((m, i) => {
-            const isStreaming =
-              busy && m.role === "assistant" && i === messages.length - 1;
+            const isStreaming = busy && m.role === "assistant" && i === messages.length - 1;
             const isAssistant = m.role === "assistant";
             const displayText = m.text;
-            const author =
-              m.role === "user" ? "You" : m.role === "assistant" ? "Claude" : "System";
+            const author = m.role === "user" ? "You" : m.role === "assistant" ? "Claude" : "System";
             const align = m.role === "user" ? "self-end items-end" : "self-start items-start";
             const time = formatDistanceToNowStrict(new Date(m.createdAt), { addSuffix: true });
             return (
@@ -1147,8 +1232,7 @@ function DesktopPanel({
             );
           })}
           {busy &&
-            (messages.length === 0 ||
-              messages[messages.length - 1]!.role !== "assistant") && (
+            (messages.length === 0 || messages[messages.length - 1]!.role !== "assistant") && (
               <div className="self-start text-[12px] text-muted-foreground">
                 <Loader2 className="inline size-3 animate-spin" /> thinking…
               </div>
@@ -1170,7 +1254,9 @@ function DesktopPanel({
             const bridge = getDesktopBridge();
             if (!bridge?.saveClipboardImage) return;
             const items = Array.from(e.clipboardData?.items ?? []);
-            const imageItem = items.find((it) => it.kind === "file" && it.type.startsWith("image/"));
+            const imageItem = items.find(
+              (it) => it.kind === "file" && it.type.startsWith("image/"),
+            );
             if (!imageItem) return;
             const file = imageItem.getAsFile();
             if (!file) return;

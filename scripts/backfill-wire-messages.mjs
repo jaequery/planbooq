@@ -14,6 +14,10 @@ import { PrismaClient } from "@prisma/client";
 
 const dryRun = process.argv.includes("--dry-run");
 const reset = process.argv.includes("--reset");
+// --from-jobs walks AgentJob rows directly. Use this to backfill conversations
+// for tickets whose chat history existed only as AgentJob.output and never
+// got mirrored into Message rows (i.e. anything older than the mirror layer).
+const fromJobs = process.argv.includes("--from-jobs");
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
@@ -52,6 +56,27 @@ function formatToolUse(name, input) {
   return trimmed ? `→ ${name}: ${trimmed}` : `→ ${name}`;
 }
 
+// Three entry points share `parseEventsToWrites`:
+//   backfillMessage(legacy)  — re-parse a legacy SYSTEM wrapper Message whose
+//                              body is the raw WireEvent JSONL.
+//   backfillJob(job)         — re-parse an AgentJob.output blob directly,
+//                              for jobs that predate the mirror and have no
+//                              wrapper Message at all (the actual root cause
+//                              of "where did my chat history go?").
+function parseRawEvents(body) {
+  const events = [];
+  for (const raw of body.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    try {
+      events.push(JSON.parse(line));
+    } catch {
+      // skip
+    }
+  }
+  return events;
+}
+
 async function backfillMessage(legacy) {
   const job = await prisma.agentJob.findUnique({
     where: { id: legacy.agentJobId },
@@ -68,17 +93,26 @@ async function backfillMessage(legacy) {
   });
   if (!job) return { skipped: "no_job" };
   if (job.kind === "PLAN") return { skipped: "plan_kind" };
+  return parseAndWrite(job, legacy.body, legacy.conversationId);
+}
 
-  const events = [];
-  for (const raw of legacy.body.split("\n")) {
-    const line = raw.trim();
-    if (!line) continue;
-    try {
-      events.push(JSON.parse(line));
-    } catch {
-      // skip
-    }
-  }
+async function backfillJob(job) {
+  if (job.kind === "PLAN") return { skipped: "plan_kind" };
+  if (!job.output || job.output.length === 0) return { skipped: "empty_output" };
+  if (!job.ticketId || !job.workspaceId) return { skipped: "no_ticket" };
+  // Get-or-create the per-ticket conversation. Mirrors
+  // src/server/services/conversations.ts but inlined to avoid TS imports.
+  const conv = await prisma.conversation.upsert({
+    where: { ticketId: job.ticketId },
+    create: { ticketId: job.ticketId, workspaceId: job.workspaceId },
+    update: {},
+    select: { id: true },
+  });
+  return parseAndWrite(job, job.output, conv.id);
+}
+
+async function parseAndWrite(job, body, conversationId) {
+  const events = parseRawEvents(body);
 
   let userSeq = 0;
   let agentTurnSeq = 0;
@@ -186,8 +220,6 @@ async function backfillMessage(legacy) {
 
   if (writes.length === 0) return { skipped: "no_turns" };
 
-  // Resolve conversationId from the legacy message itself.
-  const conversationId = legacy.conversationId;
   // Several events share the same `at` (or fall back to job.createdAt) — to
   // preserve the order they came in, nudge each write 1ms past the previous
   // when the timestamps tie. Conversation-thread sorts by createdAt asc.
@@ -260,6 +292,48 @@ async function main() {
     if (r.inserted) totalInserted += r.inserted;
   }
   console.log(`done. ${dryRun ? "would write" : "inserted"} ${totalInserted} turn rows.`);
+
+  if (fromJobs) {
+    // Walk AgentJob rows that have output but no Messages tied to them. The
+    // upserts inside parseAndWrite are idempotent on idempotencyKey, so this
+    // is also safe to re-run if some jobs already have partial coverage.
+    const candidates = await prisma.agentJob.findMany({
+      where: {
+        kind: { not: "PLAN" },
+        output: { not: "" },
+        ticketId: { not: undefined },
+        workspaceId: { not: null },
+      },
+      select: {
+        id: true,
+        ticketId: true,
+        workspaceId: true,
+        userId: true,
+        agentId: true,
+        kind: true,
+        status: true,
+        output: true,
+        createdAt: true,
+      },
+      take: 5000,
+    });
+    console.log(`from-jobs: scanning ${candidates.length} AgentJob rows`);
+    let jobInserts = 0;
+    for (const j of candidates) {
+      // Skip jobs that already have a non-trivial Message presence — cheap
+      // count() avoids re-parsing fully-mirrored conversations.
+      const existing = await prisma.message.count({ where: { agentJobId: j.id } });
+      if (existing > 0) {
+        // Already covered (either by mirror or by the legacy backfill above).
+        continue;
+      }
+      const r = await backfillJob(j);
+      console.log(j.id, "→", r);
+      if (r.inserted) jobInserts += r.inserted;
+    }
+    console.log(`from-jobs done. ${dryRun ? "would write" : "inserted"} ${jobInserts} turn rows.`);
+  }
+
   await prisma.$disconnect();
 }
 
