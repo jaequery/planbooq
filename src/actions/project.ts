@@ -4,10 +4,12 @@ import type { Project } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
+import type { ServerActionResult } from "@/lib/types";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { inngest } from "@/server/inngest/client";
+import { generateProjectDoc, type ProjectDocKey } from "@/server/openrouter";
 
 async function requireUserId(): Promise<string> {
   const session = await auth();
@@ -212,7 +214,16 @@ export async function createProjectFromRepo(
     });
     const position = (last?.position ?? 0) + 1;
 
-    const palette = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#ec4899", "#64748b"];
+    const palette = [
+      "#6366f1",
+      "#10b981",
+      "#f59e0b",
+      "#ef4444",
+      "#8b5cf6",
+      "#06b6d4",
+      "#ec4899",
+      "#64748b",
+    ];
     const color = data.color ?? palette[Math.abs(repo.id) % palette.length]!;
 
     const project = await prisma.project.create({
@@ -340,9 +351,7 @@ export async function updateProject(input: UpdateProjectInput): Promise<UpdatePr
   }
 }
 
-type ProjectLocalPathResult =
-  | { ok: true; localPath: string | null }
-  | { ok: false; error: string };
+type ProjectLocalPathResult = { ok: true; localPath: string | null } | { ok: false; error: string };
 
 export async function getProjectLocalPath(projectId: string): Promise<ProjectLocalPathResult> {
   try {
@@ -413,6 +422,66 @@ export async function deleteProject(input: DeleteProjectInput): Promise<DeletePr
     return { ok: true };
   } catch (error) {
     logger.error("deleteProject.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
+const GenerateProjectDocSchema = z
+  .object({
+    projectId: z.string().min(1),
+    docKey: z.enum(["claude", "agent", "readme"]),
+    existing: z.string().max(50_000).optional(),
+  })
+  .strict();
+
+export async function generateProjectDocAction(
+  input: z.infer<typeof GenerateProjectDocSchema>,
+): Promise<ServerActionResult<{ content: string; model: string }>> {
+  try {
+    const { projectId, docKey, existing } = GenerateProjectDocSchema.parse(input);
+    const userId = await requireUserId();
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: {
+        id: true,
+        workspaceId: true,
+        name: true,
+        description: true,
+        techStack: true,
+        repoUrl: true,
+      },
+    });
+    if (!project) return { ok: false, error: "project_not_found" };
+
+    const member = await prisma.member.findUnique({
+      where: { workspaceId_userId: { workspaceId: project.workspaceId, userId } },
+    });
+    if (!member) return { ok: false, error: "forbidden" };
+
+    const projectContext =
+      [
+        project.description ? `Description:\n${project.description}` : null,
+        project.techStack ? `Tech stack:\n${project.techStack}` : null,
+        project.repoUrl ? `Repository: ${project.repoUrl}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n\n") || null;
+
+    const result = await generateProjectDoc({
+      workspaceId: project.workspaceId,
+      docKey: docKey as ProjectDocKey,
+      projectName: project.name,
+      projectContext,
+      existing: existing ?? null,
+    });
+    if (!result.ok) return { ok: false, error: result.error };
+
+    return { ok: true, data: { content: result.content, model: result.model } };
+  } catch (error) {
+    logger.error("generateProjectDocAction.failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     return { ok: false, error: error instanceof Error ? error.message : "unknown" };

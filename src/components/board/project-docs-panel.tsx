@@ -1,26 +1,33 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Code2, FileText, Loader2, Pencil } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Code2,
+  FileText,
+  Loader2,
+  Pencil,
+  Sparkles,
+} from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-const MarkdownWysiwygEditor = dynamic(
-  () => import("./markdown-wysiwyg-editor"),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-64 items-center justify-center rounded-md border border-border/60 bg-background text-[12px] text-muted-foreground">
-        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Loading editor…
-      </div>
-    ),
-  },
-);
+const MarkdownWysiwygEditor = dynamic(() => import("./markdown-wysiwyg-editor"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-64 items-center justify-center rounded-md border border-border/60 bg-background text-[12px] text-muted-foreground">
+      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Loading editor…
+    </div>
+  ),
+});
+
+import { generateProjectDocAction } from "@/actions/project";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
 import { getDesktopBridge } from "@/lib/use-is-desktop";
+import { cn } from "@/lib/utils";
 
 type DocKey = "claude" | "agent" | "readme";
 
@@ -36,6 +43,7 @@ type DocState = {
   loaded: boolean;
   loading: boolean;
   saving: boolean;
+  generating: boolean;
   content: string;
   initial: string;
   resolvedRel: string;
@@ -46,15 +54,16 @@ const emptyDoc = (rel: string): DocState => ({
   loaded: false,
   loading: false,
   saving: false,
+  generating: false,
   content: "",
   initial: "",
   resolvedRel: rel,
   error: null,
 });
 
-type Props = { localPath: string | null };
+type Props = { projectId: string; localPath: string | null };
 
-export function ProjectDocsPanel({ localPath }: Props): React.ReactElement {
+export function ProjectDocsPanel({ projectId, localPath }: Props): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<DocKey>("readme");
   const [view, setView] = useState<ViewMode>("editor");
@@ -105,6 +114,7 @@ export function ProjectDocsPanel({ localPath }: Props): React.ReactElement {
           loaded: true,
           loading: false,
           saving: false,
+          generating: false,
           content,
           initial: content,
           resolvedRel,
@@ -164,6 +174,32 @@ export function ProjectDocsPanel({ localPath }: Props): React.ReactElement {
     }));
   }, [activeTab, current.content, current.resolvedRel, repo]);
 
+  const handleGenerate = useCallback(async (): Promise<void> => {
+    setDocs((prev) => ({ ...prev, [activeTab]: { ...prev[activeTab], generating: true } }));
+    const res = await generateProjectDocAction({
+      projectId,
+      docKey: activeTab,
+      existing: current.content,
+    });
+    if (!res.ok) {
+      const map: Record<string, string> = {
+        no_key: "AI generation is not configured (missing OPENROUTER_API_KEY).",
+        forbidden: "You don't have access to this project.",
+        project_not_found: "Project not found.",
+        openrouter_timeout: "The AI request timed out. Try again.",
+        empty_doc: "The model returned an empty document.",
+      };
+      toast.error(map[res.error] ?? `Generation failed: ${res.error}`);
+      setDocs((prev) => ({ ...prev, [activeTab]: { ...prev[activeTab], generating: false } }));
+      return;
+    }
+    setDocs((prev) => ({
+      ...prev,
+      [activeTab]: { ...prev[activeTab], generating: false, content: res.data.content },
+    }));
+    toast.success("Draft generated. Review, then click Save to write to disk.");
+  }, [activeTab, projectId, current.content]);
+
   const onChangeContent = (val: string): void => {
     setDocs((prev) => ({ ...prev, [activeTab]: { ...prev[activeTab], content: val } }));
   };
@@ -182,11 +218,7 @@ export function ProjectDocsPanel({ localPath }: Props): React.ReactElement {
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-2 px-4 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-muted/40 transition-colors"
       >
-        {open ? (
-          <ChevronDown className="h-3.5 w-3.5" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5" />
-        )}
+        {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         <FileText className="h-3.5 w-3.5" />
         <span className="text-foreground">Project docs</span>
         <span className="text-muted-foreground/70">— {summary}</span>
@@ -241,14 +273,32 @@ export function ProjectDocsPanel({ localPath }: Props): React.ReactElement {
                   <Button
                     type="button"
                     size="sm"
+                    variant="outline"
+                    className="h-7 gap-1 px-2 text-[12px]"
+                    onClick={handleGenerate}
+                    disabled={current.generating || current.loading || current.saving}
+                    title={
+                      current.content.trim().length > 0
+                        ? "Improve this document with AI"
+                        : "Generate a first draft with AI"
+                    }
+                  >
+                    {current.generating ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5" />
+                    )}
+                    {current.content.trim().length > 0 ? "Improve" : "Generate"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
                     variant="default"
                     className="h-7 px-2 text-[12px]"
                     onClick={handleSave}
                     disabled={!isDirty || current.saving}
                   >
-                    {current.saving ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : null}
+                    {current.saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                     Save
                   </Button>
                 </div>

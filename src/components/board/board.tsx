@@ -628,7 +628,10 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
   return (
     <LiveAgentsContext.Provider value={liveAgents}>
       <div className="flex h-full min-h-0 flex-col">
-        <ProjectDocsPanel localPath={initialData.project.localPath ?? null} />
+        <ProjectDocsPanel
+          projectId={initialData.project.id}
+          localPath={initialData.project.localPath ?? null}
+        />
         <div className="flex items-center gap-3 px-4 py-2">
           <div className="relative max-w-sm flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/70" />

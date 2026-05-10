@@ -445,3 +445,82 @@ export async function generateAgentProfileDraft(args: {
     return { ok: false, error: e instanceof Error ? e.message : "unknown" };
   }
 }
+
+export type ProjectDocKey = "claude" | "agent" | "readme";
+
+type DocResult = { ok: true; content: string; model: string } | { ok: false; error: string };
+
+const DOC_SYSTEM_PROMPTS: Record<ProjectDocKey, string> = {
+  claude:
+    "You are generating a CLAUDE.md file for a software project. CLAUDE.md is a guidance document read by Claude Code (claude.ai/code) when working in the repo. Output GitHub-flavored markdown only — no preamble, no code fences around the whole document. Use these sections when applicable: # CLAUDE.md (with a one-line description), ## Project (what it is and core concepts), ## Tech Stack, ## Commands (dev/build/test/lint), ## Architecture (key directories, data flow, mutation patterns). Be concrete and specific to the supplied project context. Prefer terse, scannable bullets over prose.",
+  agent:
+    "You are generating an AGENT.md file for a software project. AGENT.md is the cross-tool convention for AI coding agents (Cursor, Codex, Aider, etc.) that mirrors CLAUDE.md but is tool-agnostic. Output GitHub-flavored markdown only — no preamble, no code fences around the whole document. Suggested sections: # AGENT.md, ## Project, ## Tech Stack, ## Commands, ## Conventions, ## Architecture. Be concrete and specific to the supplied project context. Prefer terse, scannable bullets over prose.",
+  readme:
+    "You are generating a README.md file for a software project. Output GitHub-flavored markdown only — no preamble, no code fences around the whole document. Suggested sections: # <Project Name>, a one-line tagline, ## Overview, ## Features, ## Getting Started (install + run), ## Tech Stack, ## Project Structure, ## License placeholder. Tone: clear, professional, welcoming to new contributors. Be specific to the supplied project context.",
+};
+
+export async function generateProjectDoc(args: {
+  workspaceId: string;
+  docKey: ProjectDocKey;
+  projectName: string;
+  projectContext: string | null;
+  existing: string | null;
+}): Promise<DocResult> {
+  const apiKey = await getOpenRouterApiKey(args.workspaceId);
+  if (!apiKey) return { ok: false, error: "no_key" };
+
+  const trimmedExisting = args.existing?.trim() ?? "";
+  const mode = trimmedExisting.length > 0 ? "improve" : "create";
+
+  const userPrompt = [
+    `Project name: ${args.projectName}`,
+    args.projectContext ? `Project context:\n${args.projectContext}` : null,
+    mode === "improve"
+      ? `Existing document (improve, restructure, and expand it — preserve accurate facts, fix gaps, keep the user's voice):\n\n${trimmedExisting.slice(0, 12000)}`
+      : "No existing document. Generate a fresh draft from the project context above.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const model = "anthropic/claude-haiku-4.5";
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-Title": "Planbooq",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: DOC_SYSTEM_PROMPTS[args.docKey] },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { ok: false, error: `openrouter_${res.status}:${text.slice(0, 200)}` };
+    }
+    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    let content = data.choices?.[0]?.message?.content?.trim() ?? "";
+    // Strip a single wrapping ```markdown ... ``` fence if the model added one.
+    const fence = content.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/);
+    if (fence?.[1]) content = fence[1].trim();
+    if (!content) return { ok: false, error: "empty_doc" };
+    logger.info("openrouter.projectDoc.generated", {
+      workspaceId: args.workspaceId,
+      docKey: args.docKey,
+      mode,
+      chars: content.length,
+    });
+    return { ok: true, content, model };
+  } catch (e) {
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) {
+      return { ok: false, error: "openrouter_timeout" };
+    }
+    return { ok: false, error: e instanceof Error ? e.message : "unknown" };
+  }
+}
