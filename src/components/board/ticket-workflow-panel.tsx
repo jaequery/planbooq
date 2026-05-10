@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, Loader2, Play } from "lucide-react";
+import { Check, ChevronDown, Loader2, Play, Plus } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { getProjectLocalPath } from "@/actions/project";
@@ -462,21 +462,78 @@ export function TicketWorkflowPanel({
           stepStatus={(s) => statusFor(s.name)}
         />
       ) : wf.steps.length === 0 ? (
-        <p className="text-xs text-muted-foreground/70">
-          Pick a template above, or set a project default in Settings → Workflows.
-        </p>
+        <>
+          <p className="text-xs text-muted-foreground/70">
+            Pick a template above, or set a project default in Settings → Workflows.
+          </p>
+          <AddStepInline
+            disabled={pending}
+            onAdd={async (name) => {
+              if (wf.templateId) {
+                const r = await setTicketWorkflowFromTemplate({
+                  ticketId,
+                  templateId: wf.templateId,
+                });
+                if (!r.ok) {
+                  toast.error(r.error);
+                  return false;
+                }
+              }
+              const r = await addTicketStep({
+                ticketId,
+                name,
+                prompt: "Describe what this step should do.",
+              });
+              if (!r.ok) {
+                toast.error(r.error);
+                return false;
+              }
+              await refresh();
+              return true;
+            }}
+          />
+        </>
       ) : (
-        <ul className="flex flex-col">
-          {wf.steps.map((s, i) => (
-            <ReadOnlyStepRow
-              key={`${s.position}-${s.name}`}
-              step={s}
-              index={i}
-              onRun={() => runStep(s)}
-              status={statusFor(s.name)}
-            />
-          ))}
-        </ul>
+        <>
+          <ul className="flex flex-col">
+            {wf.steps.map((s, i) => (
+              <ReadOnlyStepRow
+                key={`${s.position}-${s.name}`}
+                step={s}
+                index={i}
+                onRun={() => runStep(s)}
+                status={statusFor(s.name)}
+              />
+            ))}
+          </ul>
+          <AddStepInline
+            disabled={pending}
+            withBorder
+            onAdd={async (name) => {
+              if (wf.templateId) {
+                const r = await setTicketWorkflowFromTemplate({
+                  ticketId,
+                  templateId: wf.templateId,
+                });
+                if (!r.ok) {
+                  toast.error(r.error);
+                  return false;
+                }
+              }
+              const r = await addTicketStep({
+                ticketId,
+                name,
+                prompt: "Describe what this step should do.",
+              });
+              if (!r.ok) {
+                toast.error(r.error);
+                return false;
+              }
+              await refresh();
+              return true;
+            }}
+          />
+        </>
       )}
     </div>
   );
@@ -525,5 +582,84 @@ function ReadOnlyStepRow({
         <Play className="size-3.5" />
       </button>
     </li>
+  );
+}
+
+function AddStepInline({
+  onAdd,
+  disabled,
+  withBorder,
+}: {
+  onAdd: (name: string) => Promise<boolean>;
+  disabled?: boolean;
+  withBorder?: boolean;
+}): React.ReactElement {
+  const [value, setValue] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [pending, start] = useTransition();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (adding) inputRef.current?.focus();
+  }, [adding]);
+
+  function submit() {
+    const n = value.trim();
+    if (!n) {
+      setAdding(false);
+      return;
+    }
+    start(async () => {
+      const ok = await onAdd(n);
+      if (ok) {
+        setValue("");
+        setAdding(false);
+      }
+    });
+  }
+
+  return (
+    <div
+      className={`flex items-center gap-2 py-1.5 ${withBorder ? "border-t border-border/40" : ""}`}
+    >
+      {adding ? (
+        <>
+          <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground/40">
+            {pending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Plus className="size-3.5" />
+            )}
+          </span>
+          <input
+            ref={inputRef}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submit();
+              } else if (e.key === "Escape") {
+                setValue("");
+                setAdding(false);
+              }
+            }}
+            onBlur={submit}
+            placeholder="Step name"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50"
+          />
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          disabled={disabled || pending}
+          className="-ml-1 flex h-7 items-center gap-1.5 rounded px-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <Plus className="size-3.5" />
+          Add Step
+        </button>
+      )}
+    </div>
   );
 }
