@@ -5,6 +5,7 @@ import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { getOpenRouterApiKey } from "@/server/openrouter";
 import { createCommentSvc } from "@/server/services/comments";
+import { mirrorAppendOutput, mirrorJobTerminal } from "@/server/services/mirror-agent-job";
 import { moveTicketToStatusKey } from "@/server/services/ticket-status";
 
 export const runtime = "nodejs";
@@ -115,7 +116,6 @@ export async function POST(
       prompt: userPrompt,
       startedAt: new Date(),
     },
-    select: { id: true },
   });
   const jobId = job.id;
 
@@ -166,6 +166,7 @@ export async function POST(
           kind: "PLAN",
           appendOutput: chunk,
         });
+        void mirrorAppendOutput({ job, appendOutput: chunk });
       };
 
       const reader = upstream.body!.getReader();
@@ -231,6 +232,7 @@ export async function POST(
               kind: "PLAN",
               status: "SUCCEEDED",
             });
+            void mirrorJobTerminal({ job, status: "SUCCEEDED", finalOutput: accumulated });
           } else {
             await prisma.agentJob.update({
               where: { id: jobId },
@@ -244,6 +246,7 @@ export async function POST(
               kind: "PLAN",
               status: "FAILED",
             });
+            void mirrorJobTerminal({ job, status: "FAILED", finalOutput: accumulated });
           }
         } catch (err) {
           logger.error("plan.stream.persist.failed", {

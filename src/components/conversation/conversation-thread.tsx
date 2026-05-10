@@ -1,0 +1,424 @@
+"use client";
+
+import { formatDistanceToNowStrict } from "date-fns";
+import {
+  Bot,
+  CheckCircle2,
+  GitCommit,
+  GitPullRequest,
+  Hammer,
+  Loader2,
+  XCircle,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { useBoardChannel } from "@/lib/realtime/use-board-channel";
+import type { AblyChannelEvent, MessageEventPayload } from "@/lib/types";
+
+type ServerActivity = {
+  id: string;
+  kind: "PR_CREATED" | "COMMIT_PUSHED" | "TEST_RUN" | "BUILD" | "NOTE";
+  payload: Record<string, unknown>;
+  jobId: string | null;
+  createdAt: string;
+};
+
+type ServerTimelineRow =
+  | { kind: "message"; id: string; createdAt: string; messageId: string }
+  | { kind: "activity"; id: string; createdAt: string; activityId: string };
+
+type ClientMessage = MessageEventPayload & {
+  // Streaming chunk buffer keyed by sequence; reassembled on render. Used
+  // only while status === "STREAMING"; on COMPLETE the server publishes the
+  // final body and we drop the buffer.
+  streamingChunks?: Map<number, string>;
+};
+
+type Props = {
+  ticketId: string;
+  workspaceId: string;
+  conversationId: string | null;
+};
+
+export function ConversationThread({
+  ticketId,
+  workspaceId,
+  conversationId,
+}: Props): React.ReactElement {
+  const [messages, setMessages] = useState<Map<string, ClientMessage>>(new Map());
+  const [order, setOrder] = useState<string[]>([]);
+  const [activities, setActivities] = useState<ServerActivity[]>([]);
+  const [composerBody, setComposerBody] = useState("");
+  const [sending, setSending] = useState(false);
+  const [composerMentions, setComposerMentions] = useState<
+    { targetType: "USER" | "AGENT" | "TICKET"; targetId: string; label: string }[]
+  >([]);
+  const [loaded, setLoaded] = useState(false);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+
+  const upsertMessage = useCallback((m: MessageEventPayload) => {
+    setMessages((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(m.id);
+      next.set(m.id, { ...m, streamingChunks: existing?.streamingChunks });
+      return next;
+    });
+    setOrder((prev) => (prev.includes(m.id) ? prev : [...prev, m.id]));
+  }, []);
+
+  // Initial load: timeline endpoint returns row pointers; for now we hydrate
+  // messages by re-fetching each one inline. Phase-9 polish: the timeline
+  // endpoint should return decorated rows so we make one round-trip.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const r = await fetch(`/api/v1/tickets/${ticketId}/timeline?limit=100`).catch(() => null);
+      if (!r?.ok || cancelled) {
+        setLoaded(true);
+        return;
+      }
+      const json = (await r.json()) as { ok: boolean; data?: { items: ServerTimelineRow[] } };
+      const items = json.ok && json.data ? json.data.items : [];
+      const messageIds = items
+        .filter((row): row is Extract<ServerTimelineRow, { kind: "message" }> => row.kind === "message")
+        .map((row) => row.messageId);
+      if (messageIds.length > 0) {
+        // Hydrate via the per-conversation list endpoint (one query, includes
+        // authors + mentions). Activities are rendered as inline status pills
+        // from the existing TicketTimeline component; this thread focuses on
+        // messages.
+        const r2 = await fetch(
+          `/api/v1/tickets/${ticketId}/messages?limit=${messageIds.length}`,
+        ).catch(() => null);
+        if (r2?.ok && !cancelled) {
+          const list = (await r2.json()) as {
+            ok: boolean;
+            data?: {
+              items: (MessageEventPayload & { createdAt: string; updatedAt: string })[];
+            };
+          };
+          const listItems = list.ok && list.data ? list.data.items : [];
+          const map = new Map<string, ClientMessage>();
+          const ord: string[] = [];
+          for (const m of listItems) {
+            map.set(m.id, {
+              ...m,
+              createdAt: new Date(m.createdAt),
+              updatedAt: new Date(m.updatedAt),
+            });
+            ord.push(m.id);
+          }
+          if (!cancelled) {
+            setMessages(map);
+            setOrder(ord);
+          }
+        }
+      }
+      if (!cancelled) setLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ticketId]);
+
+  // Activities — fetched from the existing endpoint and merged into the
+  // timeline by createdAt at render time.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/tickets/${ticketId}/activity`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((b) => {
+        if (!cancelled && b.ok) setActivities(b.data);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [ticketId]);
+
+  // Realtime: workspace channel carries message.created/updated. We filter
+  // to events for this ticket's conversation. Conversation may not exist yet
+  // (lazy-created on first send) — gate on conversationId once it lands.
+  const onEvent = useCallback(
+    (event: AblyChannelEvent) => {
+      if (event.name === "message.created" && event.ticketId === ticketId) {
+        upsertMessage({
+          ...event.message,
+          createdAt: new Date(event.message.createdAt),
+          updatedAt: new Date(event.message.updatedAt),
+        });
+      } else if (event.name === "ticket.activity" && event.ticketId === ticketId) {
+        setActivities((prev) =>
+          prev.some((a) => a.id === event.activity.id) ? prev : [event.activity, ...prev],
+        );
+      } else if (event.name === "message.updated" && event.ticketId === ticketId) {
+        setMessages((prev) => {
+          const next = new Map(prev);
+          const existing = next.get(event.messageId);
+          if (!existing) return prev; // no base row — re-fetch on reconnect
+          const updated: ClientMessage = { ...existing };
+          if (event.status) updated.status = event.status;
+          if (event.body !== undefined) {
+            updated.body = event.body;
+            updated.streamingChunks = undefined;
+          }
+          if (event.chunks) {
+            const buf = new Map(updated.streamingChunks ?? []);
+            for (const c of event.chunks) buf.set(c.sequence, c.delta);
+            updated.streamingChunks = buf;
+          }
+          next.set(event.messageId, updated);
+          return next;
+        });
+      }
+    },
+    [ticketId, upsertMessage],
+  );
+  useBoardChannel(workspaceId, onEvent);
+
+  // Merged stream of messages + activities, sorted by createdAt. Activities
+  // render as compact one-line pills between messages, matching the legacy
+  // TicketTimeline panel's behavior.
+  type Row =
+    | { kind: "message"; createdAt: number; message: ClientMessage }
+    | { kind: "activity"; createdAt: number; activity: ServerActivity };
+  const rows = useMemo<Row[]>(() => {
+    const out: Row[] = [];
+    for (const id of order) {
+      const m = messages.get(id);
+      if (m) out.push({ kind: "message", createdAt: new Date(m.createdAt).getTime(), message: m });
+    }
+    for (const a of activities) {
+      out.push({ kind: "activity", createdAt: new Date(a.createdAt).getTime(), activity: a });
+    }
+    out.sort((a, b) => a.createdAt - b.createdAt);
+    return out;
+  }, [order, messages, activities]);
+
+  // Auto-scroll to bottom when a new message lands while the user is already
+  // near the bottom. Don't yank them up if they've scrolled back in history.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const threshold = 80;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    if (nearBottom) el.scrollTop = el.scrollHeight;
+  }, [rows.length]);
+
+  const send = useCallback(async () => {
+    const body = composerBody.trim();
+    if (!body || sending) return;
+    setSending(true);
+    const idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    try {
+      await fetch(`/api/v1/tickets/${ticketId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          body,
+          idempotencyKey,
+          mentions: composerMentions.map(({ targetType, targetId }) => ({
+            targetType,
+            targetId,
+          })),
+        }),
+      });
+      setComposerBody("");
+      setComposerMentions([]);
+    } finally {
+      setSending(false);
+    }
+  }, [composerBody, composerMentions, sending, ticketId]);
+
+  return (
+    <div className="flex h-full flex-col">
+      <div ref={scrollerRef} className="flex-1 space-y-3 overflow-y-auto p-4">
+        {!loaded ? (
+          <div className="flex justify-center py-6 text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" />
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="py-6 text-center text-sm text-muted-foreground">
+            No messages yet.
+          </div>
+        ) : (
+          rows.map((r) =>
+            r.kind === "message" ? (
+              <MessageRow key={r.message.id} message={r.message} />
+            ) : (
+              <ActivityRow key={r.activity.id} activity={r.activity} />
+            ),
+          )
+        )}
+      </div>
+      <div className="border-t p-3">
+        {composerMentions.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {composerMentions.map((m) => (
+              <span
+                key={`${m.targetType}:${m.targetId}`}
+                className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs"
+              >
+                <Bot className="size-3" />
+                {m.label}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setComposerMentions((prev) =>
+                      prev.filter((x) => !(x.targetType === m.targetType && x.targetId === m.targetId)),
+                    )
+                  }
+                  className="ml-1 text-muted-foreground hover:text-foreground"
+                  aria-label={`Remove mention ${m.label}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="relative flex items-end gap-2">
+          <textarea
+            value={composerBody}
+            onChange={(e) => setComposerBody(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+            placeholder="Type a message… (⌘↩ to send)"
+            className="min-h-[60px] flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            disabled={sending}
+          />
+          <Button onClick={() => void send()} disabled={sending || !composerBody.trim()} size="sm">
+            {sending ? <Loader2 className="size-4 animate-spin" /> : "Send"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActivityRow({ activity }: { activity: ServerActivity }): React.ReactElement {
+  const p = activity.payload;
+  const time = formatDistanceToNowStrict(new Date(activity.createdAt), { addSuffix: true });
+  const inner = (() => {
+    switch (activity.kind) {
+      case "PR_CREATED": {
+        const url = typeof p.url === "string" ? p.url : null;
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            <GitPullRequest className="size-3.5 shrink-0 text-purple-500" />
+            <span>PR opened</span>
+            {url && (
+              <a
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[11px] text-blue-500 hover:underline"
+              >
+                {url.replace(/^https:\/\/github\.com\//, "")}
+              </a>
+            )}
+          </span>
+        );
+      }
+      case "COMMIT_PUSHED": {
+        const branch = typeof p.branch === "string" ? p.branch : null;
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            <GitCommit className="size-3.5 shrink-0 text-emerald-500" />
+            <span>Pushed{branch ? ` to ${branch}` : ""}</span>
+          </span>
+        );
+      }
+      case "TEST_RUN": {
+        const passed = p.passed === true;
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            {passed ? (
+              <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+            ) : (
+              <XCircle className="size-3.5 shrink-0 text-red-500" />
+            )}
+            <span>{passed ? "Tests passed" : "Tests failed"}</span>
+          </span>
+        );
+      }
+      case "BUILD": {
+        const passed = p.passed === true;
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            <Hammer className="size-3.5 shrink-0 text-amber-500" />
+            <span>{passed ? "Build succeeded" : "Build failed"}</span>
+          </span>
+        );
+      }
+      default:
+        return (
+          <span>{typeof p.text === "string" ? p.text : "Update"}</span>
+        );
+    }
+  })();
+  return (
+    <div className="flex items-center gap-2 pl-10 text-xs text-muted-foreground">
+      {inner}
+      <span className="ml-auto">{time}</span>
+    </div>
+  );
+}
+
+function MessageRow({ message }: { message: ClientMessage }): React.ReactElement {
+  const body = useMemo(() => {
+    if (message.status !== "STREAMING" || !message.streamingChunks) return message.body;
+    const sequences = [...message.streamingChunks.keys()].sort((a, b) => a - b);
+    return message.body + sequences.map((s) => message.streamingChunks!.get(s) ?? "").join("");
+  }, [message.body, message.status, message.streamingChunks]);
+
+  const authorLabel =
+    message.role === "AGENT"
+      ? message.authorAgent?.name ?? "Agent"
+      : message.role === "SYSTEM"
+        ? "System"
+        : message.authorUser?.name ?? message.authorUser?.email ?? "User";
+
+  const isStreaming = message.status === "STREAMING" || message.status === "PENDING";
+
+  return (
+    <div className="flex gap-3">
+      <div className="size-7 shrink-0 rounded-full bg-muted flex items-center justify-center">
+        {message.role === "AGENT" ? (
+          <Bot className="size-4 text-muted-foreground" />
+        ) : message.authorUser?.image ? (
+          // biome-ignore lint/performance/noImgElement: avatar is small, no LCP concern
+          <img src={message.authorUser.image} alt="" className="size-7 rounded-full" />
+        ) : (
+          <span className="text-xs font-medium text-muted-foreground">
+            {authorLabel.slice(0, 1).toUpperCase()}
+          </span>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 text-xs">
+          <span className="font-medium">{authorLabel}</span>
+          {isStreaming && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] font-medium text-cyan-500">
+              <Loader2 className="size-2.5 animate-spin" />
+              {message.status === "PENDING" ? "starting" : "running"}
+            </span>
+          )}
+          {message.status === "ERROR" && (
+            <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-500">
+              error
+            </span>
+          )}
+          <span className="text-muted-foreground">
+            {formatDistanceToNowStrict(message.createdAt, { addSuffix: true })}
+          </span>
+        </div>
+        <div className="whitespace-pre-wrap text-sm leading-relaxed">{body}</div>
+      </div>
+    </div>
+  );
+}

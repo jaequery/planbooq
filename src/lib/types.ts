@@ -250,6 +250,45 @@ export type AblyChannelEvent =
       kind: "PLAN" | "EXECUTE" | "CHAT";
       appendOutput?: string;
       status?: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELED";
+    }
+  | {
+      name: "message.created";
+      workspaceId: string;
+      conversationId: string;
+      ticketId: string | null;
+      message: MessageEventPayload;
+      by: string;
+    }
+  | {
+      name: "message.updated";
+      workspaceId: string;
+      conversationId: string;
+      ticketId: string | null;
+      messageId: string;
+      // For streaming: chunks since lastSeenSequence. Null body means body
+      // hasn't been finalized yet — clients should reassemble from chunks.
+      body?: string;
+      status?: "PENDING" | "STREAMING" | "COMPLETE" | "ERROR";
+      chunks?: { sequence: number; delta: string }[];
+      latestSequence?: number;
     };
+
+export type MessageEventPayload = {
+  id: string;
+  conversationId: string;
+  workspaceId: string;
+  role: "USER" | "AGENT" | "SYSTEM";
+  status: "PENDING" | "STREAMING" | "COMPLETE" | "ERROR";
+  body: string;
+  authorUserId: string | null;
+  authorAgentId: string | null;
+  agentJobId: string | null;
+  parentId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  authorUser: { id: string; name: string | null; email: string; image: string | null } | null;
+  authorAgent: { id: string; name: string } | null;
+  mentions: { id: string; targetType: "USER" | "AGENT" | "TICKET"; targetId: string }[];
+};
 
 export type ServerActionResult<T> = { ok: true; data: T } | { ok: false; error: string };

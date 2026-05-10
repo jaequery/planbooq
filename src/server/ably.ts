@@ -20,6 +20,18 @@ export function workspaceChannelName(workspaceId: string): string {
   return `workspace:${workspaceId}`;
 }
 
+// Chat messages are broadcast on workspace:{id}. Today the only ACL is
+// workspace membership (Member.workspaceId), so this grain matches the
+// authorization model — every member can already read every ticket. If
+// project- or ticket-level ACLs are introduced later, switch to per-
+// conversation channels and have /api/ably/token mint a separate capability
+// per conversation the caller can access. message.* events already carry
+// conversationId/ticketId so the server-side allowlist can be applied in the
+// token mint without changing publish call sites.
+export function conversationChannelName(conversationId: string): string {
+  return `conversation:${conversationId}`;
+}
+
 export function agentChannelName(agentId: string): string {
   return `agent:${agentId}`;
 }

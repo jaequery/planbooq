@@ -4,6 +4,7 @@ import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { maybeLinkPrUrlFromText } from "@/server/services/link-pr-url";
+import { mirrorAppendOutput, mirrorJobTerminal } from "@/server/services/mirror-agent-job";
 import { reconcileBuildingTicket } from "@/server/services/ticket-status";
 
 export const runtime = "nodejs";
@@ -69,6 +70,23 @@ export async function PATCH(
   }
 
   await prisma.agentJob.update({ where: { id }, data, select: { id: true } });
+
+  // Mirror this update into the new Conversation/Message surface so the
+  // chat-style thread populates alongside the legacy AgentJob.output blob.
+  // Failures here never affect the AgentJob update — mirror is best-effort.
+  if (parsed.data.appendOutput) {
+    void mirrorAppendOutput({ job, appendOutput: parsed.data.appendOutput });
+  }
+  if (
+    parsed.data.status === "SUCCEEDED" ||
+    parsed.data.status === "FAILED" ||
+    parsed.data.status === "CANCELED"
+  ) {
+    const finalOutput = parsed.data.appendOutput
+      ? `${job.output}${parsed.data.appendOutput}`
+      : job.output;
+    void mirrorJobTerminal({ job, status: parsed.data.status, finalOutput });
+  }
 
   // Desktop chat output is free-form — the agent will frequently announce a
   // newly-created PR in the chat stream (e.g. "Opened https://github.com/.../pull/42")

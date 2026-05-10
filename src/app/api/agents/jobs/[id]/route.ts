@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAgent } from "@/server/agent-auth";
 import { prisma } from "@/server/db";
+import { mirrorAppendOutput, mirrorJobTerminal } from "@/server/services/mirror-agent-job";
 
 const PatchSchema = z
   .object({
@@ -59,6 +60,20 @@ export async function PATCH(
     data,
     select: { id: true, status: true, ticketId: true },
   });
+
+  if (parsed.data.appendOutput) {
+    void mirrorAppendOutput({ job, appendOutput: parsed.data.appendOutput });
+  }
+  if (
+    parsed.data.status === "SUCCEEDED" ||
+    parsed.data.status === "FAILED" ||
+    parsed.data.status === "CANCELED"
+  ) {
+    const finalOutput = parsed.data.appendOutput
+      ? `${job.output}${parsed.data.appendOutput}`
+      : job.output;
+    void mirrorJobTerminal({ job, status: parsed.data.status, finalOutput });
+  }
 
   return NextResponse.json({ ok: true, data: updated });
 }
