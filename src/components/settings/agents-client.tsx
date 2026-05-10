@@ -98,7 +98,7 @@ export function AgentsClient({ workspaceId, initialAgents }: Props): React.React
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h2 className="text-base font-semibold">Local agents</h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="max-w-prose text-sm text-muted-foreground">
             Pair a machine running the Planbooq agent and Claude Code. Tickets dispatched to it
             stream their output back here.
           </p>

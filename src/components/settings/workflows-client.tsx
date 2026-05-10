@@ -111,12 +111,12 @@ export function WorkflowsClient({ workspaceId, initialTemplates }: Props): React
     <section className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <h2 className="text-base font-semibold">Workflows</h2>
-        <p className="text-sm text-muted-foreground">
+        <p className="max-w-prose text-sm text-muted-foreground">
           Reusable lists of AI instructions. Apply one to a project or ticket and each step runs in
           order.
         </p>
       </div>
-      <div className="grid gap-6 md:grid-cols-[220px_1fr]">
+      <div className="grid gap-6 md:grid-cols-[200px_1fr]">
         <aside className="flex flex-col gap-3">
           <div className="flex flex-col gap-0.5">
             {templates.length === 0 && (
@@ -210,12 +210,10 @@ function TemplateEditor({
   }
 
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3">
+    <section className="flex flex-col divide-y rounded-md border bg-card">
+      <div className="grid gap-4 p-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="wf-name" className="text-xs text-muted-foreground">
-            Name
-          </Label>
+          <Label htmlFor="wf-name">Name</Label>
           <Input
             id="wf-name"
             value={name}
@@ -224,21 +222,18 @@ function TemplateEditor({
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="wf-desc" className="text-xs text-muted-foreground">
-            Description
-          </Label>
-          <Textarea
+          <Label htmlFor="wf-desc">Description</Label>
+          <Input
             id="wf-desc"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={saveMeta}
             placeholder="What this workflow is for"
-            rows={2}
           />
         </div>
       </div>
 
-      <div className="flex items-center justify-between border-t pt-3">
+      <div className="flex items-center justify-between px-4 py-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Steps
         </h3>
@@ -254,42 +249,44 @@ function TemplateEditor({
         </Button>
       </div>
 
-      <StepList
-        steps={template.steps}
-        onAdd={async (name, prompt) => {
-          const res = await addTemplateStep({ templateId: template.id, name, prompt });
-          if (!res.ok) {
-            toast.error(res.error);
-            return false;
-          }
-          await onChanged();
-          return true;
-        }}
-        onUpdate={async (id, patch) => {
-          const res = await updateTemplateStep({ id, ...patch });
-          if (!res.ok) {
-            toast.error(res.error);
-            return;
-          }
-          await onChanged();
-        }}
-        onRemove={async (id) => {
-          const res = await removeTemplateStep(id);
-          if (!res.ok) {
-            toast.error(res.error);
-            return;
-          }
-          await onChanged();
-        }}
-        onReorder={async (orderedStepIds) => {
-          const res = await reorderTemplateSteps({ templateId: template.id, orderedStepIds });
-          if (!res.ok) {
-            toast.error(res.error);
-            return;
-          }
-          await onChanged();
-        }}
-      />
+      <div className="px-4 py-2">
+        <StepList
+          steps={template.steps}
+          onAdd={async (name, prompt) => {
+            const res = await addTemplateStep({ templateId: template.id, name, prompt });
+            if (!res.ok) {
+              toast.error(res.error);
+              return false;
+            }
+            await onChanged();
+            return true;
+          }}
+          onUpdate={async (id, patch) => {
+            const res = await updateTemplateStep({ id, ...patch });
+            if (!res.ok) {
+              toast.error(res.error);
+              return;
+            }
+            await onChanged();
+          }}
+          onRemove={async (id) => {
+            const res = await removeTemplateStep(id);
+            if (!res.ok) {
+              toast.error(res.error);
+              return;
+            }
+            await onChanged();
+          }}
+          onReorder={async (orderedStepIds) => {
+            const res = await reorderTemplateSteps({ templateId: template.id, orderedStepIds });
+            if (!res.ok) {
+              toast.error(res.error);
+              return;
+            }
+            await onChanged();
+          }}
+        />
+      </div>
     </section>
   );
 }
