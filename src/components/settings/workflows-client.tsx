@@ -17,7 +17,16 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Check, ChevronDown, ChevronUp, GripVertical, Loader2, Play, Plus, Trash2 } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  GripVertical,
+  Loader2,
+  Play,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
@@ -42,10 +51,7 @@ type FullTemplate = { id: string; name: string; description: string | null; step
 
 type Props = { workspaceId: string; initialTemplates: TemplateRow[] };
 
-export function WorkflowsClient({
-  workspaceId,
-  initialTemplates,
-}: Props): React.ReactElement {
+export function WorkflowsClient({ workspaceId, initialTemplates }: Props): React.ReactElement {
   const [templates, setTemplates] = useState<TemplateRow[]>(initialTemplates);
   const [activeId, setActiveId] = useState<string | null>(initialTemplates[0]?.id ?? null);
   const [active, setActive] = useState<FullTemplate | null>(null);
@@ -102,68 +108,78 @@ export function WorkflowsClient({
   }
 
   return (
-    <div className="grid gap-6 md:grid-cols-[260px_1fr]">
-      <aside className="flex flex-col gap-2">
-        <div className="flex flex-col gap-1">
-          {templates.length === 0 && (
-            <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-              No workflow templates yet. Type a name below to create your first one — it becomes a
-              reusable list of AI instructions you can apply to any project or ticket.
-            </div>
-          )}
-          {templates.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setActiveId(t.id)}
-              className={`flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                activeId === t.id ? "border-foreground bg-muted/50" : "hover:bg-muted/30"
-              }`}
-            >
-              <span className="truncate">{t.name}</span>
-              <span className="ml-2 shrink-0 text-xs text-muted-foreground">
-                {t.stepCount} step{t.stepCount === 1 ? "" : "s"}
-              </span>
-            </button>
-          ))}
-        </div>
-        <div className="mt-2 flex gap-2">
-          <Input
-            ref={createInputRef}
-            placeholder="New template name"
-            value={creatingName}
-            onChange={(e) => setCreatingName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                onCreate();
-              }
-            }}
-          />
-          <Button size="sm" onClick={onCreate} disabled={pending || !creatingName.trim()}>
-            <Plus className="size-4" />
-          </Button>
-        </div>
-      </aside>
-
-      <div className="min-w-0">
-        {!active ? (
-          <p className="text-sm text-muted-foreground">
-            Select a template, or create one to define a reusable workflow.
-          </p>
-        ) : (
-          <TemplateEditor
-            key={active.id}
-            template={active}
-            onChanged={async () => {
-              await loadActive(active.id);
-              await refreshList();
-            }}
-            onDelete={() => onDelete(active.id)}
-          />
-        )}
+    <section className="flex flex-col gap-3">
+      <div>
+        <h2 className="text-sm font-medium">Workflows</h2>
+        <p className="text-sm text-muted-foreground">
+          Reusable lists of AI instructions. Apply a workflow to a project or ticket and each step
+          runs in order.
+        </p>
       </div>
-    </div>
+      <div className="grid gap-6 md:grid-cols-[260px_1fr]">
+        <aside className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1">
+            {templates.length === 0 && (
+              <div className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
+                No templates yet. Name one below to create your first.
+              </div>
+            )}
+            {templates.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setActiveId(t.id)}
+                className={`flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                  activeId === t.id ? "border-foreground bg-muted/50" : "hover:bg-muted/30"
+                }`}
+              >
+                <span className="truncate">{t.name}</span>
+                <span className="ml-2 shrink-0 text-xs text-muted-foreground">
+                  {t.stepCount} step{t.stepCount === 1 ? "" : "s"}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 flex gap-2">
+            <Input
+              ref={createInputRef}
+              placeholder="New template name"
+              value={creatingName}
+              onChange={(e) => setCreatingName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onCreate();
+                }
+              }}
+            />
+            <Button size="sm" onClick={onCreate} disabled={pending || !creatingName.trim()}>
+              <Plus className="size-4" />
+            </Button>
+          </div>
+        </aside>
+
+        <div className="min-w-0">
+          {!active ? (
+            <div className="flex h-full min-h-[160px] items-center justify-center rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+              {templates.length === 0
+                ? "Create your first template to start defining workflow steps."
+                : "Select a template on the left to edit its steps."}
+            </div>
+          ) : (
+            <TemplateEditor
+              key={active.id}
+              template={active}
+              onChanged={async () => {
+                await loadActive(active.id);
+                await refreshList();
+              }}
+              onDelete={() => onDelete(active.id)}
+            />
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -274,7 +290,10 @@ export function StepList({
 }: {
   steps: Step[];
   onAdd: (name: string, prompt: string) => Promise<boolean>;
-  onUpdate: (id: string, patch: { name?: string; prompt?: string; enabled?: boolean }) => Promise<void>;
+  onUpdate: (
+    id: string,
+    patch: { name?: string; prompt?: string; enabled?: boolean },
+  ) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
   onReorder: (orderedStepIds: string[]) => Promise<void>;
   onRunStep?: (step: Step) => void;
@@ -415,7 +434,9 @@ function StepRow({
         <span
           className="flex w-5 shrink-0 items-center justify-end text-[11px] tabular-nums text-muted-foreground/60"
           aria-label={`Step ${status}`}
-          title={status === "completed" ? "Completed" : status === "running" ? "Running" : "Pending"}
+          title={
+            status === "completed" ? "Completed" : status === "running" ? "Running" : "Pending"
+          }
         >
           {status === "completed" ? (
             <Check className="size-3.5 text-emerald-500/80" aria-hidden />

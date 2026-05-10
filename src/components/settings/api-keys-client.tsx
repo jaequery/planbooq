@@ -86,25 +86,26 @@ export function ApiKeysClient({
   };
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 p-6">
-      <header className="flex items-start justify-between gap-4">
+    <section className="flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">API keys</h1>
+          <h2 className="text-sm font-medium">API keys</h2>
           <p className="text-sm text-muted-foreground">
-            Workspace: <span className="font-medium">{workspaceName}</span>. Keys grant access to
-            this workspace's tickets via the REST API. Treat them like passwords.
+            Tokens for the {workspaceName} workspace. Used by the Planbooq Claude skill and external
+            automations. Treat them like passwords — anyone with a token can read and change
+            tickets.
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
+        <Button size="sm" onClick={() => setCreateOpen(true)}>
           <Plus className="mr-2 h-3.5 w-3.5" />
           New key
         </Button>
-      </header>
+      </div>
 
       <div className="overflow-hidden rounded-md border">
         {initialKeys.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">
-            No API keys yet. Create one to use the Planbooq Claude skill or any external
+            No keys yet. Create one to connect the Planbooq Claude skill or any external
             integration.
           </div>
         ) : (
@@ -233,6 +234,6 @@ export function ApiKeysClient({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }
