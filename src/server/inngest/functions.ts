@@ -2,6 +2,7 @@ import { logger } from "@/lib/logger";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
 import { inferTicketPriority, runOpenRouterForTicket } from "@/server/openrouter";
+import { mirrorJobTerminal } from "@/server/services/mirror-agent-job";
 import { reconcileBuildingTicket } from "@/server/services/ticket-status";
 
 import { inngest } from "./client";
@@ -150,6 +151,7 @@ export const reapStaleAgentJobs = inngest.createFunction(
           workspaceId: true,
           ticketId: true,
           userId: true,
+          agentId: true,
           kind: true,
         },
       }),
@@ -181,6 +183,30 @@ export const reapStaleAgentJobs = inngest.createFunction(
             workspaceId: job.workspaceId,
             kind,
             status: "FAILED",
+          });
+        }
+      });
+
+      // Mirror the terminal status onto the paired Message so the conversation
+      // thread doesn't keep showing a "running" spinner. Without this, the
+      // AgentJob row flips to FAILED but its mirrored Message stays in
+      // STREAMING/PENDING forever — visible in the rail as "System running".
+      await step.run("mirror-reaped-messages", async () => {
+        for (const job of stale) {
+          await mirrorJobTerminal({
+            job: {
+              id: job.id,
+              workspaceId: job.workspaceId,
+              ticketId: job.ticketId,
+              agentId: job.agentId,
+            } as Parameters<typeof mirrorJobTerminal>[0]["job"],
+            status: "FAILED",
+            finalOutput: "",
+          }).catch((error: unknown) => {
+            logger.warn("agent.job.mirror.failed", {
+              jobId: job.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
           });
         }
       });
@@ -259,7 +285,68 @@ export const reapStaleAgentJobs = inngest.createFunction(
       });
     }
 
-    return { reaped: stale.length, strandedReconciled };
+    // Orphan-message sweep: any Message whose paired AgentJob is already
+    // terminal but whose own status is still PENDING/STREAMING. This covers
+    // paths that update AgentJob.status without going through the mirror —
+    // e.g. the /api/tickets/[id]/plan finally-block throwing after the job
+    // row was flipped but before mirrorJobTerminal ran, or any future call
+    // site that forgets the mirror entirely.
+    const orphans = await step.run("find-orphan-messages", () =>
+      prisma.message.findMany({
+        where: {
+          status: { in: ["PENDING", "STREAMING"] },
+          agentJobId: { not: null },
+          agentJob: { status: { in: ["SUCCEEDED", "FAILED", "CANCELED"] } },
+        },
+        select: {
+          id: true,
+          agentJob: {
+            select: {
+              id: true,
+              workspaceId: true,
+              ticketId: true,
+              agentId: true,
+              status: true,
+              output: true,
+            },
+          },
+        },
+        take: 200,
+      }),
+    );
+
+    if (orphans.length > 0) {
+      await step.run("finalize-orphan-messages", async () => {
+        for (const m of orphans) {
+          const job = m.agentJob;
+          if (!job) continue;
+          const status = job.status as "SUCCEEDED" | "FAILED" | "CANCELED";
+          await mirrorJobTerminal({
+            job: {
+              id: job.id,
+              workspaceId: job.workspaceId,
+              ticketId: job.ticketId,
+              agentId: job.agentId,
+            } as Parameters<typeof mirrorJobTerminal>[0]["job"],
+            status,
+            finalOutput: job.output ?? "",
+          }).catch((error: unknown) => {
+            logger.warn("message.orphan.finalize.failed", {
+              messageId: m.id,
+              jobId: job.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        }
+        logger.warn("message.orphans.finalized", { count: orphans.length });
+      });
+    }
+
+    return {
+      reaped: stale.length,
+      strandedReconciled,
+      orphansFinalized: orphans.length,
+    };
   },
 );
 
