@@ -11,7 +11,7 @@ const SESSION_COOKIES = [
   "__Secure-next-auth.session-token",
 ];
 
-export default function middleware(req: NextRequest): NextResponse {
+export default function proxy(req: NextRequest): NextResponse {
   const hasSession = SESSION_COOKIES.some((name) => req.cookies.has(name));
   if (!hasSession) {
     return NextResponse.redirect(new URL("/", req.url));
