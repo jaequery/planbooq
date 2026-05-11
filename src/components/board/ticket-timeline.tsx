@@ -1,7 +1,17 @@
 "use client";
 
 import { formatDistanceToNowStrict } from "date-fns";
-import { CheckCircle2, GitCommit, GitPullRequest, Hammer, Trash2, XCircle } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  CircleDot,
+  CirclePlay,
+  GitCommit,
+  GitPullRequest,
+  Hammer,
+  Trash2,
+  XCircle,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { createComment, deleteComment, listTicketComments } from "@/actions/comment";
@@ -15,7 +25,15 @@ import type { CommentWithAuthor } from "@/server/services/comments";
 
 type ServerActivity = {
   id: string;
-  kind: "PR_CREATED" | "COMMIT_PUSHED" | "TEST_RUN" | "BUILD" | "NOTE";
+  kind:
+    | "PR_CREATED"
+    | "COMMIT_PUSHED"
+    | "TEST_RUN"
+    | "BUILD"
+    | "NOTE"
+    | "STATUS_CHANGED"
+    | "STEP_STARTED"
+    | "STEP_COMPLETED";
   payload: Record<string, unknown>;
   jobId: string | null;
   createdAt: string;
@@ -104,6 +122,47 @@ function renderServerActivity(a: ServerActivity): React.ReactElement {
         <span className="inline-flex items-center gap-1.5">
           <Hammer className="size-3.5 shrink-0 text-amber-500" />
           <span>{passed ? "Build succeeded" : "Build failed"}</span>
+        </span>
+      );
+    }
+    case "STATUS_CHANGED": {
+      const fromLabel =
+        (typeof p.fromName === "string" && p.fromName) ||
+        (typeof p.fromKey === "string" && p.fromKey) ||
+        "previous";
+      const toLabel =
+        (typeof p.toName === "string" && p.toName) ||
+        (typeof p.toKey === "string" && p.toKey) ||
+        "new";
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          <CircleDot className="size-3.5 shrink-0 text-blue-500" />
+          <span>Status</span>
+          <span className="font-medium">{fromLabel}</span>
+          <ArrowRight className="size-3 shrink-0 opacity-60" />
+          <span className="font-medium">{toLabel}</span>
+        </span>
+      );
+    }
+    case "STEP_STARTED": {
+      const name = typeof p.name === "string" ? p.name : "step";
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          <CirclePlay className="size-3.5 shrink-0 text-blue-500" />
+          <span>
+            Step started: <span className="font-medium">{name}</span>
+          </span>
+        </span>
+      );
+    }
+    case "STEP_COMPLETED": {
+      const name = typeof p.name === "string" ? p.name : "step";
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+          <span>
+            Step completed: <span className="font-medium">{name}</span>
+          </span>
         </span>
       );
     }

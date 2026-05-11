@@ -6,6 +6,7 @@ import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
 import { inngest } from "@/server/inngest/client";
 import { getPrStatusForUser, parseGitHubPrUrl } from "@/server/services/github-pr";
+import { recordStatusChangedActivity } from "@/server/services/ticket-activity";
 
 /**
  * Move a ticket to the status with the given key (e.g. "todo", "building").
@@ -74,6 +75,14 @@ export async function moveTicketToStatusKey(args: {
     toStatusId: target.id,
     position,
     by: args.byUserId,
+  });
+
+  await recordStatusChangedActivity({
+    ticketId: ticket.id,
+    workspaceId: ticket.workspaceId,
+    fromStatusId,
+    toStatusId: target.id,
+    byUserId: args.byUserId ?? null,
   });
 
   void inngest

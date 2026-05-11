@@ -384,6 +384,9 @@ enum TicketActivityKind {
   TEST_RUN
   BUILD
   NOTE
+  STATUS_CHANGED
+  STEP_STARTED
+  STEP_COMPLETED
 }
 
 model TicketActivity {

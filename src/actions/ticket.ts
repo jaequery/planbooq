@@ -11,6 +11,7 @@ import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { inngest } from "@/server/inngest/client";
 import { generateTicketDraft } from "@/server/openrouter";
+import { recordStatusChangedActivity } from "@/server/services/ticket-activity";
 import { autoTransitionPlanningToTodo } from "@/server/services/ticket-status";
 
 const TICKET_RELATIONS_INCLUDE = {
@@ -147,6 +148,14 @@ export async function moveTicket(
       toStatusId,
       position: finalPosition,
       by: userId,
+    });
+
+    await recordStatusChangedActivity({
+      ticketId: updated.id,
+      workspaceId: ticket.workspaceId,
+      fromStatusId,
+      toStatusId,
+      byUserId: userId,
     });
 
     void inngest

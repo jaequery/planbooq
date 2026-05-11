@@ -1,0 +1,4 @@
+-- AlterEnum
+ALTER TYPE "TicketActivityKind" ADD VALUE 'STATUS_CHANGED';
+ALTER TYPE "TicketActivityKind" ADD VALUE 'STEP_STARTED';
+ALTER TYPE "TicketActivityKind" ADD VALUE 'STEP_COMPLETED';

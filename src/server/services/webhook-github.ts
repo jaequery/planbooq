@@ -6,6 +6,7 @@ import { logger } from "@/lib/logger";
 import { parseTicketRef } from "@/lib/ticket-identifier";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
+import { recordStatusChangedActivity } from "@/server/services/ticket-activity";
 import {
   markPullRequestMerged,
   recordTicketPullRequest,
@@ -159,6 +160,14 @@ export async function autoCompleteTicketByPrUrl(prUrl: string): Promise<AutoComp
     toStatusId: completed.id,
     position: finalPosition,
     by: "github-webhook",
+  });
+
+  await recordStatusChangedActivity({
+    ticketId: ticket.id,
+    workspaceId: ticket.workspaceId,
+    fromStatusId,
+    toStatusId: completed.id,
+    byUserId: null,
   });
 
   return {

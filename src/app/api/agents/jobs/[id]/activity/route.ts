@@ -6,7 +6,16 @@ import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
 import { maybeLinkPrUrlFromText } from "@/server/services/link-pr-url";
 
-const KindSchema = z.enum(["PR_CREATED", "COMMIT_PUSHED", "TEST_RUN", "BUILD", "NOTE"]);
+const KindSchema = z.enum([
+  "PR_CREATED",
+  "COMMIT_PUSHED",
+  "TEST_RUN",
+  "BUILD",
+  "NOTE",
+  "STATUS_CHANGED",
+  "STEP_STARTED",
+  "STEP_COMPLETED",
+]);
 
 const PostSchema = z
   .object({
