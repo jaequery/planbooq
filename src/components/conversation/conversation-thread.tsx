@@ -446,12 +446,20 @@ function ActivityRow({ activity }: { activity: ServerActivity }): React.ReactEle
       }
       case "STEP_COMPLETED": {
         const name = typeof p.name === "string" ? p.name : "step";
+        const failed = p.result === "failure";
+        const error = failed && typeof p.error === "string" ? p.error : null;
         return (
           <span className="inline-flex items-center gap-1.5">
-            <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+            {failed ? (
+              <XCircle className="size-3.5 shrink-0 text-red-500" />
+            ) : (
+              <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+            )}
             <span>
-              Step completed: <span className="font-medium">{name}</span>
+              {failed ? "Step failed: " : "Step completed: "}
+              <span className="font-medium">{name}</span>
             </span>
+            {error && <span className="text-muted-foreground">— {error}</span>}
           </span>
         );
       }
