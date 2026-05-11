@@ -33,6 +33,10 @@ type DesktopBridge = {
      *  HTTP heartbeats every 30s so the server reaper knows the bridge is
      *  alive even when the renderer isn't actively pushing wire events. */
     jobId?: string;
+    /** WorkflowStepRun id reserved by the workflow panel before dispatch.
+     *  Electron main stamps it onto every wire event for this session so
+     *  the server-side mirror can attribute each Message row to its step. */
+    workflowStepRunId?: string | null;
   }) => Promise<{
     ok: boolean;
     error?: string;
@@ -51,8 +55,17 @@ type DesktopBridge = {
       apiToken: string;
     };
     jobId?: string;
+    workflowStepRunId?: string | null;
   }) => Promise<{ ok: boolean; error?: string; sessionId?: string }>;
-  agentSend: (input: { sessionId: string; message: string }) => Promise<{
+  agentSend: (input: {
+    sessionId: string;
+    message: string;
+    /** Set when the renderer is dispatching a new workflow step on an
+     *  already-live session. Main updates the per-session step stamp before
+     *  writing this user wire event so subsequent agent/tool messages get
+     *  the new step credited correctly. */
+    workflowStepRunId?: string | null;
+  }) => Promise<{
     ok: boolean;
     error?: string;
   }>;

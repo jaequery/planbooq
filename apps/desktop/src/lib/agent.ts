@@ -129,6 +129,13 @@ type Session = {
   // Set once main has dispatched a terminal PATCH for this session so
   // any straggling exit/error from the child doesn't re-fire it.
   terminalSent: boolean;
+  // Active workflow step for THIS session. Updated each time the renderer
+  // sends a step via agentSend/Start/Resume with workflowStepRunId set;
+  // stamped onto every wire event main writes so the server-side mirror can
+  // attribute Message rows to the right WorkflowStepRun. A single AgentJob
+  // can span multiple steps in one Claude session, so this per-write stamp
+  // is the only correct attribution path for warm-send turns.
+  currentStepRunId: string | null;
 };
 
 const sessions = new Map<string, Session>();
@@ -217,10 +224,10 @@ function attachHeartbeatTarget(
 // =============================================================================
 
 type WireEvent =
-  | { kind: "agent"; line: string; at?: number }
-  | { kind: "stderr"; line: string; at?: number }
-  | { kind: "exit"; code: number; at?: number }
-  | { kind: "user"; text: string; at?: number };
+  | { kind: "agent"; line: string; at?: number; stepRunId?: string | null }
+  | { kind: "stderr"; line: string; at?: number; stepRunId?: string | null }
+  | { kind: "exit"; code: number; at?: number; stepRunId?: string | null }
+  | { kind: "user"; text: string; at?: number; stepRunId?: string | null };
 
 const APPEND_FLUSH_MS = 250;
 
@@ -306,7 +313,11 @@ function patchTerminal(session: Session, sessionId: string, code: number): void 
   }
   const pending = session.appendBuffer;
   session.appendBuffer = "";
-  const exitWire = serializeWire({ kind: "exit", code });
+  const exitWire = serializeWire({
+    kind: "exit",
+    code,
+    stepRunId: session.currentStepRunId,
+  });
   // Classification mirrors the renderer's previous logic (which now lives
   // here): user-Stop → CANCELED → ticket → todo; non-zero/OS-kill → FAILED
   // → ticket → blocked (human notices); zero → SUCCEEDED.
@@ -327,7 +338,18 @@ function patchUserMessage(session: Session, sessionId: string, text: string): vo
   // User messages aren't on the buffered coalesce path — the renderer
   // sends them one at a time, and they need to land in conversational
   // order with the agent's reply. Send immediately as its own PATCH.
-  sendPatch(session, sessionId, { appendOutput: serializeWire({ kind: "user", text }) }, "user");
+  sendPatch(
+    session,
+    sessionId,
+    {
+      appendOutput: serializeWire({
+        kind: "user",
+        text,
+        stepRunId: session.currentStepRunId,
+      }),
+    },
+    "user",
+  );
 }
 
 function emit(payload: Record<string, unknown>): void {
@@ -706,7 +728,12 @@ function spawnClaude(
       // rationale. The renderer is a viewer; main is the persistence
       // authority.
       const s = sessions.get(sessionId);
-      if (s) enqueueAppend(s, sessionId, serializeWire({ kind: "agent", line }));
+      if (s)
+        enqueueAppend(
+          s,
+          sessionId,
+          serializeWire({ kind: "agent", line, stepRunId: s.currentStepRunId }),
+        );
     }
   });
   proc.stderr?.on("data", (b: Buffer) => {
@@ -714,7 +741,12 @@ function spawnClaude(
     logLine(sessionId, "stderr", s);
     emit({ type: "stderr", sessionId, line: s });
     const session = sessions.get(sessionId);
-    if (session) enqueueAppend(session, sessionId, serializeWire({ kind: "stderr", line: s }));
+    if (session)
+      enqueueAppend(
+        session,
+        sessionId,
+        serializeWire({ kind: "stderr", line: s, stepRunId: session.currentStepRunId }),
+      );
   });
   proc.on("error", (err) => {
     log.error("claude spawn error", err);
@@ -728,7 +760,11 @@ function spawnClaude(
       enqueueAppend(
         session,
         sessionId,
-        serializeWire({ kind: "stderr", line: `[spawn error] ${err.message}\n` }),
+        serializeWire({
+          kind: "stderr",
+          line: `[spawn error] ${err.message}\n`,
+          stepRunId: session.currentStepRunId,
+        }),
       );
       patchTerminal(session, sessionId, 1);
     }
@@ -765,6 +801,11 @@ export function registerAgentIpc(): void {
         // present (plus ticket.apiBaseUrl + apiToken), main starts pushing
         // heartbeats so the server's reaper knows the bridge is alive.
         jobId?: string;
+        // Optional WorkflowStepRun id. Stamped onto every wire event main
+        // writes for this session until the renderer hands us a new one.
+        // Lets the mirror service attribute each Message row to its step
+        // even when one AgentJob spans multiple steps.
+        workflowStepRunId?: string | null;
       },
     ) => {
       if (!input?.repoPath || !input?.branch || !input?.firstMessage)
@@ -912,6 +953,7 @@ export function registerAgentIpc(): void {
         appendTimer: null,
         userStopped: false,
         terminalSent: false,
+        currentStepRunId: input.workflowStepRunId ?? null,
       });
       if (input.jobId && input.ticket?.apiBaseUrl && input.ticket?.apiToken) {
         attachHeartbeatTarget(
@@ -945,6 +987,7 @@ export function registerAgentIpc(): void {
         message: string;
         ticket?: TicketContext;
         jobId?: string;
+        workflowStepRunId?: string | null;
       },
     ) => {
       if (!input?.worktreePath || !input?.claudeSessionId || !input?.message)
@@ -968,6 +1011,7 @@ export function registerAgentIpc(): void {
         appendTimer: null,
         userStopped: false,
         terminalSent: false,
+        currentStepRunId: input.workflowStepRunId ?? null,
       });
       if (input.jobId && input.ticket?.apiBaseUrl && input.ticket?.apiToken) {
         attachHeartbeatTarget(
@@ -986,9 +1030,25 @@ export function registerAgentIpc(): void {
 
   ipcMain.handle(
     "planbooq:agent:send",
-    async (_, input: { sessionId: string; message: string }) => {
+    async (
+      _,
+      input: {
+        sessionId: string;
+        message: string;
+        // Set when the renderer is dispatching a new workflow step on a
+        // session that's already running. Update the per-session stamp
+        // BEFORE writing the user wire event so the new step gets credit
+        // for this turn's messages. null/absent leaves the prior value in
+        // place — a non-workflow chat reply on top of a workflow turn
+        // shouldn't blank the attribution.
+        workflowStepRunId?: string | null;
+      },
+    ) => {
       const s = sessions.get(input.sessionId);
       if (!s) return { ok: false, error: "session not found" };
+      if (input.workflowStepRunId !== undefined) {
+        s.currentStepRunId = input.workflowStepRunId;
+      }
       s.proc.stdin?.write(userMessage(input.message));
       patchUserMessage(s, input.sessionId, input.message);
       return { ok: true };

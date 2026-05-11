@@ -51,12 +51,19 @@ export function TicketWorkflowPanel({
   workspaceId,
   projectId,
   autoRun,
+  agentReady,
   onReady,
 }: {
   ticketId: string;
   workspaceId: string;
   projectId: string;
   autoRun?: boolean;
+  /** True once the sibling agent panel has loaded its own project-local-path
+   *  state and is wired to receive `planbooq:workflow-run` events. Gating
+   *  auto-run on this prevents the race where this panel's fetch wins,
+   *  dispatches the event, and the agent panel sees a stale `repoPath=null`
+   *  and toasts "Pick a project folder first". */
+  agentReady?: boolean;
   onReady?: () => void;
 }): React.ReactElement | null {
   const [wf, setWf] = useState<WorkflowState | null>(null);
@@ -184,9 +191,16 @@ export function TicketWorkflowPanel({
   // mounts with autoRun=true and the workflow data has loaded. Triggered
   // by the chat-orb's auto-run path (server publishes ticket.workflow.run
   // → board opens this dialog with autoRunAction=true).
+  //
+  // `agentReady` gates on the sibling agent panel finishing its own
+  // getProjectLocalPath fetch. Without it the two panels race: this one
+  // sets hasLocalPath=true, fires runAll → planbooq:workflow-run, and the
+  // agent panel's send() reads its still-null repoPath and toasts
+  // "Pick a project folder first."
   const autoRunFiredRef = useRef(false);
   useEffect(() => {
     if (!autoRun) return;
+    if (!agentReady) return;
     if (autoRunFiredRef.current) return;
     if (!wf) return;
     if (!hasLocalPath) return;
@@ -194,7 +208,7 @@ export function TicketWorkflowPanel({
     autoRunFiredRef.current = true;
     runAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRun, wf, hasLocalPath, running]);
+  }, [autoRun, agentReady, wf, hasLocalPath, running]);
 
   // While we believe the agent is running, poll the server every 30s so
   // server-side reconciliation (stale-job sweep) gets exercised even when
@@ -232,24 +246,36 @@ export function TicketWorkflowPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
 
-  function runPrompts(prompts: string[]) {
-    if (prompts.length === 0) return;
+  async function runPrompts(steps: Array<{ name: string; prompt: string }>) {
+    if (steps.length === 0) return;
+    // Create the WorkflowRun + per-step WorkflowStepRun rows FIRST so each
+    // dispatched prompt carries its own stepRunId. That id rides the
+    // planbooq:workflow-run event → agent panel queue → POST desktop-jobs →
+    // AgentJob.workflowStepRunId, giving us a real FK from chat back to the
+    // step instead of the fragile prompt-prefix regex match.
+    let stepRunIds: string[] = [];
+    try {
+      const r = await triggerWorkflowRun(ticketId, {
+        steps: steps.map((s) => ({ name: s.name, prompt: s.prompt })),
+      });
+      if (r.ok) stepRunIds = r.stepRunIds;
+    } catch {
+      // tolerated — fall through with empty ids; dispatch still works in
+      // legacy "prompt-prefix only" mode, just without the FK.
+    }
+    const payloadSteps = steps.map((s, i) => ({
+      stepRunId: stepRunIds[i] ?? null,
+      name: s.name,
+      prompt: s.prompt,
+    }));
     window.dispatchEvent(
       new CustomEvent("planbooq:workflow-run", {
-        detail: { ticketId, prompts },
+        detail: { ticketId, steps: payloadSteps },
       }),
     );
-    // Move the ticket to Running (deterministic backlog|todo → building)
-    // immediately so the card jumps columns the moment the user clicks Run.
-    // Then ask local Claude Code in the background for a smarter status pick
-    // and apply it as a refinement if it differs.
-    void (async () => {
-      try {
-        await triggerWorkflowRun(ticketId);
-      } catch {
-        // tolerated
-      }
-    })();
+    // Ask local Claude Code in the background for a smarter status pick than
+    // the deterministic backlog|todo → building that triggerWorkflowRun
+    // already applied, and refine if it differs.
     void (async () => {
       try {
         const bridge = getDesktopBridge();
@@ -257,8 +283,8 @@ export function TicketWorkflowPanel({
         const ctxRes = await getWorkflowStatusContext(ticketId);
         if (!ctxRes.ok || ctxRes.statuses.length === 0) return;
         const allowed = ctxRes.statuses.map((s) => s.key);
-        const stepsBlock = prompts
-          .map((p, i) => `${i + 1}. ${p.slice(0, 400)}`)
+        const stepsBlock = steps
+          .map((s, i) => `${i + 1}. ${s.prompt.slice(0, 400)}`)
           .join("\n");
         const askPrompt = [
           "You are picking the kanban status for a ticket whose workflow steps are about to run via Claude Code.",
@@ -325,7 +351,9 @@ export function TicketWorkflowPanel({
       setCurrentStep(step.name);
       logStarted(step.name);
     }
-    runPrompts([`[Workflow: ${step.name}]\n${step.prompt}`]);
+    void runPrompts([
+      { name: step.name, prompt: `[Workflow: ${step.name}]\n${step.prompt}` },
+    ]);
     toast.success(`Running step: ${step.name}`);
   }
 
@@ -354,13 +382,14 @@ export function TicketWorkflowPanel({
         setCurrentStep(defaultName);
         logStarted(defaultName);
       }
-      runPrompts([defaultPrompt]);
+      void runPrompts([{ name: defaultName, prompt: defaultPrompt }]);
       toast.success("Running default build");
       return;
     }
-    const prompts = enabled.map(
-      (s, i) => `[Workflow ${i + 1}/${enabled.length}: ${s.name}]\n${s.prompt}`,
-    );
+    const dispatch = enabled.map((s, i) => ({
+      name: s.name,
+      prompt: `[Workflow ${i + 1}/${enabled.length}: ${s.name}]\n${s.prompt}`,
+    }));
     const queueWasEmpty = pendingStepsRef.current.length === 0;
     for (const s of enabled) pendingStepsRef.current.push(s.name);
     setCompletedSteps((prev) => {
@@ -373,7 +402,7 @@ export function TicketWorkflowPanel({
       setCurrentStep(enabled[0].name);
       logStarted(enabled[0].name);
     }
-    runPrompts(prompts);
+    void runPrompts(dispatch);
     toast.success(`Running ${enabled.length} step${enabled.length === 1 ? "" : "s"}`);
   }
 

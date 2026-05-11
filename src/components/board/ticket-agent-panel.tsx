@@ -69,6 +69,7 @@ export function TicketAgentPanel(props: Props): React.ReactElement {
           workspaceId={props.workspaceId}
           projectId={props.projectId}
           autoRun={props.autoRunAction === true}
+          agentReady={panelReady}
           onReady={() => setWorkflowReady(true)}
         />
         {isDesktop ? (
@@ -110,10 +111,10 @@ type ParsedEvent = {
 };
 
 type WireEvent =
-  | { kind: "agent"; line: string; at?: number }
-  | { kind: "stderr"; line: string; at?: number }
-  | { kind: "exit"; code: number; at?: number }
-  | { kind: "user"; text: string; at?: number };
+  | { kind: "agent"; line: string; at?: number; stepRunId?: string | null }
+  | { kind: "stderr"; line: string; at?: number; stepRunId?: string | null }
+  | { kind: "exit"; code: number; at?: number; stepRunId?: string | null }
+  | { kind: "user"; text: string; at?: number; stepRunId?: string | null };
 
 function formatToolUse(name: string, input: Record<string, unknown> | undefined): string {
   const arg = (() => {
@@ -621,7 +622,12 @@ function DesktopPanel({
   // with [] deps) can filter incoming events without resubscribing.
   const sessionIdRef = useRef<string | null>(null);
   sessionIdRef.current = sessionId;
-  const workflowQueueRef = useRef<string[]>([]);
+  // Queue of pending workflow-step dispatches. Each entry carries the prompt
+  // AND the WorkflowStepRun id that the workflow panel reserved up front, so
+  // when this panel POSTs the desktop-jobs row we can set
+  // AgentJob.workflowStepRunId = stepRunId — wiring chat to step by FK
+  // instead of regex-matching the prompt prefix later.
+  const workflowQueueRef = useRef<Array<{ stepRunId: string | null; prompt: string }>>([]);
   // Idle watchdog: if no bridge events arrive for IDLE_TIMEOUT_MS while busy,
   // assume the agent stalled (child crashed without flushing `result`, network
   // dropped, unknown event shape) and force the panel out of "thinking…" so
@@ -992,18 +998,32 @@ function DesktopPanel({
     return result.path;
   };
 
-  const sendRef = useRef<((override?: string) => Promise<void>) | null>(null);
+  const sendRef = useRef<
+    | ((
+        override?: string,
+        opts?: { workflowStepRunId?: string | null },
+      ) => Promise<void>)
+    | null
+  >(null);
 
   // Listen for workflow Run events: enqueue prompts, drain when idle.
   useEffect(() => {
     const onRun = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { ticketId?: string; prompts?: string[] };
-      if (!detail || detail.ticketId !== ticketId || !Array.isArray(detail.prompts)) return;
-      workflowQueueRef.current.push(...detail.prompts);
+      const detail = (e as CustomEvent).detail as {
+        ticketId?: string;
+        steps?: Array<{ stepRunId: string | null; name: string; prompt: string }>;
+      };
+      if (!detail || detail.ticketId !== ticketId || !Array.isArray(detail.steps)) return;
+      for (const s of detail.steps) {
+        workflowQueueRef.current.push({
+          stepRunId: s.stepRunId ?? null,
+          prompt: s.prompt,
+        });
+      }
       // Kick a drain attempt; further drains happen via the busy effect below.
       if (!busy && sendRef.current) {
         const next = workflowQueueRef.current.shift();
-        if (next) void sendRef.current(next);
+        if (next) void sendRef.current(next.prompt, { workflowStepRunId: next.stepRunId });
       }
     };
     window.addEventListener("planbooq:workflow-run", onRun);
@@ -1042,7 +1062,10 @@ function DesktopPanel({
     }
   }, [busy, ticketId]);
 
-  const send = async (override?: string) => {
+  const send = async (
+    override?: string,
+    opts?: { workflowStepRunId?: string | null },
+  ) => {
     const bridge = getDesktopBridge();
     if (!bridge) return;
     const message = (override ?? input).trim();
@@ -1087,6 +1110,7 @@ function DesktopPanel({
             prompt: message,
             worktreePath,
             claudeSessionId,
+            workflowStepRunId: opts?.workflowStepRunId ?? null,
           }),
         });
         const body = (await r.json()) as { ok: boolean; data?: { jobId: string } };
@@ -1131,6 +1155,7 @@ function DesktopPanel({
             message: resumeMessage,
             ticket: ticketCtx,
             jobId: jobIdRef.current ?? undefined,
+            workflowStepRunId: opts?.workflowStepRunId ?? null,
           });
           if (!res.ok || !res.sessionId) {
             toast.error(res.error ?? "Resume failed");
@@ -1192,6 +1217,7 @@ function DesktopPanel({
           ticket: ticketCtx,
           attachments: seedAttachments,
           jobId: jobIdRef.current ?? undefined,
+          workflowStepRunId: opts?.workflowStepRunId ?? null,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -1236,7 +1262,15 @@ function DesktopPanel({
     // auth-protected URL.
     const { text: sendMessage } = await materializeAttachmentsAndRewrite(message, worktreePath);
     try {
-      const res = await bridge.agentSend({ sessionId, message: sendMessage });
+      const res = await bridge.agentSend({
+        sessionId,
+        message: sendMessage,
+        // Pass the dispatch's stepRunId on warm-send so main updates the
+        // session's per-write stamp before this turn's user/agent/tool
+        // messages get persisted. Without this, a step 2 dispatched into a
+        // step-1 session would inherit step 1's attribution.
+        workflowStepRunId: opts?.workflowStepRunId ?? undefined,
+      });
       if (!res.ok) {
         toast.error(res.error ?? "Send failed");
         setBusy(false);

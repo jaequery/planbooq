@@ -12,6 +12,12 @@ const StartSchema = z
     worktreePath: z.string().optional().nullable(),
     claudeSessionId: z.string().optional().nullable(),
     kind: z.enum(["CHAT", "EXECUTE"]).optional(),
+    /** When the caller is a workflow dispatch, this binds the new AgentJob
+     *  to the WorkflowStepRun the panel reserved up front. Lets chat history
+     *  link back to its step by FK instead of regex-matching the prompt
+     *  prefix later. Server validates it belongs to a WorkflowRun for this
+     *  ticket. */
+    workflowStepRunId: z.string().optional().nullable(),
   })
   .strict();
 
@@ -110,6 +116,21 @@ export async function POST(
   });
   if (!member) return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
 
+  // Validate the proposed workflowStepRunId before trusting it on the FK.
+  // Anyone with workspace membership could otherwise stamp an arbitrary
+  // step-run id onto a job and pollute another ticket's workflow history.
+  let stepRunId: string | null = null;
+  if (parsed.data.workflowStepRunId) {
+    const sr = await prisma.workflowStepRun.findUnique({
+      where: { id: parsed.data.workflowStepRunId },
+      select: { id: true, status: true, run: { select: { ticketId: true } } },
+    });
+    if (sr && sr.run.ticketId === ticket.id) {
+      stepRunId = sr.id;
+    }
+  }
+
+  const startedAt = new Date();
   const job = await prisma.agentJob.create({
     data: {
       ticketId: ticket.id,
@@ -121,9 +142,22 @@ export async function POST(
       prompt: parsed.data.prompt,
       worktreePath: parsed.data.worktreePath ?? null,
       claudeSessionId: parsed.data.claudeSessionId ?? null,
-      startedAt: new Date(),
+      workflowStepRunId: stepRunId,
+      startedAt,
     },
     select: { id: true },
   });
+
+  // Mark the step run RUNNING. Idempotent CAS from PENDING so a re-dispatch
+  // of an already-completed step doesn't yank it backwards.
+  if (stepRunId) {
+    await prisma.workflowStepRun
+      .updateMany({
+        where: { id: stepRunId, status: "PENDING" },
+        data: { status: "RUNNING", startedAt },
+      })
+      .catch(() => undefined);
+  }
+
   return NextResponse.json({ ok: true, data: { jobId: job.id } });
 }

@@ -469,15 +469,20 @@ async function deriveStepCompletion(args: {
     }));
   }
 
-  // Per-step prompt-prefix match: workflow runs dispatch each step's prompt
-  // wrapped as `[Workflow N/M: <name>]\n...` (see ticket-workflow-panel
-  // runStep/runAll). A SUCCEEDED AgentJob with that prefix proves the step
-  // ran to completion — the only reliable signal for `unknown`-kind steps
-  // (e.g. "Plan") whose names don't match a regex bucket.
+  // Primary signal: the WorkflowStepRun rows we now create up front in
+  // triggerWorkflowRun, transitioned to SUCCEEDED by the mirror service when
+  // each step's turn ends. A real FK / status field beats prompt-prefix
+  // regex matching for steps the panel reserved itself.
+  //
+  // Secondary signals (kept for historical AgentJobs that predate the
+  // WorkflowStepRun-per-dispatch flow, and as a belt-and-suspenders fallback):
+  //   - SUCCEEDED AgentJob whose prompt starts with `[Workflow N/M: <name>]`
+  //   - STEP_COMPLETED TicketActivity rows (per-name)
   let succeededPrompts: string[] = [];
   let completedStepNames = new Set<string>();
+  const succeededStepRunNames = new Set<string>();
   if (args.steps.length > 0) {
-    const [succeeded, completedActivities] = await Promise.all([
+    const [succeeded, completedActivities, succeededStepRuns] = await Promise.all([
       prisma.agentJob.findMany({
         where: {
           ticketId: args.ticketId,
@@ -495,6 +500,10 @@ async function deriveStepCompletion(args: {
         where: { ticketId: args.ticketId, kind: "STEP_COMPLETED" },
         select: { payload: true },
       }),
+      prisma.workflowStepRun.findMany({
+        where: { status: "SUCCEEDED", run: { ticketId: args.ticketId } },
+        select: { name: true },
+      }),
     ]);
     succeededPrompts = succeeded.map((j) => j.prompt);
     for (const a of completedActivities) {
@@ -503,9 +512,13 @@ async function deriveStepCompletion(args: {
         completedStepNames.add(name.trim().toLowerCase());
       }
     }
+    for (const sr of succeededStepRuns) {
+      if (sr.name?.trim()) succeededStepRunNames.add(sr.name.trim().toLowerCase());
+    }
   }
   function stepRanSuccessfully(name: string): boolean {
     const lower = name.toLowerCase();
+    if (succeededStepRunNames.has(lower)) return true;
     if (completedStepNames.has(lower)) return true;
     // Match `[Workflow: name]` or `[Workflow 2/3: name]`. Compare names
     // case-insensitively because the dispatcher preserves user casing.
@@ -1060,8 +1073,17 @@ export async function getWorkflowStatusContext(ticketId: string): Promise<
 
 export async function triggerWorkflowRun(
   ticketId: string,
-  opts?: { suggestedStatusKey?: string },
-): Promise<Result<{ runId: string; stepCount: number }>> {
+  opts?: {
+    suggestedStatusKey?: string;
+    /** Exact steps the caller is about to dispatch. When provided, one
+     *  WorkflowStepRun is created per entry, in array order. The returned
+     *  stepRunIds match this order, so the caller can thread each id to its
+     *  paired AgentJob and bind chat → step via FK instead of prompt-prefix
+     *  string matching. When omitted, falls back to enabled-from-workflow
+     *  (legacy audit-only behavior). */
+    steps?: Array<{ name: string; prompt: string }>;
+  },
+): Promise<Result<{ runId: string; stepCount: number; stepRunIds: string[] }>> {
   const ticket = await loadTicket(ticketId);
   if (!ticket) return { ok: false, error: "not_found" };
   const ctx = await requireMember(ticket.workspaceId);
@@ -1069,13 +1091,19 @@ export async function triggerWorkflowRun(
 
   const wf = await getTicketWorkflow(ticketId);
   if (!wf.ok) return wf;
-  const enabled = wf.steps.filter((s) => s.enabled);
-  // When no steps are configured, record a synthetic "build" step so the
-  // ticket still progresses (status move + audit row) under the default
-  // Execute behavior.
-  const recorded = enabled.length === 0
-    ? [{ name: "build", prompt: "Default build (no workflow steps configured)." }]
-    : enabled.map((s) => ({ name: s.name, prompt: s.prompt }));
+  // Caller-supplied steps take precedence so runStep (single step) and
+  // runAll (N steps) both flow through the same path and the WorkflowStepRun
+  // rows mirror exactly what the panel queued. Falling back to the workflow
+  // definition keeps the legacy audit-only call site (no steps passed)
+  // working.
+  const recorded = opts?.steps && opts.steps.length > 0
+    ? opts.steps.map((s) => ({ name: s.name, prompt: s.prompt }))
+    : (() => {
+        const enabled = wf.steps.filter((s) => s.enabled);
+        return enabled.length === 0
+          ? [{ name: "build", prompt: "Default build (no workflow steps configured)." }]
+          : enabled.map((s) => ({ name: s.name, prompt: s.prompt }));
+      })();
 
   const now = new Date();
   // Record the run as RUNNING with PENDING stepRuns. Marking everything
@@ -1099,8 +1127,15 @@ export async function triggerWorkflowRun(
         })),
       },
     },
-    select: { id: true },
+    select: {
+      id: true,
+      stepRuns: {
+        orderBy: { position: "asc" },
+        select: { id: true },
+      },
+    },
   });
+  const stepRunIds = run.stepRuns.map((s) => s.id);
 
   // Move the ticket to the right status. The client picks the status with
   // local Claude Code (apps/desktop bridge.agentOneshot) and passes it as
@@ -1144,7 +1179,7 @@ export async function triggerWorkflowRun(
   }
 
   revalidatePath("/");
-  return { ok: true, runId: run.id, stepCount: recorded.length };
+  return { ok: true, runId: run.id, stepCount: recorded.length, stepRunIds };
 }
 
 /**

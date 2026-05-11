@@ -509,7 +509,8 @@ model WorkflowStepRun {
   finishedAt DateTime?
   createdAt  DateTime          @default(now())
 
-  run WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  run      WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  messages Message[]
 
   @@index([runId, position])
 }
@@ -635,6 +636,12 @@ model Message {
   body            String        @default("") @db.Text
   status          MessageStatus @default(COMPLETE)
   agentJobId      String?
+  // Per-message attribution to a workflow step. Set by the mirror service
+  // from the wire event's stepRunId (which Electron main stamps from the
+  // session's currentStepRunId at the moment of write). A single AgentJob
+  // can span multiple steps (warm-send within one Claude session), so the
+  // FK has to live on Message — not AgentJob — to attribute correctly.
+  workflowStepRunId String?
   idempotencyKey  String        @unique
   parentId        String?
   createdAt       DateTime      @default(now())
@@ -645,6 +652,7 @@ model Message {
   authorUser   User?             @relation("MessageAuthorUser",  fields: [authorUserId],  references: [id], onDelete: SetNull)
   authorAgent  Agent?            @relation("MessageAuthorAgent", fields: [authorAgentId], references: [id], onDelete: SetNull)
   agentJob     AgentJob?         @relation(fields: [agentJobId], references: [id], onDelete: SetNull)
+  workflowStepRun WorkflowStepRun? @relation(fields: [workflowStepRunId], references: [id], onDelete: SetNull)
   parent       Message?          @relation("MessageParent", fields: [parentId], references: [id], onDelete: SetNull)
   replies      Message[]         @relation("MessageParent")
   chunks       MessageChunk[]
@@ -656,6 +664,7 @@ model Message {
   @@index([authorUserId])
   @@index([authorAgentId])
   @@index([agentJobId])
+  @@index([workflowStepRunId])
 }
 
 // Append-only stream chunks. Agent runner writes deltas here during STREAMING;

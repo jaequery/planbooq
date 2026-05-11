@@ -153,10 +153,10 @@ async function mirrorPlainTerminal(
 // -----------------------------------------------------------------------------
 
 type WireEvent =
-  | { kind: "user"; text: string; at?: number }
-  | { kind: "agent"; line: string; at?: number }
-  | { kind: "stderr"; line: string; at?: number }
-  | { kind: "exit"; code: number; at?: number };
+  | { kind: "user"; text: string; at?: number; stepRunId?: string | null }
+  | { kind: "agent"; line: string; at?: number; stepRunId?: string | null }
+  | { kind: "stderr"; line: string; at?: number; stepRunId?: string | null }
+  | { kind: "exit"; code: number; at?: number; stepRunId?: string | null };
 
 type AssistantBlock = {
   type: string;
@@ -200,6 +200,13 @@ type WireJobState = {
   // seals a turn, further deltas are ignored).
   textChars: number;
   toolUses: number;
+  // Per-job pointer to the active WorkflowStepRun. Updated when a user wire
+  // event arrives carrying a stepRunId (or whenever the renderer dispatches
+  // a new step via bridge.agentSend with workflowStepRunId set). Stamped
+  // onto every Message row this state creates from that point forward, so a
+  // single AgentJob spanning multiple workflow steps in one Claude session
+  // gets correct per-step attribution.
+  currentStepRunId: string | null;
 };
 
 const wireStates = new Map<string, WireJobState>();
@@ -214,7 +221,16 @@ async function getWireState(job: AgentJob): Promise<WireJobState | null> {
   // idempotency keys monotonic across server restarts and request retries.
   const existing = await prisma.message.findMany({
     where: { agentJobId: job.id },
-    select: { id: true, idempotencyKey: true, status: true, role: true, body: true },
+    select: {
+      id: true,
+      idempotencyKey: true,
+      status: true,
+      role: true,
+      body: true,
+      workflowStepRunId: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "asc" },
   });
   let userSeq = 0;
   let agentTurnSeq = 0;
@@ -223,6 +239,10 @@ async function getWireState(job: AgentJob): Promise<WireJobState | null> {
   let agentBody = "";
   let textChars = 0;
   let toolUses = 0;
+  // Recover the most recently observed step pointer so a server restart
+  // mid-step doesn't blank attribution for the rest of the turn. The latest
+  // (non-null) Message.workflowStepRunId for this job wins.
+  let currentStepRunId: string | null = job.workflowStepRunId ?? null;
   for (const m of existing) {
     const um = m.idempotencyKey.match(/^agent-job:[^:]+:user:(\d+)$/);
     const am = m.idempotencyKey.match(/^agent-job:[^:]+:asst:(\d+)$/);
@@ -243,6 +263,7 @@ async function getWireState(job: AgentJob): Promise<WireJobState | null> {
         agentBody = m.body;
       }
     }
+    if (m.workflowStepRunId) currentStepRunId = m.workflowStepRunId;
   }
   const state: WireJobState = {
     conversationId: conversation.id,
@@ -254,6 +275,7 @@ async function getWireState(job: AgentJob): Promise<WireJobState | null> {
     toolSeq,
     textChars,
     toolUses,
+    currentStepRunId,
   };
   wireStates.set(job.id, state);
   return state;
@@ -280,6 +302,11 @@ async function emitUserTurn(
       role: "USER",
       authorUserId: job.userId ?? null,
       agentJobId: job.id,
+      // The wire event is the authoritative attribution: Electron main
+      // stamps the active stepRunId at write time, so a step-2 user message
+      // gets step 2 even if the AgentJob was originally bound to step 1
+      // (warm-send within one Claude session).
+      workflowStepRunId: ev.stepRunId ?? state.currentStepRunId ?? null,
       body: ev.text,
       status: "COMPLETE",
       createdAt: ev.at ? new Date(ev.at) : undefined,
@@ -341,6 +368,7 @@ async function ensureAgentMessage(job: AgentJob, state: WireJobState): Promise<s
       role,
       authorAgentId: role === "AGENT" ? job.agentId : null,
       agentJobId: job.id,
+      workflowStepRunId: state.currentStepRunId ?? null,
       body: "",
       status: "STREAMING",
     },
@@ -468,6 +496,7 @@ async function emitToolCall(
       role,
       authorAgentId: role === "AGENT" ? job.agentId : null,
       agentJobId: job.id,
+      workflowStepRunId: state.currentStepRunId ?? null,
       body: text,
       status: "COMPLETE",
       createdAt: at ? new Date(at) : undefined,
@@ -698,6 +727,14 @@ async function mirrorWireAppend(job: AgentJob, appendOutput: string): Promise<vo
       if (state.agentMessageId && state.agentBody.length > 0) {
         await flushAgentBody(job, state, true);
       }
+      // Update the per-job step pointer FIRST so the user message itself —
+      // and every agent/tool message that follows in this turn — gets the
+      // new step credited. An ev.stepRunId of `null` is an explicit "no
+      // step" (free-form chat), so we honor that; only `undefined` means
+      // "no signal, keep the previous pointer."
+      if (ev.stepRunId !== undefined) {
+        state.currentStepRunId = ev.stepRunId;
+      }
       await emitUserTurn(job, state, ev);
     } else if (ev.kind === "agent") {
       let parsed: ParsedClaude;
@@ -749,10 +786,16 @@ async function mirrorWireAppend(job: AgentJob, appendOutput: string): Promise<vo
 async function persistTurnEndSuccess(job: AgentJob): Promise<void> {
   if (!job.workspaceId || !job.ticketId) return;
 
+  // Find the user message that opened the just-finished turn. We use it for
+  // two independent purposes: the prompt body gives us the step name (for
+  // the STEP_COMPLETED activity), and the workflowStepRunId FK — set by the
+  // mirror service at write time from the wire event's stepRunId — gives
+  // us an authoritative pointer at the step the turn actually belonged to,
+  // even when the AgentJob spans multiple steps (warm-send).
   const lastUser = await prisma.message.findFirst({
     where: { agentJobId: job.id, role: "USER" },
     orderBy: { createdAt: "desc" },
-    select: { body: true },
+    select: { body: true, workflowStepRunId: true },
   });
   let stepName: string | null = null;
   if (lastUser?.body) {
@@ -760,6 +803,47 @@ async function persistTurnEndSuccess(job: AgentJob): Promise<void> {
     // renderer dispatches in ticket-workflow-panel.tsx:307 / 341.
     const m = lastUser.body.match(/^\[Workflow(?:\s+\d+\/\d+)?:\s*([^\]]+)\]/);
     if (m?.[1]) stepName = m[1].trim();
+  }
+
+  // Resolve the WorkflowStepRun to transition. Priority order:
+  //   1. The user message's workflowStepRunId — per-message FK, accurate
+  //      for warm-send because Electron main stamps the active step at
+  //      write time on every wire event.
+  //   2. The AgentJob's workflowStepRunId — set at cold-start by the
+  //      desktop-jobs route. Correct when the job spans exactly one step.
+  //   3. Name-based lookup against the prompt prefix — legacy fallback
+  //      for jobs that predate the FK plumbing.
+  let stepRunIdToClose: string | null =
+    lastUser?.workflowStepRunId ?? job.workflowStepRunId ?? null;
+  if (!stepRunIdToClose && stepName) {
+    const candidate = await prisma.workflowStepRun
+      .findFirst({
+        where: {
+          name: stepName,
+          status: { in: ["PENDING", "RUNNING"] },
+          run: { ticketId: job.ticketId },
+        },
+        orderBy: { createdAt: "asc" },
+        select: { id: true },
+      })
+      .catch(() => null);
+    stepRunIdToClose = candidate?.id ?? null;
+  }
+
+  if (stepRunIdToClose) {
+    // Idempotent CAS — only PENDING/RUNNING flip to SUCCEEDED. A re-fire of
+    // the same turn-end (e.g. retries from the reaper) doesn't bounce a
+    // completed step back, and a step that was already canceled stays
+    // canceled.
+    await prisma.workflowStepRun
+      .updateMany({
+        where: {
+          id: stepRunIdToClose,
+          status: { in: ["PENDING", "RUNNING"] },
+        },
+        data: { status: "SUCCEEDED", finishedAt: new Date() },
+      })
+      .catch(() => undefined);
   }
 
   if (stepName) {
@@ -875,6 +959,10 @@ async function persistTerminalOutcome(
         role: "SYSTEM",
         authorAgentId: null,
         agentJobId: job.id,
+        // Attribute the synthetic "no output" marker to whichever step the
+        // failed run was credited to, so EMPTY_RESPONSE shows up under the
+        // right step in any future grouped view.
+        workflowStepRunId: job.workflowStepRunId ?? null,
         body,
         status: "ERROR",
       },
@@ -1005,5 +1093,21 @@ export async function mirrorJobTerminal(args: {
       mode,
       error: error instanceof Error ? error.message : String(error),
     });
+  }
+
+  // Fail/cancel the linked WorkflowStepRun so the panel stops showing the
+  // step as in-progress when the underlying job died. SUCCEEDED is handled
+  // per-turn by persistTurnEndSuccess — a single AgentJob can span multiple
+  // workflow steps (warm-send), so we don't close stepRun=SUCCEEDED here.
+  if (args.status !== "SUCCEEDED" && args.job.workflowStepRunId) {
+    await prisma.workflowStepRun
+      .updateMany({
+        where: {
+          id: args.job.workflowStepRunId,
+          status: { in: ["PENDING", "RUNNING"] },
+        },
+        data: { status: args.status, finishedAt: new Date() },
+      })
+      .catch(() => undefined);
   }
 }

@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld("planbooq", {
     };
     attachments?: Array<{ id: string; ext: string; base64: string }>;
     jobId?: string;
+    workflowStepRunId?: string | null;
   }) => ipcRenderer.invoke("planbooq:agent:start", input),
   agentResume: (input: {
     worktreePath: string;
@@ -39,8 +40,9 @@ contextBridge.exposeInMainWorld("planbooq", {
       apiToken: string;
     };
     jobId?: string;
+    workflowStepRunId?: string | null;
   }) => ipcRenderer.invoke("planbooq:agent:resume", input),
-  agentSend: (input: { sessionId: string; message: string }) =>
+  agentSend: (input: { sessionId: string; message: string; workflowStepRunId?: string | null }) =>
     ipcRenderer.invoke("planbooq:agent:send", input),
   agentStop: (input: { sessionId: string }) => ipcRenderer.invoke("planbooq:agent:stop", input),
   agentOneshot: (input: { prompt: string; timeoutMs?: number }) =>
