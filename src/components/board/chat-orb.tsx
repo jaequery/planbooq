@@ -44,7 +44,7 @@ function makeTempId(): string {
   return `temp_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 }
 
-const AUTO_PLAN_STORAGE_KEY = "pbq.autoPlan";
+const AUTO_EXECUTE_STORAGE_KEY = "pbq.autoExecute";
 
 function describeError(error: string): string {
   if (error === "no_key") {
@@ -74,13 +74,13 @@ export function ChatOrb({
   const uploadCounterRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const [autoPlan, setAutoPlan] = useState(true);
+  const [autoExecute, setAutoExecute] = useState(true);
   const isActive = isFocused || prompt.length > 0 || pending || attachments.length > 0;
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(AUTO_PLAN_STORAGE_KEY);
-      if (stored === "false") setAutoPlan(false);
+      const stored = window.localStorage.getItem(AUTO_EXECUTE_STORAGE_KEY);
+      if (stored === "false") setAutoExecute(false);
     } catch {
       // ignore
     }
@@ -101,11 +101,11 @@ export function ChatOrb({
     return () => window.removeEventListener("keydown", handle);
   }, []);
 
-  const toggleAutoPlan = (): void => {
-    setAutoPlan((prev) => {
+  const toggleAutoExecute = (): void => {
+    setAutoExecute((prev) => {
       const next = !prev;
       try {
-        window.localStorage.setItem(AUTO_PLAN_STORAGE_KEY, next ? "true" : "false");
+        window.localStorage.setItem(AUTO_EXECUTE_STORAGE_KEY, next ? "true" : "false");
       } catch {
         // ignore
       }
@@ -261,13 +261,13 @@ export function ChatOrb({
     setPrompt("");
     const snapshotAttachments = attachments;
     setAttachments([]);
-    const submittedAutoPlan = autoPlan;
+    const submittedAutoExecute = autoExecute;
 
     startTransition(async () => {
       const result = await quickCreateTicket({
         projectId,
         prompt: composedPrompt,
-        autoPlan: submittedAutoPlan,
+        autoExecute: submittedAutoExecute,
       });
       if (!result.ok) {
         if (optimisticTicket) onOptimisticRollback(tempId);
@@ -280,7 +280,24 @@ export function ChatOrb({
       } else {
         onOptimisticInsert({ ...result.data, assignee: null, labels: [] });
       }
-      toast.success(submittedAutoPlan ? "Ticket created in Todo" : "Ticket created in Backlog");
+      if (submittedAutoExecute) {
+        // Kick the local desktop agent so the ticket actually runs the moment
+        // it's created. Server has already moved it to Running; this fires the
+        // same event the workflow panel uses when the user clicks Run.
+        window.dispatchEvent(
+          new CustomEvent("planbooq:workflow-run", {
+            detail: {
+              ticketId: result.data.id,
+              prompts: [
+                `[Workflow 1/1: build]\nBuild the project to satisfy the ticket's title and description. When complete, follow the shipping steps in PLANBOOQ.md to open a PR.`,
+              ],
+            },
+          }),
+        );
+      }
+      toast.success(
+        submittedAutoExecute ? "Ticket created and running" : "Ticket created in Backlog",
+      );
     });
   };
 
@@ -387,25 +404,29 @@ export function ChatOrb({
             <button
               type="button"
               role="switch"
-              aria-checked={autoPlan}
-              onClick={toggleAutoPlan}
+              aria-checked={autoExecute}
+              onClick={toggleAutoExecute}
               disabled={pending}
               className="inline-flex flex-shrink-0 items-center gap-1.5 self-center rounded-full px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-              title={autoPlan ? "Auto-plan: on" : "Auto-plan: off"}
+              title={
+                autoExecute
+                  ? "Auto-execute: on — ticket runs immediately after creation"
+                  : "Auto-execute: off — ticket lands in Backlog as a draft"
+              }
             >
               <span
                 className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors ${
-                  autoPlan ? "bg-primary" : "bg-muted"
+                  autoExecute ? "bg-primary" : "bg-muted"
                 }`}
                 aria-hidden
               >
                 <span
                   className={`inline-block h-2.5 w-2.5 transform rounded-full bg-background shadow transition-transform ${
-                    autoPlan ? "translate-x-3" : "translate-x-0.5"
+                    autoExecute ? "translate-x-3" : "translate-x-0.5"
                   }`}
                 />
               </span>
-              <span>Auto-plan</span>
+              <span>Auto-execute</span>
             </button>
           </div>
         </div>
