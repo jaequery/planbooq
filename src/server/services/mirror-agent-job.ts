@@ -1,9 +1,13 @@
 import "server-only";
 
-import type { AgentJob, MessageRole, MessageStatus, Prisma } from "@prisma/client";
+import type { AgentJob, AgentJobStatus, MessageRole, MessageStatus, Prisma } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
+import {
+  classifyAgentJobOutcome,
+  emptyResponseMessageBody,
+} from "@/server/services/agent-job-outcome";
 import { getOrCreateConversationForTicket } from "@/server/services/conversations";
 
 // =============================================================================
@@ -133,6 +137,14 @@ async function mirrorPlainTerminal(
     status: messageStatus,
     body: finalOutput,
   });
+
+  // Plain-mode classification: the only signal is finalOutput length. Tool
+  // use isn't a concept in this mode (Plan jobs are pure markdown streams),
+  // so toolUses=0 for the purposes of classification.
+  await persistTerminalOutcome(job, conversation.id, status, {
+    textChars: finalOutput.length,
+    toolUses: 0,
+  });
 }
 
 // -----------------------------------------------------------------------------
@@ -178,6 +190,15 @@ type WireJobState = {
   agentTurnSeq: number;
   userSeq: number;
   toolSeq: number;
+  // Outcome signals: total visible text emitted by the agent across all
+  // turns in this job, and total tool calls invoked. Used by
+  // classifyAgentJobOutcome at terminal to distinguish a clean COMPLETED run
+  // from an EMPTY_RESPONSE one. textChars counts characters from sealed
+  // assistant blocks AND streamed text_deltas (the two are redundant within
+  // a turn but never both contribute to the count: once an assistant block
+  // seals a turn, further deltas are ignored).
+  textChars: number;
+  toolUses: number;
 };
 
 const wireStates = new Map<string, WireJobState>();
@@ -199,15 +220,23 @@ async function getWireState(job: AgentJob): Promise<WireJobState | null> {
   let toolSeq = 0;
   let agentMessageId: string | null = null;
   let agentBody = "";
+  let textChars = 0;
+  let toolUses = 0;
   for (const m of existing) {
     const um = m.idempotencyKey.match(/^agent-job:[^:]+:user:(\d+)$/);
     const am = m.idempotencyKey.match(/^agent-job:[^:]+:asst:(\d+)$/);
     const tm = m.idempotencyKey.match(/^agent-job:[^:]+:tool:(\d+)$/);
     if (um) userSeq = Math.max(userSeq, Number(um[1]) + 1);
-    if (tm) toolSeq = Math.max(toolSeq, Number(tm[1]) + 1);
+    if (tm) {
+      toolSeq = Math.max(toolSeq, Number(tm[1]) + 1);
+      toolUses += 1;
+    }
     if (am) {
       const n = Number(am[1]);
       agentTurnSeq = Math.max(agentTurnSeq, n + 1);
+      // Count text emitted across all prior assistant turns for this job so
+      // a server restart mid-job doesn't reset the EMPTY_RESPONSE detector.
+      textChars += m.body.length;
       if (m.status === "PENDING" || m.status === "STREAMING") {
         agentMessageId = m.id;
         agentBody = m.body;
@@ -222,6 +251,8 @@ async function getWireState(job: AgentJob): Promise<WireJobState | null> {
     agentTurnSeq,
     userSeq,
     toolSeq,
+    textChars,
+    toolUses,
   };
   wireStates.set(job.id, state);
   return state;
@@ -504,6 +535,7 @@ async function applyClaudeLine(
       if (text) {
         await ensureAgentMessage(job, state);
         state.agentBody += text;
+        state.textChars += text.length;
         textAppended = true;
       }
     } else if (
@@ -513,6 +545,7 @@ async function applyClaudeLine(
     ) {
       await ensureAgentMessage(job, state);
       state.agentBody += inner.content_block.text;
+      state.textChars += inner.content_block.text.length;
       textAppended = true;
     } else if (inner.type === "message_stop") {
       // Don't end the turn here — `assistant`/`result` are the authoritative
@@ -534,7 +567,12 @@ async function applyClaudeLine(
         await ensureAgentMessage(job, state);
         if (state.agentSealedByAssistant) {
           state.agentBody += b.text;
+          state.textChars += b.text.length;
         } else {
+          // Sealing replaces the streamed buffer with the authoritative block,
+          // so the text-char counter has to swap correspondingly: subtract
+          // what we'd counted from deltas and credit only the sealed block.
+          state.textChars = state.textChars - state.agentBody.length + b.text.length;
           state.agentBody = b.text;
           state.agentSealedByAssistant = true;
         }
@@ -548,6 +586,7 @@ async function applyClaudeLine(
           state.agentBody = "";
         }
         await emitToolCall(job, state, formatToolUse(b.name, b.input), at);
+        state.toolUses += 1;
       }
     }
     return { textAppended, turnEnded };
@@ -678,6 +717,103 @@ async function mirrorWireAppend(job: AgentJob, appendOutput: string): Promise<vo
   }
 }
 
+// Shared terminal-outcome handling: classify the run, persist the result on
+// the AgentJob row, and (if EMPTY_RESPONSE) insert a SYSTEM-role Message into
+// the conversation so the chat thread surfaces an actionable "no output"
+// marker instead of looking deceptively empty. Idempotent on the synthetic
+// insert via the `:outcome:empty_response` idempotency key — safe to invoke
+// from both the request-path mirror and the Inngest reaper.
+async function persistTerminalOutcome(
+  job: AgentJob,
+  conversationId: string,
+  status: AgentJobStatus,
+  signals: { textChars: number; toolUses: number },
+): Promise<void> {
+  const classification = classifyAgentJobOutcome({
+    status,
+    textChars: signals.textChars,
+    toolUses: signals.toolUses,
+  });
+
+  await prisma.agentJob
+    .update({
+      where: { id: job.id },
+      data: {
+        outcome: classification.outcome,
+        outcomeReason: classification.reason,
+      },
+    })
+    .catch((err: unknown) => {
+      logger.warn("mirror.outcome.persist.failed", {
+        jobId: job.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+
+  if (classification.outcome !== "EMPTY_RESPONSE") return;
+  if (!job.workspaceId) return;
+
+  const idempotencyKey = `agent-job:${job.id}:outcome:empty_response`;
+  const body = emptyResponseMessageBody(classification.reason);
+  const existing = await prisma.message.findUnique({
+    where: { idempotencyKey },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  let created: Awaited<ReturnType<typeof prisma.message.create>> | null = null;
+  try {
+    created = await prisma.message.create({
+      data: {
+        idempotencyKey,
+        conversationId,
+        workspaceId: job.workspaceId,
+        // SYSTEM, not AGENT: this isn't the agent speaking, it's the mirror
+        // layer reporting an infrastructure-level fact about the run. Keeps
+        // authorAgentId honestly null and matches Paperclip's pattern.
+        role: "SYSTEM",
+        authorAgentId: null,
+        agentJobId: job.id,
+        body,
+        status: "ERROR",
+      },
+    });
+  } catch (err) {
+    // Unique constraint race against a concurrent terminal call — fine, the
+    // other writer already inserted the row.
+    logger.warn("mirror.outcome.message.create.failed", {
+      jobId: job.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return;
+  }
+
+  await publishWorkspaceEvent(job.workspaceId, {
+    name: "message.created",
+    workspaceId: job.workspaceId,
+    conversationId,
+    ticketId: job.ticketId,
+    message: {
+      id: created.id,
+      conversationId: created.conversationId,
+      workspaceId: created.workspaceId,
+      role: created.role,
+      status: created.status,
+      body: created.body,
+      authorUserId: created.authorUserId,
+      authorAgentId: created.authorAgentId,
+      agentJobId: created.agentJobId,
+      parentId: created.parentId,
+      createdAt: created.createdAt,
+      updatedAt: created.updatedAt,
+      authorUser: null,
+      authorAgent: null,
+      mentions: [],
+    },
+    by: "system",
+  });
+}
+
 async function mirrorWireTerminal(
   job: AgentJob,
   status: "SUCCEEDED" | "FAILED" | "CANCELED",
@@ -711,6 +847,12 @@ async function mirrorWireTerminal(
       status: { in: ["PENDING", "STREAMING"] },
     },
     data: { status: status === "SUCCEEDED" ? "COMPLETE" : "ERROR" },
+  });
+  // Classify the run and surface EMPTY_RESPONSE as a SYSTEM message before
+  // tearing down WireState — the counters live on the state object.
+  await persistTerminalOutcome(job, state.conversationId, status, {
+    textChars: state.textChars,
+    toolUses: state.toolUses,
   });
   clearWireState(job.id);
 }
