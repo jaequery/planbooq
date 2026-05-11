@@ -5,7 +5,7 @@ import { auth } from "@/server/auth";
 
 export default async function SettingsPage(): Promise<React.ReactElement> {
   const session = await auth();
-  if (!session?.user?.id) redirect("/");
+  if (!session?.user?.id) redirect("/welcome");
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-6">

@@ -1,170 +1,91 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
+import { SettingsContent } from "@/components/settings/settings-content";
+import { EmptyProjectsState } from "@/components/sidebar/empty-projects-state";
 import { Button } from "@/components/ui/button";
+import { UserMenu } from "@/components/user-menu";
 import { auth } from "@/server/auth";
+import { signInWithGitHub } from "@/server/auth-actions";
+import { prisma } from "@/server/db";
 
-export const metadata = {
-  title: "Planbooq — pick winners, don't prompt twice",
-  description:
-    "The kanban for vibe coding. Every ticket spawns N AI variants in parallel — pick the winner instead of re-prompting.",
-};
-
-export default async function WelcomePage(): Promise<React.ReactElement> {
+export default async function Home(): Promise<React.ReactElement> {
   const session = await auth();
-  const ctaHref = session?.user?.id ? "/" : "/";
-  const ctaLabel = session?.user?.id ? "Open your workspace" : "Sign in";
+  if (session?.user?.id && session.user.email) {
+    const membership = await prisma.member.findFirst({
+      where: { userId: session.user.id },
+      include: {
+        workspace: {
+          include: {
+            projects: {
+              orderBy: { position: "asc" },
+              take: 1,
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    if (membership) {
+      const firstProject = membership.workspace.projects[0];
+      if (firstProject) {
+        redirect(`/p/${firstProject.slug}`);
+      }
+      return (
+        <div className="flex min-h-screen flex-col bg-background">
+          <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-4">
+            <div className="font-mono text-[13px] font-semibold tracking-tight">
+              {membership.workspace.name}
+            </div>
+            <div className="flex items-center gap-1">
+              <UserMenu
+                email={session.user.email}
+                name={session.user.name}
+                image={session.user.image}
+                settingsContent={<SettingsContent />}
+              />
+            </div>
+          </header>
+          <main className="flex flex-1 items-center justify-center px-6">
+            <EmptyProjectsState />
+          </main>
+        </div>
+      );
+    }
+  }
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <Link href="/welcome" className="font-semibold tracking-tight">
-          Planbooq
-        </Link>
-        <nav className="flex items-center gap-3 text-sm">
-          <a href="#how" className="text-muted-foreground hover:text-foreground">
-            How it works
-          </a>
-          <a href="#why" className="text-muted-foreground hover:text-foreground">
-            Why
-          </a>
-          <a
-            href="https://github.com/jaequery/planbooq"
-            className="text-muted-foreground hover:text-foreground"
-          >
-            GitHub
-          </a>
-          <Button size="sm" asChild>
-            <Link href={ctaHref}>{ctaLabel}</Link>
-          </Button>
-        </nav>
-      </header>
-
-      <section className="mx-auto max-w-4xl px-6 pt-16 pb-24 text-center">
-        <p className="mb-4 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-          The kanban for vibe coding
+    <main className="relative flex min-h-screen flex-col items-center justify-center px-6">
+      <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
+        <h1 className="font-mono text-5xl font-semibold tracking-tight sm:text-6xl">Planbooq</h1>
+        <p className="mt-6 text-lg text-muted-foreground sm:text-xl">
+          A Linear-style issue tracker for vibe coders.
         </p>
-        <h1 className="text-balance text-5xl font-semibold leading-[1.05] tracking-tight md:text-6xl">
-          Pick winners.{" "}
-          <span className="text-muted-foreground">Don't prompt twice.</span>
-        </h1>
-        <p className="mx-auto mt-6 max-w-2xl text-balance text-lg leading-relaxed text-muted-foreground">
-          Every ticket spawns N AI variants in parallel — each with a live preview URL and
-          screenshots. You decide by recognizing the winner, not by re-prompting until "almost"
-          becomes "fine."
+        <p className="mt-2 text-base text-muted-foreground">
+          Spawn tickets from Claude Code, watch the kanban move itself.
         </p>
-        <div className="mt-10 flex items-center justify-center gap-3">
-          <Button size="lg" asChild>
-            <Link href={ctaHref}>{ctaLabel}</Link>
+        <form action={signInWithGitHub} className="mt-10">
+          <Button size="lg" type="submit">
+            <GitHubIcon />
+            Continue with GitHub
           </Button>
-          <Button size="lg" variant="outline" asChild>
-            <a href="#how">See how it works</a>
-          </Button>
-        </div>
-      </section>
-
-      <section id="why" className="mx-auto max-w-5xl px-6 pb-24">
-        <div className="grid gap-6 md:grid-cols-3">
-          <Card
-            title="Sequential prompting is broken"
-            body="Prompt → wait → 'almost but not quite' → re-prompt. It's lossy, exhausting, and fights how humans actually evaluate creative work. We don't specify taste — we recognize it."
-          />
-          <Card
-            title="Parallel beats serial"
-            body="N variants run at once in isolated worktrees. By the time one would have finished sequentially, you have several to compare side-by-side."
-          />
-          <Card
-            title="Pick, then ship"
-            body="One click merges the chosen variant and archives the rest. No prompt-engineering tax. The picks become the proprietary signal that makes future variants better."
-          />
-        </div>
-      </section>
-
-      <section id="how" className="mx-auto max-w-5xl px-6 pb-24">
-        <h2 className="mb-10 text-center text-3xl font-semibold tracking-tight">
-          How it works
-        </h2>
-        <ol className="grid gap-6 md:grid-cols-4">
-          <Step
-            n={1}
-            title="Drop a ticket"
-            body="Describe what you want. Add context, attachments, reference shots."
-          />
-          <Step
-            n={2}
-            title="Fan out"
-            body="Planbooq spawns multiple AI variants in parallel — each its own branch and worktree."
-          />
-          <Step
-            n={3}
-            title="Test-drive"
-            body="Open live preview URLs, scrub screenshots, scan diffs. Compare side-by-side."
-          />
-          <Step
-            n={4}
-            title="Pick & ship"
-            body="One click promotes the winner to a PR. The rest are archived for remix later."
-          />
-        </ol>
-      </section>
-
-      <section className="mx-auto max-w-4xl px-6 pb-24">
-        <div className="rounded-2xl border bg-muted/30 p-8 md:p-12">
-          <h2 className="text-3xl font-semibold tracking-tight">
-            Replace Lovable + Cursor + Linear
-          </h2>
-          <p className="mt-4 text-balance text-lg text-muted-foreground">
-            One surface optimized for the new bottleneck:{" "}
-            <span className="text-foreground">deciding fast on AI output.</span> Real-time
-            multiplayer kanban, full keyboard nav, GitHub-wired tickets, BYOK so unit economics
-            stay yours.
-          </p>
-          <div className="mt-8">
-            <Button size="lg" asChild>
-              <Link href={ctaHref}>{ctaLabel}</Link>
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      <footer className="border-t">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 text-xs text-muted-foreground">
-          <span>© {new Date().getFullYear()} Planbooq</span>
-          <div className="flex gap-4">
-            <a href="https://github.com/jaequery/planbooq" className="hover:text-foreground">
-              GitHub
-            </a>
-            <Link href="/" className="hover:text-foreground">
-              App
-            </Link>
-          </div>
-        </div>
-      </footer>
+        </form>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Planbooq runs on top of your GitHub repos.
+        </p>
+      </div>
     </main>
   );
 }
 
-function Card({ title, body }: { title: string; body: string }): React.ReactElement {
+function GitHubIcon(): React.ReactElement {
   return (
-    <div className="rounded-xl border bg-card p-6">
-      <h3 className="text-base font-semibold">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
-    </div>
-  );
-}
-
-function Step({
-  n,
-  title,
-  body,
-}: {
-  n: number;
-  title: string;
-  body: string;
-}): React.ReactElement {
-  return (
-    <li className="rounded-xl border bg-card p-6">
-      <div className="text-xs font-mono text-muted-foreground">0{n}</div>
-      <h3 className="mt-2 text-base font-semibold">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
-    </li>
+    <svg
+      aria-hidden="true"
+      className="size-4"
+      fill="currentColor"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path d="M12 .5C5.65.5.5 5.65.5 12a11.5 11.5 0 0 0 7.86 10.92c.575.106.785-.25.785-.555 0-.274-.01-1-.015-1.965-3.197.695-3.872-1.54-3.872-1.54-.523-1.328-1.277-1.682-1.277-1.682-1.044-.713.08-.699.08-.699 1.155.082 1.762 1.187 1.762 1.187 1.026 1.758 2.692 1.25 3.349.955.103-.744.402-1.25.732-1.538-2.553-.29-5.237-1.276-5.237-5.679 0-1.255.448-2.281 1.183-3.085-.119-.291-.513-1.46.112-3.043 0 0 .965-.31 3.165 1.178a10.95 10.95 0 0 1 5.762 0c2.198-1.488 3.162-1.178 3.162-1.178.627 1.583.232 2.752.114 3.043.737.804 1.181 1.83 1.181 3.085 0 4.414-2.689 5.385-5.251 5.671.413.355.78 1.058.78 2.133 0 1.54-.014 2.78-.014 3.158 0 .308.207.667.79.554A11.503 11.503 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
+    </svg>
   );
 }

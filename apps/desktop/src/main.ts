@@ -20,10 +20,14 @@ log.transports.file.level = "info";
 const APP_URL = process.env.PLANBOOQ_APP_URL
   ?? (process.env.NODE_ENV === "development" ? "http://localhost:3636" : "https://planbooq.vercel.app");
 
+// Desktop launches into the app entry, not the marketing homepage at `/`.
+// Deep links override this; see resolveTargetUrl.
+const DEFAULT_PATH = "/welcome";
+
 let mainWindow: BrowserWindow | null = null;
 
 function resolveTargetUrl(deepLink: string | null): string {
-  if (!deepLink) return APP_URL;
+  if (!deepLink) return `${APP_URL.replace(/\/+$/, "")}${DEFAULT_PATH}`;
   // planbooq://ticket/abc123 → APP_URL/ticket/abc123
   try {
     const u = new URL(deepLink);

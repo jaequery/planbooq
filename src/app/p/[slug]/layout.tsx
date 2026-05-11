@@ -21,7 +21,7 @@ export default async function ProjectLayout({
 }: Props): Promise<React.ReactElement> {
   const session = await auth();
   if (!session?.user?.id || !session.user.email) {
-    redirect("/");
+    redirect("/welcome");
   }
 
   const { slug } = await params;

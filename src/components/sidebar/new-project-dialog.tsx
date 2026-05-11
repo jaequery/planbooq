@@ -178,7 +178,7 @@ export function NewProjectDialog({ open, onOpenChange }: Props): React.ReactElem
                 : "Planbooq needs the “repo” scope to read your repositories."}
             </div>
             <Button asChild>
-              <a href="/api/auth/signin/github?callbackUrl=/">
+              <a href="/api/auth/signin/github?callbackUrl=/welcome">
                 <GithubIcon className="h-4 w-4" />
                 Connect GitHub
               </a>

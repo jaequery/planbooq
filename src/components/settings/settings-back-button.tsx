@@ -10,7 +10,7 @@ export function SettingsBackButton(): React.ReactElement {
       type="button"
       onClick={() => {
         if (window.history.length > 1) router.back();
-        else router.push("/");
+        else router.push("/welcome");
       }}
       className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
     >
