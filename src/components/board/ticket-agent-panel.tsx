@@ -52,14 +52,30 @@ type Props = {
 
 export function TicketAgentPanel(props: Props): React.ReactElement {
   const isDesktop = useIsDesktop();
+  const [workflowReady, setWorkflowReady] = useState(false);
+  const [panelReady, setPanelReady] = useState(false);
+  const ready = workflowReady && panelReady;
   return (
     <div className="flex flex-col gap-2">
-      <TicketWorkflowPanel
-        ticketId={props.ticketId}
-        workspaceId={props.workspaceId}
-        projectId={props.projectId}
-      />
-      {isDesktop ? <DesktopPanel {...props} /> : <WebPanel {...props} />}
+      {!ready && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" aria-hidden />
+          <span>Loading…</span>
+        </div>
+      )}
+      <div className={ready ? "flex flex-col gap-2" : "hidden"}>
+        <TicketWorkflowPanel
+          ticketId={props.ticketId}
+          workspaceId={props.workspaceId}
+          projectId={props.projectId}
+          onReady={() => setWorkflowReady(true)}
+        />
+        {isDesktop ? (
+          <DesktopPanel {...props} onReady={() => setPanelReady(true)} />
+        ) : (
+          <WebPanel {...props} onReady={() => setPanelReady(true)} />
+        )}
+      </div>
     </div>
   );
 }
@@ -467,7 +483,8 @@ function DesktopPanel({
   description,
   identifier,
   statusKey,
-}: Props): React.ReactElement {
+  onReady,
+}: Props & { onReady?: () => void }): React.ReactElement | null {
   // Track current statusKey via ref so the streaming-event handler (mounted
   // once with [] deps) can read the latest value without resubscribing. We
   // also mutate the ref locally when we apply Blocked/Running so back-to-back
@@ -576,6 +593,7 @@ function DesktopPanel({
     }
   };
   const [repoPath, setRepoPath] = useState<string | null>(null);
+  const [repoPathLoaded, setRepoPathLoaded] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [worktreePath, setWorktreePath] = useState<string | null>(null);
   const [claudeSessionId, setClaudeSessionId] = useState<string | null>(null);
@@ -613,15 +631,18 @@ function DesktopPanel({
   useEffect(() => {
     let cancelled = false;
     setRepoPath(null);
+    setRepoPathLoaded(false);
     void (async () => {
       const result = await getProjectLocalPath(projectId);
       if (cancelled) return;
       if (result.ok) setRepoPath(result.localPath);
+      setRepoPathLoaded(true);
+      onReady?.();
     })();
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, onReady]);
 
   // Hydrate from server in two passes:
   //   1. /api/v1/tickets/:id/messages → durable per-ticket Conversation. This
@@ -1181,6 +1202,12 @@ function DesktopPanel({
   // Clear watchdog on unmount so we don't fire after the panel is gone.
   useEffect(() => clearIdleTimer, []);
 
+  if (!repoPathLoaded) {
+    // Parent (TicketAgentPanel) is showing a unified "Loading…" indicator
+    // while the project local path is in flight. Returning null here keeps
+    // the "Choose Folder" prompt from flashing before we know the real state.
+    return null;
+  }
   if (!repoPath) {
     return (
       <div className="flex items-center gap-3 rounded-lg bg-muted/30 px-4 py-3">
@@ -1311,21 +1338,29 @@ function DesktopPanel({
   );
 }
 
-function WebPanel({ ticketId, workspaceId }: Props): React.ReactElement {
+function WebPanel({
+  ticketId,
+  workspaceId,
+  onReady,
+}: Props & { onReady?: () => void }): React.ReactElement | null {
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [agentsLoaded, setAgentsLoaded] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
+    setAgentsLoaded(false);
     void listAgents({ workspaceId }).then((res) => {
       if (res.ok) {
         const live = res.data.filter((a) => !a.revokedAt);
         setAgents(live);
         if (live.length > 0) setSelectedAgent(live[0]!.id);
       }
+      setAgentsLoaded(true);
+      onReady?.();
     });
-  }, [workspaceId]);
+  }, [workspaceId, onReady]);
 
   useEffect(() => {
     let stopped = false;
@@ -1374,6 +1409,13 @@ function WebPanel({ ticketId, workspaceId }: Props): React.ReactElement {
       toast.error(err instanceof Error ? err.message : "Cancel failed");
     }
   };
+
+  if (!agentsLoaded) {
+    // Parent (TicketAgentPanel) is showing a unified "Loading…" indicator
+    // while the agent list is in flight. Returning null prevents the
+    // disabled "No agents paired" select from flashing before we know.
+    return null;
+  }
 
   return (
     <div className="flex flex-col gap-3">
