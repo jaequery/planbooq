@@ -1,5 +1,12 @@
+import { Instrument_Serif } from "next/font/google";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+
+const serif = Instrument_Serif({
+  subsets: ["latin"],
+  weight: "400",
+  style: ["normal", "italic"],
+  variable: "--font-landing-serif",
+});
 
 export const metadata = {
   title: "Planbooq — pick winners, don't prompt twice",
@@ -12,124 +19,524 @@ const CTA_LABEL = "Open the app";
 
 export default function Home(): React.ReactElement {
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <section className="relative flex flex-col items-center justify-center px-6 pt-16 pb-24 text-center">
-        <div className="mx-auto flex max-w-2xl flex-col items-center">
-          <h1 className="font-mono text-5xl font-semibold tracking-tight sm:text-6xl">Planbooq</h1>
-          <p className="mt-6 text-lg text-muted-foreground sm:text-xl">
-            Pick winners. Don't prompt twice.
-          </p>
-          <p className="mt-2 text-base text-muted-foreground">
-            Every ticket spawns N AI variants in parallel — each with a live preview URL and
-            screenshots. Decide by recognizing the winner, not by re-prompting until "almost"
-            becomes "fine."
-          </p>
-          <div className="mt-10 flex items-center gap-3">
-            <Button size="lg" asChild>
-              <Link href={APP_HREF}>{CTA_LABEL}</Link>
-            </Button>
-            <Button size="lg" variant="ghost" asChild>
-              <a href="#how">See how it works</a>
-            </Button>
-          </div>
-          <p className="mt-3 text-sm text-muted-foreground">The kanban for vibe coding.</p>
-        </div>
-      </section>
+    <main
+      className={`${serif.variable} min-h-screen bg-[#F4ECD8] text-[#1F2A1E] antialiased`}
+      style={{ colorScheme: "light" }}
+    >
+      <div className="mx-auto max-w-6xl px-6 pt-10 pb-24 sm:px-8 sm:pt-14">
+        <Wordmark />
 
-      <section id="why" className="mx-auto max-w-5xl px-6 pb-24">
-        <div className="grid gap-6 sm:grid-cols-3">
-          <Card
-            title="Sequential prompting is broken"
-            body="Prompt → wait → 'almost but not quite' → re-prompt. It's lossy, exhausting, and fights how humans actually evaluate creative work. We don't specify taste — we recognize it."
-          />
-          <Card
-            title="Parallel beats serial"
-            body="N variants run at once in isolated worktrees. By the time one would have finished sequentially, you have several to compare side-by-side."
-          />
-          <Card
-            title="Pick, then ship"
-            body="One click merges the chosen variant and archives the rest. No prompt-engineering tax. The picks become the proprietary signal that makes future variants better."
-          />
-        </div>
-      </section>
+        <Hero />
 
-      <section id="how" className="mx-auto max-w-5xl px-6 pb-24">
-        <div className="mx-auto max-w-2xl text-center">
-          <h2 className="font-mono text-3xl font-semibold tracking-tight sm:text-4xl">
-            How it works
-          </h2>
-          <p className="mt-6 text-base text-muted-foreground sm:text-lg">
-            Four steps from prompt to merged PR.
-          </p>
-        </div>
-        <ol className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          <Step
-            n={1}
-            title="Drop a ticket"
-            body="Describe what you want. Add context, attachments, reference shots."
-          />
-          <Step
-            n={2}
-            title="Fan out"
-            body="Planbooq spawns multiple AI variants in parallel — each its own branch and worktree."
-          />
-          <Step
-            n={3}
-            title="Test-drive"
-            body="Open live preview URLs, scrub screenshots, scan diffs. Compare side-by-side."
-          />
-          <Step
-            n={4}
-            title="Pick & ship"
-            body="One click promotes the winner to a PR. The rest are archived for remix later."
-          />
-        </ol>
-      </section>
+        <Pillars />
 
-      <section className="px-6 pb-24">
-        <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
-          <h2 className="font-mono text-3xl font-semibold tracking-tight sm:text-4xl">
-            Replace Lovable + Cursor + Linear
-          </h2>
-          <p className="mt-6 text-lg text-muted-foreground sm:text-xl">
-            One surface for the new bottleneck:{" "}
-            <span className="text-foreground">deciding fast on AI output.</span>
-          </p>
-          <p className="mt-2 text-base text-muted-foreground">
-            Real-time multiplayer kanban, full keyboard nav, GitHub-wired tickets, BYOK so unit
-            economics stay yours.
-          </p>
-          <div className="mt-10">
-            <Button size="lg" asChild>
-              <Link href={APP_HREF}>{CTA_LABEL}</Link>
-            </Button>
-          </div>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Planbooq runs on top of your GitHub repos.
-          </p>
-        </div>
-      </section>
+        <HowItWorks />
+
+        <BottomCTA />
+      </div>
     </main>
   );
 }
 
-function Card({ title, body }: { title: string; body: string }): React.ReactElement {
+function Wordmark(): React.ReactElement {
   return (
-    <div className="rounded-xl border border-border/60 bg-card p-6">
-      <h3 className="text-base font-semibold tracking-tight">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
+    <div className="flex justify-center">
+      <div className="font-[var(--font-landing-serif)] text-base tracking-[0.18em] text-[#1F2A1E]/70 uppercase">
+        Planbooq
+      </div>
     </div>
   );
 }
 
-function Step({ n, title, body }: { n: number; title: string; body: string }): React.ReactElement {
+function Hero(): React.ReactElement {
   return (
-    <li className="rounded-xl border border-border/60 bg-card p-6">
-      <div className="font-mono text-xs font-semibold tracking-tight text-muted-foreground">
-        0{n}
+    <section className="mt-12 flex flex-col items-center text-center sm:mt-16">
+      <h1 className="font-[var(--font-landing-serif)] max-w-3xl text-balance text-5xl leading-[1.05] tracking-tight sm:text-7xl">
+        The kanban that already <em className="italic text-[#3A5A40]">picks winners</em> for you
+      </h1>
+      <p className="mt-7 max-w-xl text-balance text-base leading-relaxed text-[#1F2A1E]/75 sm:text-lg">
+        Every ticket spawns N AI variants in parallel — each with a live preview URL and
+        screenshots. Decide by recognizing the winner, not by re-prompting until "almost" becomes
+        "fine."
+      </p>
+      <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+        <Link
+          href={APP_HREF}
+          className="inline-flex h-11 items-center rounded-full bg-[#1F2A1E] px-6 text-sm font-medium text-[#F4ECD8] shadow-[0_1px_0_rgba(0,0,0,0.04)] transition hover:bg-[#2F4A2C]"
+        >
+          {CTA_LABEL}
+        </Link>
+        <a
+          href="#how"
+          className="inline-flex h-11 items-center rounded-full border border-[#1F2A1E]/20 bg-[#F4ECD8] px-6 text-sm font-medium text-[#1F2A1E] transition hover:border-[#1F2A1E]/40 hover:bg-[#EDE2C6]"
+        >
+          See how it works
+        </a>
       </div>
-      <h3 className="mt-2 text-base font-semibold tracking-tight">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
+
+      <HeroScene />
+    </section>
+  );
+}
+
+function HeroScene(): React.ReactElement {
+  return (
+    <div className="relative mt-14 w-full overflow-hidden rounded-[28px] border border-[#1F2A1E]/10 shadow-[0_1px_0_rgba(0,0,0,0.04),0_24px_60px_-20px_rgba(31,42,30,0.25)]">
+      <svg
+        viewBox="0 0 1200 540"
+        preserveAspectRatio="xMidYMid slice"
+        className="block h-[280px] w-full sm:h-[460px]"
+        aria-hidden="true"
+      >
+        <defs>
+          <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#C9D7E8" />
+            <stop offset="55%" stopColor="#E5DDC2" />
+            <stop offset="100%" stopColor="#EFE5C8" />
+          </linearGradient>
+          <linearGradient id="far-hills" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#8FA593" />
+            <stop offset="100%" stopColor="#A6B9A6" />
+          </linearGradient>
+          <linearGradient id="mid-hills" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#5F7A4F" />
+            <stop offset="100%" stopColor="#6E8A5C" />
+          </linearGradient>
+          <linearGradient id="near-field" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#4F6A3B" />
+            <stop offset="100%" stopColor="#3A5A30" />
+          </linearGradient>
+          <radialGradient id="sun" cx="0.78" cy="0.22" r="0.18">
+            <stop offset="0%" stopColor="#FFF6DE" />
+            <stop offset="100%" stopColor="#FFF6DE" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+
+        <rect width="1200" height="540" fill="url(#sky)" />
+        <rect width="1200" height="540" fill="url(#sun)" />
+
+        {/* clouds */}
+        <g fill="#FBF6E3" opacity="0.85">
+          <ellipse cx="180" cy="120" rx="110" ry="14" />
+          <ellipse cx="240" cy="138" rx="80" ry="10" />
+          <ellipse cx="780" cy="90" rx="140" ry="12" />
+          <ellipse cx="980" cy="160" rx="90" ry="9" />
+        </g>
+
+        {/* far hills */}
+        <path
+          d="M0,360 C160,300 280,330 440,310 C600,290 760,340 940,320 C1080,304 1140,316 1200,310 L1200,540 L0,540 Z"
+          fill="url(#far-hills)"
+        />
+
+        {/* mid hills */}
+        <path
+          d="M0,410 C140,360 320,400 520,380 C720,360 880,420 1080,400 C1140,394 1180,402 1200,400 L1200,540 L0,540 Z"
+          fill="url(#mid-hills)"
+        />
+
+        {/* tree silhouettes */}
+        <g fill="#2F4A2C" opacity="0.9">
+          <circle cx="120" cy="385" r="22" />
+          <circle cx="148" cy="380" r="18" />
+          <circle cx="172" cy="388" r="20" />
+          <rect x="138" y="395" width="6" height="22" rx="2" />
+
+          <circle cx="940" cy="378" r="20" />
+          <circle cx="966" cy="384" r="16" />
+          <rect x="946" y="390" width="5" height="20" rx="2" />
+        </g>
+
+        {/* near field */}
+        <path
+          d="M0,440 C200,420 420,470 640,450 C860,432 1020,478 1200,460 L1200,540 L0,540 Z"
+          fill="url(#near-field)"
+        />
+
+        {/* grass strokes */}
+        <g stroke="#2F4A2C" strokeWidth="1.2" strokeLinecap="round" opacity="0.55">
+          {Array.from({ length: 90 }).map((_, i) => {
+            const x = (i * 1200) / 90 + (i % 3) * 4;
+            const y = 470 + (i % 5) * 4;
+            return <line key={i} x1={x} y1={y} x2={x + 2} y2={y - 8} />;
+          })}
+        </g>
+
+        {/* lone figure */}
+        <g transform="translate(560,360)">
+          <ellipse cx="0" cy="60" rx="22" ry="4" fill="#1F2A1E" opacity="0.25" />
+          <path d="M-8,-30 Q-12,0 -10,55 L10,55 Q12,0 8,-30 Z" fill="#E8DFC4" />
+          <circle cx="0" cy="-38" r="10" fill="#E8C9A8" />
+          <path d="M-10,-44 Q0,-58 10,-44 L10,-38 L-10,-38 Z" fill="#3A5A40" />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+function Pillars(): React.ReactElement {
+  return (
+    <section className="mt-24 sm:mt-32">
+      <div className="flex flex-col items-center text-center">
+        <h2 className="font-[var(--font-landing-serif)] text-4xl tracking-tight sm:text-5xl">
+          Better picks, less prompting.
+        </h2>
+      </div>
+      <div className="mt-12 grid gap-5 sm:grid-cols-3">
+        <Tile
+          tone="olive"
+          eyebrow="01"
+          title="Parallel beats serial."
+          body="N variants run at once in isolated worktrees. By the time one would have finished sequentially, you have several to compare side-by-side."
+        />
+        <Tile
+          tone="forest"
+          eyebrow="02"
+          title="Pick, don't prompt."
+          body="Live preview URLs, scrubbed screenshots, side-by-side diffs. Decide by recognizing the winner — not by re-prompting until 'almost' becomes 'fine.'"
+        />
+        <Tile
+          tone="sky"
+          eyebrow="03"
+          title="Taste compounds."
+          body="Every pick is a proprietary signal. Planbooq learns which variants you choose and quietly tunes the fan-out to your taste."
+        />
+      </div>
+    </section>
+  );
+}
+
+function Tile({
+  tone,
+  eyebrow,
+  title,
+  body,
+}: {
+  tone: "olive" | "forest" | "sky";
+  eyebrow: string;
+  title: string;
+  body: string;
+}): React.ReactElement {
+  const palette = {
+    olive: {
+      bg: "#6E7340",
+      ink: "#F4ECD8",
+      mute: "rgba(244,236,216,0.78)",
+    },
+    forest: {
+      bg: "#2F4A2C",
+      ink: "#F4ECD8",
+      mute: "rgba(244,236,216,0.78)",
+    },
+    sky: {
+      bg: "#C9D7CB",
+      ink: "#1F2A1E",
+      mute: "rgba(31,42,30,0.7)",
+    },
+  }[tone];
+
+  return (
+    <article
+      className="relative flex aspect-[5/6] flex-col justify-between overflow-hidden rounded-3xl p-7 sm:aspect-[4/5]"
+      style={{ backgroundColor: palette.bg, color: palette.ink }}
+    >
+      <TileGlyph tone={tone} />
+      <div className="relative z-10">
+        <div
+          className="font-[var(--font-landing-serif)] text-xs tracking-[0.22em] uppercase"
+          style={{ color: palette.mute }}
+        >
+          {eyebrow}
+        </div>
+        <h3 className="font-[var(--font-landing-serif)] mt-2 text-2xl leading-tight tracking-tight sm:text-3xl">
+          {title}
+        </h3>
+      </div>
+      <p
+        className="relative z-10 mt-6 text-sm leading-relaxed sm:text-[15px]"
+        style={{ color: palette.mute }}
+      >
+        {body}
+      </p>
+    </article>
+  );
+}
+
+function TileGlyph({ tone }: { tone: "olive" | "forest" | "sky" }): React.ReactElement {
+  if (tone === "olive") {
+    return (
+      <svg
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-25"
+        width="220"
+        height="220"
+        viewBox="0 0 220 220"
+        aria-hidden="true"
+      >
+        {Array.from({ length: 4 }).map((_, i) => (
+          <rect
+            key={i}
+            x={20 + i * 12}
+            y={20 + i * 12}
+            width={180 - i * 24}
+            height={180 - i * 24}
+            rx="14"
+            fill="none"
+            stroke="#F4ECD8"
+            strokeWidth="1.4"
+          />
+        ))}
+      </svg>
+    );
+  }
+  if (tone === "forest") {
+    return (
+      <svg
+        className="absolute right-6 bottom-6 opacity-30"
+        width="160"
+        height="160"
+        viewBox="0 0 160 160"
+        aria-hidden="true"
+      >
+        <circle cx="80" cy="80" r="50" fill="none" stroke="#F4ECD8" strokeWidth="1.5" />
+        <circle cx="80" cy="80" r="30" fill="none" stroke="#F4ECD8" strokeWidth="1.5" />
+        <circle cx="80" cy="80" r="10" fill="#F4ECD8" />
+        <line x1="80" y1="10" x2="80" y2="150" stroke="#F4ECD8" strokeWidth="0.8" />
+        <line x1="10" y1="80" x2="150" y2="80" stroke="#F4ECD8" strokeWidth="0.8" />
+      </svg>
+    );
+  }
+  return (
+    <svg
+      className="absolute right-4 -bottom-2 opacity-60"
+      width="200"
+      height="160"
+      viewBox="0 0 200 160"
+      aria-hidden="true"
+    >
+      <path
+        d="M0,140 C40,120 70,135 110,118 C150,100 180,118 200,108 L200,160 L0,160 Z"
+        fill="#1F2A1E"
+        opacity="0.18"
+      />
+      <path
+        d="M0,150 C40,138 80,148 120,138 C160,128 180,140 200,134 L200,160 L0,160 Z"
+        fill="#1F2A1E"
+        opacity="0.25"
+      />
+    </svg>
+  );
+}
+
+function HowItWorks(): React.ReactElement {
+  return (
+    <section id="how" className="mt-28 sm:mt-36">
+      <div className="flex flex-col items-center text-center">
+        <h2 className="font-[var(--font-landing-serif)] text-4xl tracking-tight sm:text-5xl">
+          How Planbooq works
+        </h2>
+        <p className="mt-5 max-w-md text-balance text-[15px] leading-relaxed text-[#1F2A1E]/70">
+          Four steps from prompt to merged PR. Drop a ticket and the rest happens in parallel.
+        </p>
+      </div>
+      <ol className="mt-14 grid gap-x-10 gap-y-12 sm:grid-cols-2 lg:grid-cols-4">
+        <Step
+          n={1}
+          title="Drop a ticket"
+          body="Describe what you want. Add context, attachments, reference shots."
+          glyph={<StepDrop />}
+        />
+        <Step
+          n={2}
+          title="Fan out"
+          body="Planbooq spawns multiple AI variants in parallel — each its own branch and worktree."
+          glyph={<StepFanOut />}
+        />
+        <Step
+          n={3}
+          title="Test-drive"
+          body="Open live preview URLs, scrub screenshots, scan diffs. Compare side-by-side."
+          glyph={<StepCompare />}
+        />
+        <Step
+          n={4}
+          title="Pick & ship"
+          body="One click promotes the winner to a PR. The rest are archived for remix later."
+          glyph={<StepPick />}
+        />
+      </ol>
+    </section>
+  );
+}
+
+function Step({
+  n,
+  title,
+  body,
+  glyph,
+}: {
+  n: number;
+  title: string;
+  body: string;
+  glyph: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <li className="flex flex-col items-start">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#E8DFC4] text-[#2F4A2C]">
+        {glyph}
+      </div>
+      <div className="font-[var(--font-landing-serif)] mt-4 text-xs tracking-[0.22em] text-[#1F2A1E]/55 uppercase">
+        Step 0{n}
+      </div>
+      <h3 className="font-[var(--font-landing-serif)] mt-1 text-xl tracking-tight">{title}</h3>
+      <p className="mt-2 text-[14px] leading-relaxed text-[#1F2A1E]/70">{body}</p>
     </li>
+  );
+}
+
+function StepDrop(): React.ReactElement {
+  return (
+    <svg
+      width="26"
+      height="26"
+      viewBox="0 0 26 26"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3.5" y="5" width="19" height="16" rx="3" />
+      <path d="M3.5 10h19" />
+      <path d="M9 15h8" />
+    </svg>
+  );
+}
+
+function StepFanOut(): React.ReactElement {
+  return (
+    <svg
+      width="26"
+      height="26"
+      viewBox="0 0 26 26"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="6" cy="13" r="2.5" />
+      <circle cx="20" cy="6" r="2.5" />
+      <circle cx="20" cy="13" r="2.5" />
+      <circle cx="20" cy="20" r="2.5" />
+      <path d="M8.5 13 17.5 6" />
+      <path d="M8.5 13h9" />
+      <path d="M8.5 13 17.5 20" />
+    </svg>
+  );
+}
+
+function StepCompare(): React.ReactElement {
+  return (
+    <svg
+      width="26"
+      height="26"
+      viewBox="0 0 26 26"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="5" width="9" height="16" rx="2" />
+      <rect x="14" y="5" width="9" height="16" rx="2" />
+      <path d="M13 3v20" strokeDasharray="2 2" />
+    </svg>
+  );
+}
+
+function StepPick(): React.ReactElement {
+  return (
+    <svg
+      width="26"
+      height="26"
+      viewBox="0 0 26 26"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m4 13 5 5 13-13" />
+    </svg>
+  );
+}
+
+function BottomCTA(): React.ReactElement {
+  return (
+    <section className="mt-28 sm:mt-36">
+      <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+        <h2 className="font-[var(--font-landing-serif)] text-4xl leading-tight tracking-tight sm:text-6xl">
+          Planbooq <em className="italic text-[#3A5A40]">pays attention</em>.
+        </h2>
+        <p className="mt-5 max-w-xl text-balance text-[15px] leading-relaxed text-[#1F2A1E]/70">
+          One surface for the new bottleneck: deciding fast on AI output. Real-time multiplayer
+          kanban, full keyboard nav, GitHub-wired tickets, BYOK so unit economics stay yours.
+        </p>
+
+        <PromptBar />
+
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href={APP_HREF}
+            className="inline-flex h-11 items-center rounded-full bg-[#1F2A1E] px-6 text-sm font-medium text-[#F4ECD8] transition hover:bg-[#2F4A2C]"
+          >
+            {CTA_LABEL}
+          </Link>
+          <span className="text-xs tracking-[0.16em] text-[#1F2A1E]/55 uppercase">
+            Runs on top of your GitHub repos
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PromptBar(): React.ReactElement {
+  return (
+    <div className="mt-12 w-full max-w-2xl">
+      <div className="rounded-2xl border border-[#1F2A1E]/12 bg-white/70 p-3 shadow-[0_1px_0_rgba(0,0,0,0.03),0_18px_44px_-22px_rgba(31,42,30,0.25)] backdrop-blur">
+        <div className="flex items-center gap-3 rounded-xl bg-white px-4 py-3">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#1F2A1E"
+            strokeOpacity="0.5"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+          <span className="flex-1 text-left text-[15px] text-[#1F2A1E]/55">
+            Add a ticket — "Hero section, friendlier, swap CTA copy…"
+          </span>
+          <span className="rounded-md border border-[#1F2A1E]/15 px-1.5 py-0.5 font-mono text-[11px] text-[#1F2A1E]/55">
+            ⌘K
+          </span>
+        </div>
+        <div className="mt-2 flex items-center justify-between px-2 pt-1 pb-1 text-[11px] tracking-[0.16em] text-[#1F2A1E]/45 uppercase">
+          <span>Fans out to 3 variants</span>
+          <span>~2 min</span>
+        </div>
+      </div>
+    </div>
   );
 }
