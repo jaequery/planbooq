@@ -71,7 +71,7 @@ export function TicketActionsMenu({
             <MoreHorizontal className="h-3.5 w-3.5" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" sideOffset={4} className="w-44">
+        <DropdownMenuContent align="end" sideOffset={4} className="w-40">
           <DropdownMenuItem onSelect={copyLink}>
             <Link2 className="h-4 w-4" />
             Copy link
