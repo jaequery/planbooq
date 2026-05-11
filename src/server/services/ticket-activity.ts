@@ -1,0 +1,110 @@
+import "server-only";
+
+import type { Prisma } from "@prisma/client";
+import { logger } from "@/lib/logger";
+import { publishWorkspaceEvent } from "@/server/ably";
+import { prisma } from "@/server/db";
+
+export async function recordStatusChangedActivity(args: {
+  ticketId: string;
+  workspaceId: string;
+  fromStatusId: string;
+  toStatusId: string;
+  byUserId: string | null;
+}): Promise<void> {
+  if (args.fromStatusId === args.toStatusId) return;
+  try {
+    const [from, to] = await Promise.all([
+      prisma.status.findUnique({
+        where: { id: args.fromStatusId },
+        select: { key: true, name: true },
+      }),
+      prisma.status.findUnique({
+        where: { id: args.toStatusId },
+        select: { key: true, name: true },
+      }),
+    ]);
+
+    const payload = {
+      fromStatusId: args.fromStatusId,
+      toStatusId: args.toStatusId,
+      fromKey: from?.key ?? null,
+      toKey: to?.key ?? null,
+      fromName: from?.name ?? null,
+      toName: to?.name ?? null,
+      byUserId: args.byUserId,
+    };
+
+    const activity = await prisma.ticketActivity.create({
+      data: {
+        ticketId: args.ticketId,
+        workspaceId: args.workspaceId,
+        kind: "STATUS_CHANGED",
+        payload: payload as Prisma.InputJsonValue,
+      },
+      select: { id: true, kind: true, payload: true, jobId: true, createdAt: true },
+    });
+
+    await publishWorkspaceEvent(args.workspaceId, {
+      name: "ticket.activity",
+      workspaceId: args.workspaceId,
+      ticketId: args.ticketId,
+      activity: {
+        id: activity.id,
+        kind: activity.kind,
+        payload: activity.payload as Record<string, unknown>,
+        jobId: activity.jobId,
+        createdAt: activity.createdAt.toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.warn("ticketActivity.status-changed.failed", {
+      ticketId: args.ticketId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+export async function recordStepActivity(args: {
+  ticketId: string;
+  workspaceId: string;
+  kind: "STEP_STARTED" | "STEP_COMPLETED";
+  stepName: string;
+  byUserId: string | null;
+}): Promise<{ id: string } | null> {
+  try {
+    const activity = await prisma.ticketActivity.create({
+      data: {
+        ticketId: args.ticketId,
+        workspaceId: args.workspaceId,
+        kind: args.kind,
+        payload: {
+          name: args.stepName,
+          byUserId: args.byUserId,
+        } as Prisma.InputJsonValue,
+      },
+      select: { id: true, kind: true, payload: true, jobId: true, createdAt: true },
+    });
+
+    await publishWorkspaceEvent(args.workspaceId, {
+      name: "ticket.activity",
+      workspaceId: args.workspaceId,
+      ticketId: args.ticketId,
+      activity: {
+        id: activity.id,
+        kind: activity.kind,
+        payload: activity.payload as Record<string, unknown>,
+        jobId: activity.jobId,
+        createdAt: activity.createdAt.toISOString(),
+      },
+    });
+    return { id: activity.id };
+  } catch (error) {
+    logger.warn("ticketActivity.step.failed", {
+      ticketId: args.ticketId,
+      kind: args.kind,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}

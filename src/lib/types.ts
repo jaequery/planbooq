@@ -211,7 +211,15 @@ export type AblyChannelEvent =
       ticketId: string;
       activity: {
         id: string;
-        kind: "PR_CREATED" | "COMMIT_PUSHED" | "TEST_RUN" | "BUILD" | "NOTE";
+        kind:
+          | "PR_CREATED"
+          | "COMMIT_PUSHED"
+          | "TEST_RUN"
+          | "BUILD"
+          | "NOTE"
+          | "STATUS_CHANGED"
+          | "STEP_STARTED"
+          | "STEP_COMPLETED";
         payload: Record<string, unknown>;
         jobId: string | null;
         createdAt: string;

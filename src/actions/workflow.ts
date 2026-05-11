@@ -1037,12 +1037,27 @@ export async function logWorkflowActivity(input: {
   if (!ctx.ok) return ctx;
   const text = z.string().min(1).max(500).parse(input.text);
 
+  // Classify "Workflow step started/completed: <name>" into typed kinds so
+  // the timeline can render them with proper styling. Falls through to NOTE
+  // for anything else.
+  let kind: "NOTE" | "STEP_STARTED" | "STEP_COMPLETED" = "NOTE";
+  let payload: Record<string, unknown> = { text };
+  const startedMatch = text.match(/^Workflow step started:\s*(.+)$/);
+  const completedMatch = text.match(/^Workflow step completed:\s*(.+)$/);
+  if (startedMatch?.[1]) {
+    kind = "STEP_STARTED";
+    payload = { name: startedMatch[1].trim(), byUserId: ctx.userId };
+  } else if (completedMatch?.[1]) {
+    kind = "STEP_COMPLETED";
+    payload = { name: completedMatch[1].trim(), byUserId: ctx.userId };
+  }
+
   const activity = await prisma.ticketActivity.create({
     data: {
       ticketId: input.ticketId,
       workspaceId: ticket.workspaceId,
-      kind: "NOTE",
-      payload: { text } as Prisma.InputJsonValue,
+      kind,
+      payload: payload as Prisma.InputJsonValue,
     },
     select: { id: true, kind: true, payload: true, jobId: true, createdAt: true },
   });
