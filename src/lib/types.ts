@@ -38,6 +38,7 @@ export type ProjectSummary = Pick<
 > & {
   reviewCount?: number;
   buildingCount?: number;
+  blockedCount?: number;
 };
 
 export type BoardData = {
