@@ -1,9 +1,16 @@
-import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerZIP } from "@electron-forge/maker-zip";
-import { VitePlugin } from "@electron-forge/plugin-vite";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
+import { VitePlugin } from "@electron-forge/plugin-vite";
 import { PublisherGithub } from "@electron-forge/publisher-github";
+import type { ForgeConfig } from "@electron-forge/shared-types";
+
+const signingIdentity = process.env.APPLE_SIGNING_IDENTITY;
+const appleId = process.env.APPLE_ID;
+const appleIdPassword = process.env.APPLE_APP_SPECIFIC_PASSWORD;
+const appleTeamId = process.env.APPLE_TEAM_ID;
+const canSign = Boolean(signingIdentity);
+const canNotarize = canSign && Boolean(appleId && appleIdPassword && appleTeamId);
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -21,12 +28,27 @@ const config: ForgeConfig = {
     // plain CJS file via `process.execPath` with ELECTRON_RUN_AS_NODE=1.
     // Resolved at runtime via process.resourcesPath in broker-client.ts.
     extraResource: ["../broker/dist/broker.cjs"],
+    ...(canSign && {
+      osxSign: {
+        identity: signingIdentity,
+        optionsForFile: () => ({
+          hardenedRuntime: true,
+          entitlements: "build/entitlements.mac.plist",
+          "entitlements-inherit": "build/entitlements.mac.plist",
+          "signature-flags": "library",
+        }),
+      },
+    }),
+    ...(canNotarize && {
+      osxNotarize: {
+        appleId: appleId as string,
+        appleIdPassword: appleIdPassword as string,
+        teamId: appleTeamId as string,
+      },
+    }),
   },
   rebuildConfig: {},
-  makers: [
-    new MakerDMG({ format: "ULFO" }),
-    new MakerZIP({}, ["darwin"]),
-  ],
+  makers: [new MakerDMG({ format: "ULFO" }), new MakerZIP({}, ["darwin"])],
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new VitePlugin({
@@ -43,6 +65,8 @@ const config: ForgeConfig = {
         owner: process.env.GH_REPO_OWNER ?? "jaequery",
         name: process.env.GH_REPO_NAME ?? "planbooq",
       },
+      // Drafts on every main-branch build so users on auto-update don't pick
+      // it up until a human publishes the release in the GitHub UI.
       prerelease: false,
       draft: true,
     }),

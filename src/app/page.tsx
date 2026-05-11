@@ -16,7 +16,7 @@ export const metadata = {
 
 const APP_HREF = "/welcome";
 const CTA_LABEL = "Open the app";
-const DOWNLOAD_HREF = "/welcome";
+const DOWNLOAD_HREF = "/api/download/mac";
 const DOWNLOAD_LABEL = "Download Now";
 
 export default function Home(): React.ReactElement {
