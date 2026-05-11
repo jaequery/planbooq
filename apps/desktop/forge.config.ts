@@ -17,6 +17,10 @@ const config: ForgeConfig = {
         schemes: ["planbooq"],
       },
     ],
+    // Broker daemon bundle. Shipped outside asar so it can be spawned as a
+    // plain CJS file via `process.execPath` with ELECTRON_RUN_AS_NODE=1.
+    // Resolved at runtime via process.resourcesPath in broker-client.ts.
+    extraResource: ["../broker/dist/broker.cjs"],
   },
   rebuildConfig: {},
   makers: [

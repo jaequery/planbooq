@@ -737,11 +737,22 @@ function DesktopPanel({
         setClaudeSessionId(resolvedClaudeSession ?? job.claudeSessionId);
         setJobId(job.id);
         if (job.status === "RUNNING" && !endedInEvents) {
-          // Re-attach to a live session the previous dialog instance started,
-          // so Stop/Send work instead of being detached zombies. If no live
-          // session exists in this renderer, the underlying process is gone
-          // (or this is a different renderer); show the panel as idle.
-          const liveSid = getAgentSessionByTicket(ticketId);
+          // Reattach to a live broker session if one exists. The broker
+          // (apps/broker) owns claude subprocesses and outlives Electron, so
+          // a session started before the app was closed is still alive over
+          // there. Fall back to the in-renderer map for the in-flight tab
+          // case where the broker query hasn't returned yet.
+          const bridge = getDesktopBridge();
+          let liveSid = getAgentSessionByTicket(ticketId);
+          if (!liveSid && bridge?.agentFindSessionByTicket) {
+            try {
+              const r = await bridge.agentFindSessionByTicket({ ticketId });
+              if (!cancelled && r.ok && r.sessionId) liveSid = r.sessionId;
+            } catch {
+              // broker unreachable — fall through to "not live"
+            }
+          }
+          if (cancelled) return;
           if (liveSid) {
             setSessionId(liveSid);
             setBusy(true);
