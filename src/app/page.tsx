@@ -16,6 +16,8 @@ export const metadata = {
 
 const APP_HREF = "/welcome";
 const CTA_LABEL = "Open the app";
+const DOWNLOAD_HREF = "/welcome";
+const DOWNLOAD_LABEL = "Download Now";
 
 export default function Home(): React.ReactElement {
   return (
@@ -59,23 +61,54 @@ function Hero(): React.ReactElement {
         screenshots. Decide by recognizing the winner, not by re-prompting until "almost" becomes
         "fine."
       </p>
-      <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+      <div className="mt-9 flex flex-col items-center gap-5">
         <Link
-          href={APP_HREF}
-          className="inline-flex h-11 items-center rounded-full bg-[#1F2A1E] px-6 text-sm font-medium text-[#F4ECD8] shadow-[0_1px_0_rgba(0,0,0,0.04)] transition hover:bg-[#2F4A2C]"
+          href={DOWNLOAD_HREF}
+          aria-label={DOWNLOAD_LABEL}
+          className="group inline-flex h-14 items-center gap-3 rounded-full bg-[#2F4A2C] px-10 text-base font-semibold tracking-wide text-[#F4ECD8] shadow-[0_2px_0_rgba(0,0,0,0.04),0_20px_40px_-12px_rgba(31,42,30,0.45)] ring-1 ring-[#1F2A1E]/10 transition will-change-transform hover:-translate-y-0.5 hover:bg-[#243B22] hover:shadow-[0_2px_0_rgba(0,0,0,0.04),0_28px_50px_-14px_rgba(31,42,30,0.55)] focus-visible:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4A2C] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F4ECD8] sm:h-16 sm:px-12 sm:text-lg"
         >
-          {CTA_LABEL}
+          <DownloadGlyph />
+          {DOWNLOAD_LABEL}
         </Link>
-        <a
-          href="#how"
-          className="inline-flex h-11 items-center rounded-full border border-[#1F2A1E]/20 bg-[#F4ECD8] px-6 text-sm font-medium text-[#1F2A1E] transition hover:border-[#1F2A1E]/40 hover:bg-[#EDE2C6]"
-        >
-          See how it works
-        </a>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href={APP_HREF}
+            className="inline-flex h-11 items-center rounded-full border border-[#1F2A1E]/20 bg-[#F4ECD8] px-6 text-sm font-medium text-[#1F2A1E] transition hover:border-[#1F2A1E]/40 hover:bg-[#EDE2C6]"
+          >
+            {CTA_LABEL}
+          </Link>
+          <a
+            href="#how"
+            className="inline-flex h-11 items-center rounded-full border border-[#1F2A1E]/20 bg-[#F4ECD8] px-6 text-sm font-medium text-[#1F2A1E] transition hover:border-[#1F2A1E]/40 hover:bg-[#EDE2C6]"
+          >
+            See how it works
+          </a>
+        </div>
       </div>
 
       <HeroScene />
     </section>
+  );
+}
+
+function DownloadGlyph(): React.ReactElement {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="transition-transform group-hover:translate-y-0.5"
+      aria-hidden="true"
+    >
+      <path d="M12 3v12" />
+      <path d="m6 11 6 6 6-6" />
+      <path d="M4 21h16" />
+    </svg>
   );
 }
 
