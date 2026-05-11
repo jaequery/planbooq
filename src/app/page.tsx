@@ -13,29 +13,6 @@ const CTA_LABEL = "Open the app";
 export default function Home(): React.ReactElement {
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <Link href="/" className="font-mono text-[13px] font-semibold tracking-tight">
-          Planbooq
-        </Link>
-        <nav className="flex items-center gap-4 text-sm">
-          <a href="#how" className="text-muted-foreground hover:text-foreground">
-            How it works
-          </a>
-          <a href="#why" className="text-muted-foreground hover:text-foreground">
-            Why
-          </a>
-          <a
-            href="https://github.com/jaequery/planbooq"
-            className="text-muted-foreground hover:text-foreground"
-          >
-            GitHub
-          </a>
-          <Button size="sm" asChild>
-            <Link href={APP_HREF}>{CTA_LABEL}</Link>
-          </Button>
-        </nav>
-      </header>
-
       <section className="relative flex flex-col items-center justify-center px-6 pt-16 pb-24 text-center">
         <div className="mx-auto flex max-w-2xl flex-col items-center">
           <h1 className="font-mono text-5xl font-semibold tracking-tight sm:text-6xl">Planbooq</h1>
@@ -132,22 +109,6 @@ export default function Home(): React.ReactElement {
           </p>
         </div>
       </section>
-
-      <footer className="border-t border-border/60">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 text-xs text-muted-foreground">
-          <span className="font-mono font-semibold tracking-tight">
-            © {new Date().getFullYear()} Planbooq
-          </span>
-          <div className="flex gap-4">
-            <a href="https://github.com/jaequery/planbooq" className="hover:text-foreground">
-              GitHub
-            </a>
-            <Link href={APP_HREF} className="hover:text-foreground">
-              App
-            </Link>
-          </div>
-        </div>
-      </footer>
     </main>
   );
 }
