@@ -9,9 +9,9 @@ const serif = Instrument_Serif({
 });
 
 export const metadata = {
-  title: "Planbooq — pick winners, don't prompt twice",
+  title: "Planbooq — ship while it builds",
   description:
-    "The kanban for vibe coding. Every ticket spawns N AI variants in parallel — pick the winner instead of re-prompting.",
+    "The cockpit for vibe coders running ten tickets at once. Drop tickets, fan them out across parallel AI workers, ship without waiting on a single agent.",
 };
 
 const APP_HREF = "/welcome";
@@ -54,13 +54,12 @@ function Hero(): React.ReactElement {
   return (
     <section className="mt-12 flex flex-col items-center text-center sm:mt-16">
       <h1 className="font-[var(--font-landing-serif)] max-w-3xl text-balance text-5xl leading-[1.05] tracking-tight sm:text-7xl">
-        The kanban that already{" "}
-        <strong className="font-semibold text-[#3A5A40]">picks winners</strong> for you
+        Ship <strong className="font-semibold text-[#3A5A40]">while it builds</strong>.
       </h1>
       <p className="mt-7 max-w-xl text-balance text-base leading-relaxed text-[#1F2A1E]/75 sm:text-lg">
-        Every ticket spawns N AI variants in parallel — each with a live preview URL and
-        screenshots. Decide by recognizing the winner, not by re-prompting until "almost" becomes
-        "fine."
+        The cockpit for vibe coders running ten tickets at once. Drop tickets, watch parallel AI
+        workers run them through, never wait on a single agent. The offspring of Cursor, Linear, and
+        Notion — built ground-up for velocity.
       </p>
       <div className="mt-9 flex flex-col items-center gap-5">
         <Link
@@ -213,27 +212,27 @@ function Pillars(): React.ReactElement {
     <section className="mt-24 sm:mt-32">
       <div className="flex flex-col items-center text-center">
         <h2 className="font-[var(--font-landing-serif)] text-4xl tracking-tight sm:text-5xl">
-          Better picks, less prompting.
+          Built for throughput.
         </h2>
       </div>
       <div className="mt-12 grid gap-5 sm:grid-cols-3">
         <Tile
           tone="olive"
           eyebrow="01"
-          title="Parallel beats serial."
-          body="N variants run at once in isolated worktrees. By the time one would have finished sequentially, you have several to compare side-by-side."
+          title="Run ten in parallel."
+          body="Drop a backlog of tickets and they all start at once — each in its own isolated worktree. Your wall-clock collapses to whatever the slowest worker takes."
         />
         <Tile
           tone="forest"
           eyebrow="02"
-          title="Pick, don't prompt."
-          body="Live preview URLs, scrubbed screenshots, side-by-side diffs. Decide by recognizing the winner — not by re-prompting until 'almost' becomes 'fine.'"
+          title="Tokens that ship, not stall."
+          body="Parallel generation replaces serial re-prompts. Every token spent moves a ticket forward instead of nudging the same draft toward 'fine.'"
         />
         <Tile
           tone="sky"
           eyebrow="03"
-          title="Taste compounds."
-          body="Every pick is a proprietary signal. Planbooq learns which variants you choose and quietly tunes the fan-out to your taste."
+          title="One surface for the whole loop."
+          body="Cursor's AI muscle, Linear's ticket discipline, Notion's calm visual order — collapsed into one fast desktop cockpit, keyboard-first end to end."
         />
       </div>
     </section>
@@ -369,32 +368,33 @@ function HowItWorks(): React.ReactElement {
           How Planbooq works
         </h2>
         <p className="mt-5 max-w-md text-balance text-[15px] leading-relaxed text-[#1F2A1E]/70">
-          Four steps from prompt to merged PR. Drop a ticket and the rest happens in parallel.
+          Four steps, zero waiting. Drop a ticket and move to the next one — workers run in parallel
+          behind you.
         </p>
       </div>
       <ol className="mt-14 grid gap-x-10 gap-y-12 sm:grid-cols-2 lg:grid-cols-4">
         <Step
           n={1}
           title="Drop a ticket"
-          body="Describe what you want. Add context, attachments, reference shots."
+          body="Describe what you want and move on. The cmd-K palette keeps your hands on the keyboard."
           glyph={<StepDrop />}
         />
         <Step
           n={2}
           title="Fan out"
-          body="Planbooq spawns multiple AI variants in parallel — each its own branch and worktree."
+          body="Workers spin up in parallel — each its own branch and worktree. Queue the next ticket; you do not wait."
           glyph={<StepFanOut />}
         />
         <Step
           n={3}
-          title="Test-drive"
-          body="Open live preview URLs, scrub screenshots, scan diffs. Compare side-by-side."
+          title="Glance & decide"
+          body="Live preview URLs and auto-screenshots. Seconds of attention per ticket, not minutes of re-prompts."
           glyph={<StepCompare />}
         />
         <Step
           n={4}
-          title="Pick & ship"
-          body="One click promotes the winner to a PR. The rest are archived for remix later."
+          title="Ship"
+          body="One click opens the PR and clears the lane. Merge auto-completes the ticket back to the board."
           glyph={<StepPick />}
         />
       </ol>
@@ -514,11 +514,12 @@ function BottomCTA(): React.ReactElement {
     <section className="mt-28 sm:mt-36">
       <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
         <h2 className="font-[var(--font-landing-serif)] text-4xl leading-tight tracking-tight sm:text-6xl">
-          Planbooq <strong className="font-semibold text-[#3A5A40]">pays attention</strong>.
+          Stop watching agents.{" "}
+          <strong className="font-semibold text-[#3A5A40]">Start shipping</strong>.
         </h2>
         <p className="mt-5 max-w-xl text-balance text-[15px] leading-relaxed text-[#1F2A1E]/70">
-          One surface for the new bottleneck: deciding fast on AI output. Real-time multiplayer
-          kanban, full keyboard nav, GitHub-wired tickets, BYOK so unit economics stay yours.
+          Real-time multiplayer kanban, full keyboard nav, GitHub-wired tickets, BYOK so unit
+          economics stay yours. One surface, ten things in flight, none of them blocking you.
         </p>
 
         <PromptBar />
@@ -567,8 +568,8 @@ function PromptBar(): React.ReactElement {
           </span>
         </div>
         <div className="mt-2 flex items-center justify-between px-2 pt-1 pb-1 text-[11px] tracking-[0.16em] text-[#1F2A1E]/45 uppercase">
-          <span>Fans out to 3 variants</span>
-          <span>~2 min</span>
+          <span>Runs in parallel</span>
+          <span>You move on</span>
         </div>
       </div>
     </div>

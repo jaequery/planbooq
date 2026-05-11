@@ -1,27 +1,26 @@
 # Planbooq
 
-> The kanban for vibe coding. Pick winners, don't prompt twice.
+> The cockpit for vibe coders running ten tickets at once. Built for speed.
 
 ## Overview
 
-Planbooq is a SaaS kanban platform built for the age of AI-generated code. Every ticket spawns multiple AI variants in parallel — each with a live preview URL and screenshots — so you decide by *picking*, not by re-prompting.
+Planbooq is a desktop kanban built ground-up for velocity. It is the visual surface vibe coders use to drop tickets, fan them out across parallel AI workers, and ship — without ever waiting on a single agent.
 
-The old vibe coding loop is broken. Sequential iteration (prompt → wait → "almost but not quite" → re-prompt) is exhausting, lossy, and fights how humans actually evaluate creative work. We don't *specify* taste — we *recognize* it.
+The bottleneck of vibe coding is not writing code. It is *throughput* — how many useful changes you can land per hour. Sequential prompt-and-iterate kills that throughput; you stare at one terminal while nine others sit idle. Planbooq pumps every ticket through the same lane in parallel, so the time you used to spend waiting becomes time spent reviewing the next thing.
 
-Planbooq collapses Lovable, Cursor, and Linear into a single surface optimized for the new bottleneck: **deciding fast on AI output**. Drop a ticket, watch N variants build in parallel, test-drive each with live previews, pick the winner in one click, ship.
+Think of it as the offspring of **Cursor + Linear + Notion**, collapsed into one fast desktop surface — the AI productivity of Cursor, the ticket discipline of Linear, the calm visual order of Notion — built ground-up for velocity.
 
 ## Features
 
-- **Parallel AI variant generation** — 3–5 variants per ticket (tunable), each in an isolated worktree
-- **Live preview URLs & screenshots** — click to test-drive, auto-captured diffs
-- **One-click "pick winner"** — merge the chosen variant, archive the rest
-- **Variant remix** — combine elements from multiple attempts
-- **Real-time multiplayer kanban** — simultaneous editing, live status updates
-- **Full keyboard navigation & cmd-K palette** — distraction-free workflow
-- **BYOK (bring your own Anthropic key)** — cost-controlled, no vendor lock-in
-- **GitHub integration** — branches, PRs, CI status wired to tickets; auto-complete when PR merges
-- **Taste learning** — the platform gets smarter at picking the right N variants based on your picks
-- **Customizable statuses, variant count, and automation** — per-workspace configuration
+- **Multi-task throughput** — run dozens of tickets in parallel; no more babysitting a single agent
+- **Parallel AI workers per ticket** — N variants generate at once in isolated worktrees, so wall-clock per ticket drops to whatever the slowest worker takes
+- **Token-efficient by default** — generate once, in parallel, instead of burning tokens on serial re-prompts
+- **Live preview URLs & screenshots** — review and decide in one click, never re-run the loop
+- **Real-time multiplayer kanban** — simultaneous editing, live status, no stale board
+- **Full keyboard navigation & cmd-K palette** — every action in milliseconds, never reach for the mouse
+- **GitHub-wired tickets** — branches, PRs, CI status flow back to the board; merged PR auto-completes the ticket
+- **BYOK (bring your own Anthropic key)** — fan-out is cheap when you control the meter; no vendor lock-in
+- **Customizable statuses, worker count, and automation** — per-workspace configuration
 
 ## Getting Started
 
@@ -50,12 +49,12 @@ The first sign-in creates a default `Untitled` project. Add more from the sideba
 | Status      | Meaning |
 | ----------- | ------- |
 | `backlog`   | Captured, not yet committed to. |
-| `todo`      | Scoped and ready. Queued for an agent. |
-| `building`  | N variants generating in parallel. |
-| `review`    | Variants ready. Waiting on you to pick. |
+| `todo`      | Scoped and ready. Queued for a worker. |
+| `building`  | Workers running in parallel. |
+| `review`    | Output ready. Waiting on you to glance and ship. |
 | `completed` | Merged and deployed. |
 
-Statuses and variant count are customizable per workspace.
+Statuses and worker count are customizable per workspace.
 
 ## Tech Stack
 
@@ -77,7 +76,7 @@ Statuses and variant count are customizable per workspace.
 
 ## Who It's For
 
-Solo builders and small teams running parallel AI coding workflows who feel the pain of sequential iteration. If you're already running 3+ Claude Code / Cursor / Lovable sessions in different terminals and copy-pasting screenshots into Slack-to-self, this is built for you.
+Vibe coders running parallel AI sessions who feel the cost of sequential iteration in wall-clock minutes. If you already have 3+ Claude Code / Cursor / Lovable sessions in different terminals and your bottleneck is *attention*, not *typing*, this is built for you.
 
 ## Contributing
 
