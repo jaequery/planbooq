@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNowStrict } from "date-fns";
-import { Folder, Loader2, Play, Send, Square } from "lucide-react";
+import { ArrowDown, Folder, Loader2, Play, Send, Square } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { dispatchTicketToAgent, listAgents } from "@/actions/agents";
@@ -638,6 +638,10 @@ function DesktopPanel({
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
+  // Mirror of atBottomRef into React state, so the "Jump to latest" button
+  // can render based on it. The ref stays the source of truth for the
+  // synchronous read inside the scroll-pin effect (state would be stale).
+  const [atBottom, setAtBottom] = useState(true);
   const didInitialScrollRef = useRef(false);
   const currentAssistantId = useRef<string | null>(null);
   const jobIdRef = useRef<string | null>(null);
@@ -987,7 +991,9 @@ function DesktopPanel({
     const io = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
-        if (entry) atBottomRef.current = entry.isIntersecting;
+        if (!entry) return;
+        atBottomRef.current = entry.isIntersecting;
+        setAtBottom(entry.isIntersecting);
       },
       { root: scroller, threshold: 0 },
     );
@@ -1010,10 +1016,11 @@ function DesktopPanel({
     if (!scroller) return;
     const pin = () => {
       scroller.scrollTop = scroller.scrollHeight;
+      atBottomRef.current = true;
+      setAtBottom(true);
     };
     if (!didInitialScrollRef.current) {
       didInitialScrollRef.current = true;
-      atBottomRef.current = true;
       pin();
       return;
     }
@@ -1036,11 +1043,7 @@ function DesktopPanel({
   };
 
   const sendRef = useRef<
-    | ((
-        override?: string,
-        opts?: { workflowStepRunId?: string | null },
-      ) => Promise<void>)
-    | null
+    ((override?: string, opts?: { workflowStepRunId?: string | null }) => Promise<void>) | null
   >(null);
 
   // Listen for workflow Run events: enqueue prompts, drain when idle.
@@ -1099,10 +1102,7 @@ function DesktopPanel({
     }
   }, [busy, ticketId]);
 
-  const send = async (
-    override?: string,
-    opts?: { workflowStepRunId?: string | null },
-  ) => {
+  const send = async (override?: string, opts?: { workflowStepRunId?: string | null }) => {
     const bridge = getDesktopBridge();
     if (!bridge) return;
     const message = (override ?? input).trim();
@@ -1358,57 +1358,76 @@ function DesktopPanel({
   return (
     <div className="flex flex-col gap-3">
       {messages.length > 0 && (
-        <div
-          ref={scrollerRef}
-          className="max-h-[420px] overflow-y-auto rounded-lg bg-muted/20 p-3"
-        >
-          <div className="flex flex-col gap-3">
-            {messages.map((m, i) => {
-              const isStreaming = busy && m.role === "assistant" && i === messages.length - 1;
-              const isAssistant = m.role === "assistant";
-              const displayText = m.text;
-              const author =
-                m.role === "user" ? "You" : m.role === "assistant" ? "Claude" : "System";
-              const align = m.role === "user" ? "self-end items-end" : "self-start items-start";
-              const time = formatDistanceToNowStrict(new Date(m.createdAt), { addSuffix: true });
-              return (
-                <div key={m.id} className={`flex max-w-[85%] flex-col gap-1 ${align}`}>
-                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                    <span className="font-medium">{author}</span>
-                    <span title={new Date(m.createdAt).toLocaleString()}>{time}</span>
+        <div className="relative">
+          <div
+            ref={scrollerRef}
+            className="max-h-[420px] overflow-y-auto rounded-lg bg-muted/20 p-3"
+          >
+            <div className="flex flex-col gap-3">
+              {messages.map((m, i) => {
+                const isStreaming = busy && m.role === "assistant" && i === messages.length - 1;
+                const isAssistant = m.role === "assistant";
+                const displayText = m.text;
+                const author =
+                  m.role === "user" ? "You" : m.role === "assistant" ? "Claude" : "System";
+                const align = m.role === "user" ? "self-end items-end" : "self-start items-start";
+                const time = formatDistanceToNowStrict(new Date(m.createdAt), { addSuffix: true });
+                return (
+                  <div key={m.id} className={`flex max-w-[85%] flex-col gap-1 ${align}`}>
+                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <span className="font-medium">{author}</span>
+                      <span title={new Date(m.createdAt).toLocaleString()}>{time}</span>
+                    </div>
+                    <div
+                      className={
+                        m.role === "user"
+                          ? "rounded-lg bg-primary/10 px-3 py-2 text-[13px] whitespace-pre-wrap"
+                          : m.role === "system"
+                            ? "max-w-full pl-1 text-[11px] font-mono text-muted-foreground/80 break-all leading-snug"
+                            : "min-w-0 rounded-lg bg-background px-3 py-2 break-words"
+                      }
+                    >
+                      {isAssistant ? (
+                        <Markdown className="text-[13px]">{displayText}</Markdown>
+                      ) : (
+                        m.text
+                      )}
+                      {isStreaming && (
+                        <span className="ml-1 inline-block align-middle">
+                          <Loader2 className="inline size-3 animate-spin" />
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div
-                    className={
-                      m.role === "user"
-                        ? "rounded-lg bg-primary/10 px-3 py-2 text-[13px] whitespace-pre-wrap"
-                        : m.role === "system"
-                          ? "max-w-full pl-1 text-[11px] font-mono text-muted-foreground/80 break-all leading-snug"
-                          : "min-w-0 rounded-lg bg-background px-3 py-2 break-words"
-                    }
-                  >
-                    {isAssistant ? (
-                      <Markdown className="text-[13px]">{displayText}</Markdown>
-                    ) : (
-                      m.text
-                    )}
-                    {isStreaming && (
-                      <span className="ml-1 inline-block align-middle">
-                        <Loader2 className="inline size-3 animate-spin" />
-                      </span>
-                    )}
+                );
+              })}
+              {busy &&
+                (messages.length === 0 || messages[messages.length - 1]!.role !== "assistant") && (
+                  <div className="self-start text-[12px] text-muted-foreground">
+                    <Loader2 className="inline size-3 animate-spin" /> thinking…
                   </div>
-                </div>
-              );
-            })}
-            {busy &&
-              (messages.length === 0 || messages[messages.length - 1]!.role !== "assistant") && (
-                <div className="self-start text-[12px] text-muted-foreground">
-                  <Loader2 className="inline size-3 animate-spin" /> thinking…
-                </div>
-              )}
-            {/* Sentinel for IntersectionObserver-based sticky-bottom. */}
-            <div ref={bottomRef} aria-hidden className="h-px" />
+                )}
+              {/* Sentinel for IntersectionObserver-based sticky-bottom. */}
+              <div ref={bottomRef} aria-hidden className="h-px" />
+            </div>
           </div>
+          {!atBottom && (
+            <button
+              type="button"
+              onClick={() => {
+                const scroller = scrollerRef.current;
+                if (!scroller) return;
+                scroller.scrollTop = scroller.scrollHeight;
+                atBottomRef.current = true;
+                setAtBottom(true);
+              }}
+              aria-label="Jump to most recent message"
+              className="absolute right-3 bottom-3 inline-flex items-center gap-1 rounded-full border border-border bg-background/95 px-3 py-1 text-[11px] text-foreground shadow-md backdrop-blur transition-colors hover:bg-muted"
+            >
+              <ArrowDown className="size-3" aria-hidden />
+              Jump to latest
+            </button>
+          )}
         </div>
       )}
 
