@@ -492,10 +492,11 @@ async function deriveStepCompletion(args: {
         select: { prompt: true },
         orderBy: { createdAt: "asc" },
       }),
-      // STEP_COMPLETED activity rows are written by persistTurnEndSuccess
-      // (mirror-agent-job.ts) when a workflow-step turn ends, even while the
-      // CLI process stays alive — so they fire for steps like "Plan" that
-      // finish without the AgentJob ever transitioning to SUCCEEDED.
+      // STEP_COMPLETED activity rows are written by persistTurnEnd
+      // (mirror-agent-job.ts) when a workflow-step turn ends — for both
+      // success and failure outcomes — even while the CLI process stays
+      // alive. They fire for steps like "Plan" that finish without the
+      // AgentJob ever transitioning to SUCCEEDED.
       prisma.ticketActivity.findMany({
         where: { ticketId: args.ticketId, kind: "STEP_COMPLETED" },
         select: { payload: true },
@@ -507,7 +508,13 @@ async function deriveStepCompletion(args: {
     ]);
     succeededPrompts = succeeded.map((j) => j.prompt);
     for (const a of completedActivities) {
-      const name = (a.payload as { name?: unknown } | null)?.name;
+      const payload = a.payload as { name?: unknown; result?: unknown } | null;
+      const name = payload?.name;
+      // STEP_COMPLETED rows now carry an explicit `result` field. Skip
+      // rows that recorded a failure outcome so a failed step doesn't get
+      // marked complete in the workflow panel. Older rows pre-date the
+      // field and are treated as success (the original behavior).
+      if (payload?.result === "failure") continue;
       if (typeof name === "string" && name.trim()) {
         completedStepNames.add(name.trim().toLowerCase());
       }
