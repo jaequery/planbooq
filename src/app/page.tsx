@@ -14,10 +14,10 @@ export default function Home(): React.ReactElement {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <Link href="/" className="font-semibold tracking-tight">
+        <Link href="/" className="font-mono text-[13px] font-semibold tracking-tight">
           Planbooq
         </Link>
-        <nav className="flex items-center gap-3 text-sm">
+        <nav className="flex items-center gap-4 text-sm">
           <a href="#how" className="text-muted-foreground hover:text-foreground">
             How it works
           </a>
@@ -36,31 +36,31 @@ export default function Home(): React.ReactElement {
         </nav>
       </header>
 
-      <section className="mx-auto max-w-4xl px-6 pt-16 pb-24 text-center">
-        <p className="mb-4 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-          The kanban for vibe coding
-        </p>
-        <h1 className="text-balance text-5xl font-semibold leading-[1.05] tracking-tight md:text-6xl">
-          Pick winners.{" "}
-          <span className="text-muted-foreground">Don't prompt twice.</span>
-        </h1>
-        <p className="mx-auto mt-6 max-w-2xl text-balance text-lg leading-relaxed text-muted-foreground">
-          Every ticket spawns N AI variants in parallel — each with a live preview URL and
-          screenshots. You decide by recognizing the winner, not by re-prompting until "almost"
-          becomes "fine."
-        </p>
-        <div className="mt-10 flex items-center justify-center gap-3">
-          <Button size="lg" asChild>
-            <Link href={APP_HREF}>{CTA_LABEL}</Link>
-          </Button>
-          <Button size="lg" variant="outline" asChild>
-            <a href="#how">See how it works</a>
-          </Button>
+      <section className="relative flex flex-col items-center justify-center px-6 pt-16 pb-24 text-center">
+        <div className="mx-auto flex max-w-2xl flex-col items-center">
+          <h1 className="font-mono text-5xl font-semibold tracking-tight sm:text-6xl">Planbooq</h1>
+          <p className="mt-6 text-lg text-muted-foreground sm:text-xl">
+            Pick winners. Don't prompt twice.
+          </p>
+          <p className="mt-2 text-base text-muted-foreground">
+            Every ticket spawns N AI variants in parallel — each with a live preview URL and
+            screenshots. Decide by recognizing the winner, not by re-prompting until "almost"
+            becomes "fine."
+          </p>
+          <div className="mt-10 flex items-center gap-3">
+            <Button size="lg" asChild>
+              <Link href={APP_HREF}>{CTA_LABEL}</Link>
+            </Button>
+            <Button size="lg" variant="ghost" asChild>
+              <a href="#how">See how it works</a>
+            </Button>
+          </div>
+          <p className="mt-3 text-sm text-muted-foreground">The kanban for vibe coding.</p>
         </div>
       </section>
 
       <section id="why" className="mx-auto max-w-5xl px-6 pb-24">
-        <div className="grid gap-6 md:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-3">
           <Card
             title="Sequential prompting is broken"
             body="Prompt → wait → 'almost but not quite' → re-prompt. It's lossy, exhausting, and fights how humans actually evaluate creative work. We don't specify taste — we recognize it."
@@ -77,10 +77,15 @@ export default function Home(): React.ReactElement {
       </section>
 
       <section id="how" className="mx-auto max-w-5xl px-6 pb-24">
-        <h2 className="mb-10 text-center text-3xl font-semibold tracking-tight">
-          How it works
-        </h2>
-        <ol className="grid gap-6 md:grid-cols-4">
+        <div className="mx-auto max-w-2xl text-center">
+          <h2 className="font-mono text-3xl font-semibold tracking-tight sm:text-4xl">
+            How it works
+          </h2>
+          <p className="mt-6 text-base text-muted-foreground sm:text-lg">
+            Four steps from prompt to merged PR.
+          </p>
+        </div>
+        <ol className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           <Step
             n={1}
             title="Drop a ticket"
@@ -104,28 +109,35 @@ export default function Home(): React.ReactElement {
         </ol>
       </section>
 
-      <section className="mx-auto max-w-4xl px-6 pb-24">
-        <div className="rounded-2xl border bg-muted/30 p-8 md:p-12">
-          <h2 className="text-3xl font-semibold tracking-tight">
+      <section className="px-6 pb-24">
+        <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
+          <h2 className="font-mono text-3xl font-semibold tracking-tight sm:text-4xl">
             Replace Lovable + Cursor + Linear
           </h2>
-          <p className="mt-4 text-balance text-lg text-muted-foreground">
-            One surface optimized for the new bottleneck:{" "}
-            <span className="text-foreground">deciding fast on AI output.</span> Real-time
-            multiplayer kanban, full keyboard nav, GitHub-wired tickets, BYOK so unit economics
-            stay yours.
+          <p className="mt-6 text-lg text-muted-foreground sm:text-xl">
+            One surface for the new bottleneck:{" "}
+            <span className="text-foreground">deciding fast on AI output.</span>
           </p>
-          <div className="mt-8">
+          <p className="mt-2 text-base text-muted-foreground">
+            Real-time multiplayer kanban, full keyboard nav, GitHub-wired tickets, BYOK so unit
+            economics stay yours.
+          </p>
+          <div className="mt-10">
             <Button size="lg" asChild>
               <Link href={APP_HREF}>{CTA_LABEL}</Link>
             </Button>
           </div>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Planbooq runs on top of your GitHub repos.
+          </p>
         </div>
       </section>
 
-      <footer className="border-t">
+      <footer className="border-t border-border/60">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 text-xs text-muted-foreground">
-          <span>© {new Date().getFullYear()} Planbooq</span>
+          <span className="font-mono font-semibold tracking-tight">
+            © {new Date().getFullYear()} Planbooq
+          </span>
           <div className="flex gap-4">
             <a href="https://github.com/jaequery/planbooq" className="hover:text-foreground">
               GitHub
@@ -142,26 +154,20 @@ export default function Home(): React.ReactElement {
 
 function Card({ title, body }: { title: string; body: string }): React.ReactElement {
   return (
-    <div className="rounded-xl border bg-card p-6">
-      <h3 className="text-base font-semibold">{title}</h3>
+    <div className="rounded-xl border border-border/60 bg-card p-6">
+      <h3 className="text-base font-semibold tracking-tight">{title}</h3>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
     </div>
   );
 }
 
-function Step({
-  n,
-  title,
-  body,
-}: {
-  n: number;
-  title: string;
-  body: string;
-}): React.ReactElement {
+function Step({ n, title, body }: { n: number; title: string; body: string }): React.ReactElement {
   return (
-    <li className="rounded-xl border bg-card p-6">
-      <div className="text-xs font-mono text-muted-foreground">0{n}</div>
-      <h3 className="mt-2 text-base font-semibold">{title}</h3>
+    <li className="rounded-xl border border-border/60 bg-card p-6">
+      <div className="font-mono text-xs font-semibold tracking-tight text-muted-foreground">
+        0{n}
+      </div>
+      <h3 className="mt-2 text-base font-semibold tracking-tight">{title}</h3>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
     </li>
   );
