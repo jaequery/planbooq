@@ -600,26 +600,7 @@ function DesktopPanel({
   const [worktreePath, setWorktreePath] = useState<string | null>(null);
   const [claudeSessionId, setClaudeSessionId] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
-  const [busy, _setBusy] = useState(false);
-  // Wrap setBusy to log every transition with a stack trace so we can see
-  // which code path is flipping busy and whether it oscillates within a
-  // single workflow step.
-  const setBusy = useCallback((next: boolean | ((b: boolean) => boolean)) => {
-    _setBusy((prev) => {
-      const resolved = typeof next === "function" ? next(prev) : next;
-      if (resolved !== prev) {
-        console.log(
-          "[wf-debug] setBusy",
-          prev,
-          "->",
-          resolved,
-          "\n  ",
-          new Error().stack?.split("\n").slice(2, 5).join("\n  "),
-        );
-      }
-      return resolved;
-    });
-  }, []);
+  const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());

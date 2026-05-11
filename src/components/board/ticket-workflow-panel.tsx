@@ -73,6 +73,14 @@ export function TicketWorkflowPanel({
   const [pending, start] = useTransition();
   // FIFO of step names we've dispatched but not yet logged as completed.
   const pendingStepsRef = useRef<string[]>([]);
+  // Timestamp of the last local push to pendingStepsRef. refresh() uses this
+  // to avoid the race where an in-flight server fetch returns agentLive=false
+  // moments AFTER runAll() pushed steps but BEFORE the server has registered
+  // the new AgentJob row — without the grace window, refresh() would wipe
+  // the freshly-queued steps and the falling edge handler would later find
+  // an empty queue, never logging "completed" or advancing the UI.
+  const pendingStepsTouchedAtRef = useRef<number>(0);
+  const REFRESH_CLEAR_GRACE_MS = 8_000;
   const wasRunningRef = useRef<boolean>(false);
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
   const [currentStep, setCurrentStep] = useState<string | null>(null);
@@ -101,19 +109,8 @@ export function TicketWorkflowPanel({
       const next = !!detail.running;
       // Falling edge: agent just went idle. If we have a pending step, that
       // step finished — log completion and, if more queued, start the next.
-      console.log(
-        "[wf-debug] agent-busy event running=",
-        next,
-        "wasRunning=",
-        wasRunningRef.current,
-        "queue=",
-        [...pendingStepsRef.current],
-      );
       if (wasRunningRef.current && !next && pendingStepsRef.current.length > 0) {
         const finished = pendingStepsRef.current.shift()!;
-        console.log("[wf-debug] falling edge — shift", finished, "remaining=", [
-          ...pendingStepsRef.current,
-        ]);
         void logWorkflowActivity({
           ticketId,
           text: `Workflow step completed: ${finished}`,
@@ -126,7 +123,6 @@ export function TicketWorkflowPanel({
         const upcoming = pendingStepsRef.current[0];
         setCurrentStep(upcoming ?? null);
         if (upcoming) {
-          console.log("[wf-debug] logging started:", upcoming);
           void logWorkflowActivity({
             ticketId,
             text: `Workflow step started: ${upcoming}`,
@@ -186,8 +182,15 @@ export function TicketWorkflowPanel({
       if (!a.agentLive) {
         if (wasRunningRef.current) wasRunningRef.current = false;
         setRunning(false);
-        setCurrentStep(null);
-        pendingStepsRef.current = [];
+        // Only clear the local queue if it hasn't been touched recently.
+        // A fresh runAll() may have just populated it while the server has
+        // yet to learn about the new AgentJob; clearing here would wipe
+        // legitimate pending work.
+        const sinceTouched = Date.now() - pendingStepsTouchedAtRef.current;
+        if (sinceTouched > REFRESH_CLEAR_GRACE_MS) {
+          setCurrentStep(null);
+          pendingStepsRef.current = [];
+        }
       }
     }
     onReady?.();
@@ -340,7 +343,6 @@ export function TicketWorkflowPanel({
   }
 
   function logStarted(name: string) {
-    console.log("[wf-debug] logStarted called for:", name);
     void logWorkflowActivity({
       ticketId,
       text: `Workflow step started: ${name}`,
@@ -354,6 +356,7 @@ export function TicketWorkflowPanel({
     }
     const queueWasEmpty = pendingStepsRef.current.length === 0;
     pendingStepsRef.current.push(step.name);
+    pendingStepsTouchedAtRef.current = Date.now();
     setCompletedSteps((prev) => {
       if (!prev.has(step.name)) return prev;
       const out = new Set(prev);
@@ -371,12 +374,6 @@ export function TicketWorkflowPanel({
   }
 
   function runAll() {
-    console.log(
-      "[wf-debug] runAll() called. queue before=",
-      [...pendingStepsRef.current],
-      "wf.steps=",
-      wf?.steps.map((s) => ({ name: s.name, enabled: s.enabled })),
-    );
     if (!wf) return;
     const enabled = wf.steps.filter((s) => s.enabled);
     if (enabled.length === 0) {
@@ -397,6 +394,7 @@ export function TicketWorkflowPanel({
         .join("\n");
       const queueWasEmpty = pendingStepsRef.current.length === 0;
       pendingStepsRef.current.push(defaultName);
+      pendingStepsTouchedAtRef.current = Date.now();
       if (queueWasEmpty) {
         setCurrentStep(defaultName);
         logStarted(defaultName);
@@ -411,6 +409,7 @@ export function TicketWorkflowPanel({
     }));
     const queueWasEmpty = pendingStepsRef.current.length === 0;
     for (const s of enabled) pendingStepsRef.current.push(s.name);
+    pendingStepsTouchedAtRef.current = Date.now();
     setCompletedSteps((prev) => {
       if (prev.size === 0) return prev;
       const out = new Set(prev);
