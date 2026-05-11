@@ -17,6 +17,10 @@ type PullRequestPayload = {
     html_url: string;
     merged: boolean;
     body: string | null;
+    title?: string | null;
+    number?: number | null;
+    merge_commit_sha?: string | null;
+    merged_by?: { login?: string | null } | null;
   };
 };
 
@@ -29,6 +33,14 @@ function isPullRequestPayload(value: unknown): value is PullRequestPayload {
   const p = pr as Record<string, unknown>;
   if (typeof p.html_url !== "string" || typeof p.merged !== "boolean") return false;
   return p.body === null || typeof p.body === "string" || p.body === undefined;
+}
+
+function readMergeActor(pr: PullRequestPayload["pull_request"]): string | null {
+  const mb = pr.merged_by;
+  if (mb && typeof mb === "object" && typeof mb.login === "string" && mb.login.length > 0) {
+    return mb.login;
+  }
+  return null;
 }
 
 export async function POST(req: Request): Promise<NextResponse> {
@@ -73,7 +85,13 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   await linkTicketPrUrlFromPrBody(prUrl, parsed.pull_request.body);
-  const outcome = await autoCompleteTicketByPrUrl(prUrl);
+  const pr = parsed.pull_request;
+  const outcome = await autoCompleteTicketByPrUrl(prUrl, {
+    prTitle: typeof pr.title === "string" ? pr.title : null,
+    prNumber: typeof pr.number === "number" ? pr.number : null,
+    prActor: readMergeActor(pr),
+    sha: typeof pr.merge_commit_sha === "string" ? pr.merge_commit_sha : null,
+  });
   logger.info("github.webhook.handled", { action: parsed.action, prUrl, outcome: outcome.kind });
   return NextResponse.json({ ok: true, outcome: outcome.kind });
 }

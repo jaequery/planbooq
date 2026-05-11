@@ -189,6 +189,14 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         );
         return;
       }
+      if (event.name === "ticket.activity") {
+        window.dispatchEvent(
+          new CustomEvent("planbooq:ticket-updated", {
+            detail: { ticketId: event.ticketId },
+          }),
+        );
+        return;
+      }
       if (!("projectId" in event) || event.projectId !== currentProjectId) return;
       if (event.name === "ticket.moved") {
         const destStatus = statusesRef.current.find((s) => s.id === event.toStatusId);

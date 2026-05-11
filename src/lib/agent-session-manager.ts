@@ -1,22 +1,21 @@
 "use client";
 
-import { type AgentEvent, getDesktopBridge } from "@/lib/use-is-desktop";
-
 /**
- * Routes desktop bridge `AgentEvent`s to the right `AgentJob` via PATCH so
- * persistence + Ably fanout keep happening even when the ticket panel that
- * started the session is unmounted (user closed the dialog or switched
- * tickets). The Electron main process keeps the underlying `claude` child
- * process alive regardless of which renderer view is showing.
+ * Tracks which AgentJob each desktop session belongs to so the ticket panel
+ * can re-attach to an in-flight session on remount (zombie-window guard).
  *
- * Flow:
- *   - DesktopPanel calls `agentStart`, receives a sessionId, opens an
- *     AgentJob row server-side, then calls `registerAgentSession`.
- *   - This module owns a single bridge subscription. For every event whose
- *     sessionId is registered, it serializes to the same wire format the
- *     panel uses and PATCHes /api/desktop-jobs/:jobId.
- *   - On `exit`, status flips to SUCCEEDED/FAILED and the registration is
- *     dropped.
+ * Persistence lives entirely in Electron main now — see
+ * apps/desktop/src/lib/agent.ts. Main owns the `claude` child handle and
+ * PATCHes every stdout/stderr line, the exit event, and bridge heartbeats
+ * directly to /api/desktop-jobs/:jobId with Bearer auth. The renderer is a
+ * viewer: it receives the same events via IPC for live UI rendering, but it
+ * is not in the critical path for saving messages.
+ *
+ * Previously this module forwarded bridge events to PATCHes from the
+ * renderer; that path lost wire lines when the user closed a ticket dialog
+ * mid-session (forensics on NEWP-U00NQS showed 90 wire lines in main's log,
+ * 11 in AgentJob.output). Moving the PATCH to main eliminates the renderer
+ * as a single point of failure for persistence.
  */
 
 type Registration = {
@@ -25,129 +24,16 @@ type Registration = {
   ticketId: string;
 };
 
-// Heartbeats live in Electron main (apps/desktop/src/lib/agent.ts), not in
-// the renderer. Main is the actual spawner of the `claude` child and
-// therefore the authority on "is this session alive" — the renderer is one
-// IPC hop removed and can unmount on page refresh while the child keeps
-// running. Pushing from main keeps `AgentJob.updatedAt` fresh across
-// renderer remounts and dialog closes, which is what the server reaper
-// needs to distinguish a dead bridge from a long tool call.
-
-type WireEvent =
-  | { kind: "agent"; line: string }
-  | { kind: "stderr"; line: string }
-  | { kind: "exit"; code: number }
-  | { kind: "user"; text: string };
-
 const sessions = new Map<string, Registration>();
-// Sessions the user explicitly Stopped (via the Stop button). Used to
-// disambiguate the resulting child-process exit from an OS-driven kill
-// (SIGKILL/OOM/crash) so the AgentJob terminal status reflects intent:
-// user-Stop → CANCELED → ticket moves to `todo`; OS-kill → FAILED →
-// ticket moves to `blocked` so a human notices. Without this, every
-// non-zero exit looked like a generic FAILED and every zero exit looked
-// like SUCCEEDED, regardless of who pulled the plug.
-const stoppedByUser = new Set<string>();
-let started = false;
 
-// Coalesce per-line appendOutput into ~250ms batches so a chatty `claude`
-// process doesn't issue 10+ PATCH/sec (each = Prisma read+write + Ably publish).
-const FLUSH_MS = 250;
-const buffers = new Map<string, { text: string; timer: ReturnType<typeof setTimeout> | null }>();
-
-function serializeWire(ev: WireEvent): string {
-  return `${JSON.stringify(ev)}\n`;
-}
-
-function patchJob(
-  jobId: string,
-  body: {
-    appendOutput?: string;
-    status?: "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELED";
-    exitCode?: number;
-  },
-): void {
-  void fetch(`/api/desktop-jobs/${jobId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).catch(() => undefined);
-}
-
-function flushBuffer(jobId: string): void {
-  const buf = buffers.get(jobId);
-  if (!buf) return;
-  if (buf.timer) clearTimeout(buf.timer);
-  buffers.delete(jobId);
-  if (buf.text.length > 0) patchJob(jobId, { appendOutput: buf.text });
-}
-
-function enqueueAppend(jobId: string, chunk: string): void {
-  const existing = buffers.get(jobId);
-  if (existing) {
-    existing.text += chunk;
-    return;
-  }
-  const entry: { text: string; timer: ReturnType<typeof setTimeout> | null } = {
-    text: chunk,
-    timer: null,
-  };
-  entry.timer = setTimeout(() => flushBuffer(jobId), FLUSH_MS);
-  buffers.set(jobId, entry);
-}
-
-function handle(e: AgentEvent): void {
-  const reg = sessions.get(e.sessionId);
-  if (!reg) return;
-  const wire: WireEvent =
-    e.type === "exit"
-      ? { kind: "exit", code: e.code }
-      : e.type === "stderr"
-        ? { kind: "stderr", line: e.line }
-        : { kind: "agent", line: e.line };
-
-  if (e.type === "exit") {
-    // Atomic: flush pending output, exit marker, and terminal status in a
-    // single PATCH. Splitting them risks the status PATCH being lost (network
-    // drop, unmount), leaving the AgentJob row stuck in RUNNING and the panel
-    // stuck on "thinking…" after re-hydrate.
-    const buf = buffers.get(reg.jobId);
-    const pending = buf?.text ?? "";
-    if (buf?.timer) clearTimeout(buf.timer);
-    buffers.delete(reg.jobId);
-    const userStopped = stoppedByUser.delete(e.sessionId);
-    const status: "SUCCEEDED" | "FAILED" | "CANCELED" = userStopped
-      ? "CANCELED"
-      : e.code === 0
-        ? "SUCCEEDED"
-        : "FAILED";
-    patchJob(reg.jobId, {
-      appendOutput: pending + serializeWire(wire),
-      status,
-      exitCode: e.code,
-    });
-    sessions.delete(e.sessionId);
-    return;
-  }
-
-  enqueueAppend(reg.jobId, serializeWire(wire));
-}
-
-/** Idempotent. Mounted once at workspace layout via <AgentSessionManager />. */
+/**
+ * No-op compatibility shim. The workspace layout still mounts
+ * <AgentSessionManager /> which calls this; keep returning a teardown
+ * fn so callers don't need to know the persistence path moved.
+ */
 export function startAgentSessionManager(): () => void {
-  if (started) return () => undefined;
-  const bridge = getDesktopBridge();
-  if (!bridge || typeof bridge.onAgentEvent !== "function") return () => undefined;
-  started = true;
-  const unsubscribe = bridge.onAgentEvent(handle);
   return () => {
-    started = false;
     sessions.clear();
-    for (const buf of buffers.values()) if (buf.timer) clearTimeout(buf.timer);
-    buffers.clear();
-    try {
-      unsubscribe();
-    } catch {}
   };
 }
 
@@ -157,16 +43,17 @@ export function registerAgentSession(sessionId: string, reg: Registration): void
 
 export function unregisterAgentSession(sessionId: string): void {
   sessions.delete(sessionId);
-  stoppedByUser.delete(sessionId);
 }
 
 /**
- * Mark a session as being stopped by the user (via the Stop button) so the
- * imminent `exit` event is classified as CANCELED instead of FAILED. Idempotent.
- * Cleared automatically when the exit fires or the session is unregistered.
+ * userStopped intent now lives on the Session in Electron main — set by the
+ * `planbooq:agent:stop` IPC handler before it kills the child, and read by
+ * main's exit handler to classify the terminal PATCH as CANCELED vs FAILED.
+ * This function is kept as a no-op so the panel's existing call site stays
+ * compile-clean; removing the call would be a follow-up cleanup.
  */
-export function markSessionStoppedByUser(sessionId: string): void {
-  stoppedByUser.add(sessionId);
+export function markSessionStoppedByUser(_sessionId: string): void {
+  // No-op: see Electron main's `planbooq:agent:stop` handler.
 }
 
 export function isAgentSessionRegistered(sessionId: string): boolean {
