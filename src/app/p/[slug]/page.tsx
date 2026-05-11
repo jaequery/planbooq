@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { Board } from "@/components/board/board";
+import { TICKET_PAGE_SIZE } from "@/lib/pagination";
 import type { BoardData, StatusWithTickets, TicketWithRelations } from "@/lib/types";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
@@ -35,6 +36,9 @@ export default async function ProjectPage({ params }: Props): Promise<React.Reac
         tickets: {
           where: { projectId: project.id, archivedAt: null },
           orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+          // Fetch one extra row per column to detect whether more pages exist
+          // without a second count query.
+          take: TICKET_PAGE_SIZE + 1,
           include: {
             assignee: { select: { id: true, name: true, email: true, image: true } },
             labels: { select: { id: true, name: true, color: true } },
@@ -66,20 +70,26 @@ export default async function ProjectPage({ params }: Props): Promise<React.Reac
     }),
   ]);
 
-  const statusesWithImagePreviews: StatusWithTickets[] = statuses.map((s) => ({
-    ...s,
-    tickets: s.tickets.map((t): TicketWithRelations => {
-      const { previews, ...rest } = t;
-      return {
-        ...rest,
-        imagePreviews: previews.map((p) => ({
-          id: p.id,
-          attachmentId: p.attachmentId,
-          mimeType: p.attachment.mimeType,
-        })),
-      };
-    }),
-  }));
+  const statusesWithImagePreviews: StatusWithTickets[] = statuses.map((s) => {
+    const hasMore = s.tickets.length > TICKET_PAGE_SIZE;
+    const trimmed = hasMore ? s.tickets.slice(0, TICKET_PAGE_SIZE) : s.tickets;
+    const nextCursor = hasMore ? (trimmed[trimmed.length - 1]?.id ?? null) : null;
+    return {
+      ...s,
+      nextCursor,
+      tickets: trimmed.map((t): TicketWithRelations => {
+        const { previews, ...rest } = t;
+        return {
+          ...rest,
+          imagePreviews: previews.map((p) => ({
+            id: p.id,
+            attachmentId: p.attachmentId,
+            mimeType: p.attachment.mimeType,
+          })),
+        };
+      }),
+    };
+  });
 
   const boardData: BoardData = {
     project,
