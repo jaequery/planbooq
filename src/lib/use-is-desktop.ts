@@ -8,7 +8,12 @@ export type AgentEvent =
   | { type: "exit"; sessionId: string; code: number };
 
 type DesktopBridge = {
-  spawnWorktree: (input: { repoPath: string; branch: string; prompt: string; ticketIdentifier: string }) => Promise<{
+  spawnWorktree: (input: {
+    repoPath: string;
+    branch: string;
+    prompt: string;
+    ticketIdentifier: string;
+  }) => Promise<{
     ok: boolean;
     error?: string;
     worktreePath?: string;
@@ -75,6 +80,11 @@ type DesktopBridge = {
     text?: string;
     error?: string;
   }>;
+  /** Cold-mount reattach: ask the broker whether a live session exists for
+   *  this ticket. Returns the sessionId we can subscribe to, or null. */
+  agentFindSessionByTicket?: (input: {
+    ticketId: string;
+  }) => Promise<{ ok: true; sessionId: string | null } | { ok: false; error: string }>;
   onAgentEvent: (cb: (e: AgentEvent) => void) => () => void;
   readProjectFile?: (input: {
     repoPath: string;
@@ -93,8 +103,7 @@ type DesktopBridge = {
     worktreePath: string;
     items: Array<{ id: string; ext: string; base64: string }>;
   }) => Promise<
-    | { ok: true; items: Array<{ id: string; relPath: string }> }
-    | { ok: false; error: string }
+    { ok: true; items: Array<{ id: string; relPath: string }> } | { ok: false; error: string }
   >;
   pullMain?: (input: {
     repoPath: string;

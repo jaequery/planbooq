@@ -1,0 +1,17 @@
+{
+  "name": "@planbooq/broker",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/broker.js",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check src"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  }
+}

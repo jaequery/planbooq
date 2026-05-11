@@ -1,24 +1,28 @@
-import { app, BrowserWindow, shell, Menu } from "electron";
 import path from "node:path";
+import { app, BrowserWindow, Menu, shell } from "electron";
 import log from "electron-log/main";
-import { registerDeepLinks, consumePendingDeepLink } from "./lib/deepLink";
-import { createTray, destroyTray } from "./lib/tray";
-import { startNotificationBridge, stopNotificationBridge } from "./lib/notifications";
-import { registerWorktreeIpc } from "./lib/worktree";
+import squirrelStartup from "electron-squirrel-startup";
 import { registerAgentIpc } from "./lib/agent";
+import { ensureBrokerRunning } from "./lib/broker-client";
+import { consumePendingDeepLink, registerDeepLinks } from "./lib/deepLink";
 import { registerFilesIpc } from "./lib/files";
 import { registerGitIpc } from "./lib/git";
-import { initAutoUpdater } from "./lib/updater";
 import { buildAppMenu } from "./lib/menu";
-import squirrelStartup from "electron-squirrel-startup";
+import { startNotificationBridge, stopNotificationBridge } from "./lib/notifications";
+import { createTray, destroyTray } from "./lib/tray";
+import { initAutoUpdater } from "./lib/updater";
+import { registerWorktreeIpc } from "./lib/worktree";
 
 if (squirrelStartup) app.quit();
 
 log.initialize();
 log.transports.file.level = "info";
 
-const APP_URL = process.env.PLANBOOQ_APP_URL
-  ?? (process.env.NODE_ENV === "development" ? "http://localhost:3636" : "https://planbooq.vercel.app");
+const APP_URL =
+  process.env.PLANBOOQ_APP_URL ??
+  (process.env.NODE_ENV === "development"
+    ? "http://localhost:3636"
+    : "https://planbooq.vercel.app");
 
 // Desktop launches into the app entry, not the marketing homepage at `/`.
 // Deep links override this; see resolveTargetUrl.
@@ -121,6 +125,13 @@ if (!gotLock) {
     createTray(() => focusMain());
     startNotificationBridge((url) => focusMain(url));
     initAutoUpdater();
+    // Boot the broker daemon ASAP. It owns claude subprocesses and outlives
+    // Electron, so cold-launch must start it before the renderer asks for
+    // an in-flight session. Errors are non-fatal — agent.ts will retry on
+    // first IPC call.
+    void ensureBrokerRunning().catch((err: unknown) => {
+      log.warn("broker.bootstrap.deferred", err);
+    });
   });
 
   app.on("window-all-closed", () => {
