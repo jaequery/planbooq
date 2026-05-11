@@ -656,7 +656,7 @@ export function TicketDetailDialog({
                 )}
               </div>
 
-              <div className="mt-8 rounded-md border border-border/60 border-l-2 border-l-primary/60 bg-muted/40 px-4 py-3">
+              <div className="mt-8 rounded-md border border-border/60 bg-muted/40 px-4 py-3">
                 {(() => {
                   const planText = ticket.plan ?? "";
                   const isLong = planText.length > 280 || planText.split("\n").length > 6;
