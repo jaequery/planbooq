@@ -1156,6 +1156,13 @@ export async function applyWorkflowStatusSuggestion(
   }
   const currentKey = ticket.status?.key ?? "";
   if (suggestedStatusKey === currentKey) return { ok: true };
+  // Never regress a terminal status. Once a ticket is in review (PR open) or
+  // completed (merged), the agent panel's "force Building while busy" effect
+  // must not rubber-band it back — that's how shipped tickets ended up
+  // re-appearing in the Running column minutes after `pbq ship` succeeded.
+  if (currentKey === "review" || currentKey === "completed") {
+    return { ok: true };
+  }
 
   await moveTicketToStatusKey({
     ticketId,

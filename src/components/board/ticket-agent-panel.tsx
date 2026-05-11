@@ -946,7 +946,14 @@ function DesktopPanel({
     // Whenever Claude is actively working, force the ticket into Running
     // regardless of its current column — the agent's live state is the
     // source of truth for "is work happening right now."
-    if (running && statusKeyRef.current !== "building") {
+    //
+    // Exception: never rubber-band a terminal status (review/completed) back
+    // to building. The ticket already shipped; a follow-up chat turn must not
+    // pull it back into the Running column. Server-side has the same guard
+    // (applyWorkflowStatusSuggestion) — this skip just avoids the round-trip.
+    const cur = statusKeyRef.current;
+    const terminal = cur === "review" || cur === "completed";
+    if (running && cur !== "building" && !terminal) {
       statusKeyRef.current = "building";
       void applyWorkflowStatusSuggestion(ticketId, "building").catch(() => {});
     }
