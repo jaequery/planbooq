@@ -63,6 +63,27 @@ async function branchExists(repoPath: string, branch: string): Promise<boolean> 
   return r.code === 0;
 }
 
+// Return the path of the worktree currently checked out on `branch`, or null.
+// `git worktree add <path> <branch>` refuses if the branch is already used by
+// another worktree, so callers reuse or prune accordingly.
+async function findWorktreeForBranch(repoPath: string, branch: string): Promise<string | null> {
+  const r = await run("git", ["worktree", "list", "--porcelain"], repoPath);
+  if (r.code !== 0) return null;
+  let currentPath: string | null = null;
+  for (const line of r.stdout.split(/\r?\n/)) {
+    if (line.startsWith("worktree ")) {
+      currentPath = line.slice("worktree ".length).trim();
+    } else if (line.startsWith("branch ")) {
+      const ref = line.slice("branch ".length).trim();
+      const name = ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : ref;
+      if (name === branch && currentPath) return currentPath;
+    } else if (line.trim() === "") {
+      currentPath = null;
+    }
+  }
+  return null;
+}
+
 async function isGitRepo(p: string): Promise<boolean> {
   try {
     const stat = await fs.stat(path.join(p, ".git"));
@@ -98,13 +119,15 @@ export function registerWorktreeIpc(): void {
       if (err instanceof WorktreeNameError) return { ok: false, error: err.message };
       throw err;
     }
-    const wtPath = path.join(path.dirname(input.repoPath), wtName);
+    let wtPath = path.join(path.dirname(input.repoPath), wtName);
 
     // Make `git worktree add` idempotent. Retries on the same ticket would
     // otherwise collide on either the branch (`-b` refuses to create over an
     // existing ref) or the worktree path (must not exist), surfacing as a
     // bare `exited 128` toast. We branch on what's already there:
     //   - path exists & is registered as a worktree → reuse it
+    //   - branch is already checked out elsewhere   → reuse that worktree (or
+    //                                                  prune if its path is gone)
     //   - branch exists but no worktree              → check it out into wtPath
     //   - neither                                    → create both with `-b`
     const wtExists = await pathExists(wtPath);
@@ -124,19 +147,26 @@ export function registerWorktreeIpc(): void {
         };
       }
     } else if (brExists) {
-      emit(`$ git worktree add ${wtPath} ${input.branch}\n`);
-      result = await run(
-        "git",
-        ["worktree", "add", wtPath, input.branch],
-        input.repoPath,
-      );
+      const existing = await findWorktreeForBranch(input.repoPath, input.branch);
+      if (existing && (await pathExists(existing))) {
+        emit(
+          `(branch ${input.branch} is already checked out at ${existing} — reusing that worktree)\n`,
+        );
+        wtPath = existing;
+        result = { code: 0, stderr: "", stdout: "" };
+      } else {
+        if (existing) {
+          emit(
+            `(branch ${input.branch} was registered at ${existing}, but that path is gone — pruning stale worktree)\n`,
+          );
+          await run("git", ["worktree", "prune"], input.repoPath);
+        }
+        emit(`$ git worktree add ${wtPath} ${input.branch}\n`);
+        result = await run("git", ["worktree", "add", wtPath, input.branch], input.repoPath);
+      }
     } else {
       emit(`$ git worktree add -b ${input.branch} ${wtPath}\n`);
-      result = await run(
-        "git",
-        ["worktree", "add", "-b", input.branch, wtPath],
-        input.repoPath,
-      );
+      result = await run("git", ["worktree", "add", "-b", input.branch, wtPath], input.repoPath);
     }
 
     if (result.code !== 0) {
