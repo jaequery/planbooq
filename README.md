@@ -25,65 +25,17 @@ Planbooq collapses Lovable, Cursor, and Linear into a single surface optimized f
 
 ## Getting Started
 
-### Requirements
-
-- Node 20+
-- pnpm 10+
-
-### Installation & Local Dev
+Requires Node 20+ and pnpm 10+.
 
 ```bash
 pnpm install
-pnpm dev          # http://localhost:3636
+pnpm db:migrate     # apply schema
+pnpm db:seed        # optional — demo workspace + tickets
+pnpm dev            # http://localhost:3636
+pnpm desktop        # desktop shell (separate terminal)
 ```
 
-**Ports:**
-- App: **3636**
-- Postgres: **5656**
-
-**Environment:**  
-Copy `.env.example` to `.env.local` and fill values as you go (Backend wires them up in Wave 2).
-
-### Common Scripts
-
-- `pnpm dev` — Next.js dev server on port 3636
-- `pnpm build` / `pnpm start` — production build & serve
-- `pnpm typecheck` — `tsc --noEmit` with strict config
-- `pnpm lint` / `pnpm lint:fix` — Biome lint + auto-organize imports
-- `pnpm format` — Biome formatter
-- `pnpm db:migrate` — `prisma migrate dev`
-- `pnpm db:seed` — run `prisma/seed.ts` (idempotent, seeds demo workspace + tickets)
-- `pnpm db:reset` — wipe and re-migrate (dev only)
-- `pnpm db:generate` — regenerate Prisma client
-
-### Backend Setup (Wave 2A)
-
-```bash
-cp .env.example .env
-docker compose up -d                          # Postgres on :5656
-pnpm install
-pnpm db:migrate
-pnpm db:seed
-# Terminal 2:
-pnpm dlx inngest-cli@latest dev               # http://localhost:8288
-# Terminal 1:
-pnpm dev                                      # http://localhost:3636
-```
-
-**Auth setup:**  
-GitHub OAuth is required. Create an OAuth app at https://github.com/settings/developers with callback URL `$NEXTAUTH_URL/api/auth/callback/github`. Set `GITHUB_ID` and `GITHUB_SECRET` in `.env`.
-
-**Inngest dev server:**  
-Runs on http://localhost:8288. The SDK fails gracefully when `INNGEST_SIGNING_KEY` is empty as long as `INNGEST_DEV=1` is set (included in `.env.example`).
-
-**Ably (optional):**  
-`ABLY_API_KEY` is optional in dev. The token endpoint returns `503 ably_not_configured` and publish helpers no-op when missing — rest of the app keeps working.
-
-**GitHub webhook:**  
-Tickets auto-move to `Completed` when their linked PR merges. Set `GITHUB_WEBHOOK_SECRET` in `.env` and configure webhooks on repos — see [`docs/github-webhook.md`](docs/github-webhook.md).
-
-**Production considerations:**  
-`AUTH_TRUST_HOST` is auto-true in dev. On real production deploys, set `INNGEST_REQUIRED=true` to enforce Inngest request signing.
+Copy `.env.example` to `.env.local` for environment variables. See [`docs/`](docs/) for OAuth, Inngest, Ably, and webhook configuration.
 
 ## Project Structure
 
