@@ -2,6 +2,8 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { Loader2 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import type { StatusOption } from "@/components/board/status-picker";
 import { TicketCard } from "@/components/board/ticket-card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -15,6 +17,9 @@ type Props = {
   onTicketArchived: (ticketId: string) => void;
   onOpenDetail: (ticketId: string, autoRunAction?: boolean) => void;
   isFiltered?: boolean;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 };
 
 export function Column({
@@ -24,12 +29,53 @@ export function Column({
   onTicketArchived,
   onOpenDetail,
   isFiltered = false,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
 }: Props): React.ReactElement {
   const { setNodeRef, isOver } = useDroppable({
     id: status.id,
     data: { type: "column", statusId: status.id },
   });
   const isCompact = tickets.length === 0 && !isFiltered && !isOver;
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // `onLoadMore` is recreated on every Board render (closes over pagination
+  // state). Pin it via ref so the IntersectionObserver effect only re-runs
+  // when the load-more eligibility actually flips.
+  const onLoadMoreRef = useRef(onLoadMore);
+  useEffect(() => {
+    onLoadMoreRef.current = onLoadMore;
+  }, [onLoadMore]);
+
+  useEffect(() => {
+    if (!hasMore || isLoadingMore) return;
+    const target = sentinelRef.current;
+    if (!target) return;
+    // The actual scrolling element is the Radix ScrollArea viewport, not the
+    // window. IntersectionObserver needs that as its `root` or the sentinel
+    // never becomes "visible" relative to the wrong container.
+    const viewport = target.closest<HTMLElement>("[data-radix-scroll-area-viewport]");
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            onLoadMoreRef.current?.();
+            break;
+          }
+        }
+      },
+      {
+        root: viewport ?? null,
+        // Pre-fetch about one card-height before reaching the end so the next
+        // page is ready by the time the user gets there.
+        rootMargin: "200px 0px",
+        threshold: 0,
+      },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore]);
 
   return (
     <div
@@ -50,6 +96,7 @@ export function Column({
           </h3>
           <span className="text-[14px] tabular-nums text-muted-foreground/80">
             {tickets.length}
+            {hasMore ? "+" : ""}
           </span>
         </div>
       </div>
@@ -91,6 +138,22 @@ export function Column({
                     />
                   ))
                 )}
+                {hasMore || isLoadingMore ? (
+                  <div
+                    ref={sentinelRef}
+                    className="flex h-10 items-center justify-center text-[13px] text-muted-foreground/70"
+                    aria-live="polite"
+                  >
+                    {isLoadingMore ? (
+                      <>
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        Loading…
+                      </>
+                    ) : (
+                      <span className="sr-only">Load more</span>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </SortableContext>
           </ScrollArea>

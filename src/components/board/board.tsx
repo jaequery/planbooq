@@ -17,7 +17,7 @@ import { Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { moveTicket } from "@/actions/ticket";
+import { loadMoreTicketsForStatus, moveTicket } from "@/actions/ticket";
 import { ChatOrb } from "@/components/board/chat-orb";
 import { Column } from "@/components/board/column";
 import { ProjectDocsPanel } from "@/components/board/project-docs-panel";
@@ -74,6 +74,8 @@ function byUpdatedDesc(a: Ticket, b: Ticket): number {
   return diff !== 0 ? diff : b.id.localeCompare(a.id);
 }
 
+type ColumnPagination = { nextCursor: string | null; isLoading: boolean };
+
 export function Board({ initialData, currentUserId }: Props): React.ReactElement {
   const router = useRouter();
   const [statuses, setStatuses] = useState<StatusWithTickets[]>(initialData.statuses);
@@ -82,6 +84,13 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
   const [autoRunOnOpen, setAutoRunOnOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [liveAgents, setLiveAgents] = useState<ReadonlyMap<string, LiveAgentState>>(new Map());
+  const [pagination, setPagination] = useState<ReadonlyMap<string, ColumnPagination>>(() => {
+    const init = new Map<string, ColumnPagination>();
+    for (const s of initialData.statuses) {
+      init.set(s.id, { nextCursor: s.nextCursor ?? null, isLoading: false });
+    }
+    return init;
+  });
   const currentProjectId = initialData.project.id;
 
   const allTickets = useMemo(() => {
@@ -511,6 +520,65 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
     );
   }, []);
 
+  // Per-column infinite scroll. The keyset cursor walks Prisma's
+  // [updatedAt desc, id desc] order; live realtime additions land at the top
+  // of `tickets` independently, so we de-dupe by id when appending.
+  const paginationRef = useRef(pagination);
+  useEffect(() => {
+    paginationRef.current = pagination;
+  }, [pagination]);
+
+  const onLoadMore = useCallback(
+    (statusId: string) => {
+      const state = paginationRef.current.get(statusId);
+      if (!state || state.isLoading || !state.nextCursor) return;
+      const cursor = state.nextCursor;
+
+      setPagination((prev) => {
+        const next = new Map(prev);
+        next.set(statusId, { nextCursor: cursor, isLoading: true });
+        return next;
+      });
+
+      void loadMoreTicketsForStatus({
+        projectId: currentProjectId,
+        statusId,
+        cursor,
+      }).then((result) => {
+        if (!result.ok) {
+          toast.error(`Couldn't load more tickets: ${result.error}`);
+          setPagination((prev) => {
+            const next = new Map(prev);
+            // Keep the cursor so the user can retry by scrolling again.
+            next.set(statusId, { nextCursor: cursor, isLoading: false });
+            return next;
+          });
+          return;
+        }
+        setStatuses((prev) =>
+          prev.map((s) => {
+            if (s.id !== statusId) return s;
+            const known = new Set(s.tickets.map((t) => t.id));
+            const merged = [...s.tickets];
+            for (const t of result.data.items) {
+              if (!known.has(t.id)) merged.push(t);
+            }
+            return { ...s, tickets: merged };
+          }),
+        );
+        setPagination((prev) => {
+          const next = new Map(prev);
+          next.set(statusId, {
+            nextCursor: result.data.nextCursor,
+            isLoading: false,
+          });
+          return next;
+        });
+      });
+    },
+    [currentProjectId],
+  );
+
   const onOpenDetail = useCallback((ticketId: string, autoRunAction = false) => {
     setAutoRunOnOpen(autoRunAction);
     setDetailTicketId(ticketId);
@@ -697,17 +765,27 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           onDragCancel={() => setActiveTicketId(null)}
         >
           <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-4 pb-4">
-            {visibleStatuses.map((status) => (
-              <Column
-                key={status.id}
-                status={status}
-                statuses={statusOptions}
-                tickets={status.tickets}
-                onTicketArchived={onTicketArchived}
-                onOpenDetail={onOpenDetail}
-                isFiltered={isFiltered}
-              />
-            ))}
+            {visibleStatuses.map((status) => {
+              const page = pagination.get(status.id);
+              // While a text filter is active we keep search client-side over
+              // already-loaded tickets and suspend infinite scroll — otherwise
+              // typing would trigger continuous page loads.
+              const hasMore = !isFiltered && Boolean(page?.nextCursor);
+              return (
+                <Column
+                  key={status.id}
+                  status={status}
+                  statuses={statusOptions}
+                  tickets={status.tickets}
+                  onTicketArchived={onTicketArchived}
+                  onOpenDetail={onOpenDetail}
+                  isFiltered={isFiltered}
+                  hasMore={hasMore}
+                  isLoadingMore={Boolean(page?.isLoading)}
+                  onLoadMore={() => onLoadMore(status.id)}
+                />
+              );
+            })}
           </div>
           <DragOverlay
             dropAnimation={{

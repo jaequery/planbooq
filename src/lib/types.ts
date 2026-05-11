@@ -30,7 +30,10 @@ export type TicketWithRelations = Ticket & {
   pullRequests?: TicketPullRequest[];
 };
 
-export type StatusWithTickets = Status & { tickets: TicketWithRelations[] };
+export type StatusWithTickets = Status & {
+  tickets: TicketWithRelations[];
+  nextCursor?: string | null;
+};
 
 export type ProjectSummary = Pick<
   Project,

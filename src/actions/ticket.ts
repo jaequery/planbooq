@@ -5,6 +5,7 @@ import { Priority } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
+import { TICKET_PAGE_SIZE } from "@/lib/pagination";
 import type { ServerActionResult, TicketAssignee, TicketWithRelations } from "@/lib/types";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
@@ -644,6 +645,76 @@ export async function listWorkspaceMembers(
     return { ok: true, data: members };
   } catch (error) {
     logger.error("listWorkspaceMembers.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
+const LoadMoreTicketsSchema = z
+  .object({
+    projectId: z.string().min(1),
+    statusId: z.string().min(1),
+    cursor: z.string().min(1),
+    limit: z.number().int().min(1).max(100).optional(),
+  })
+  .strict();
+
+export async function loadMoreTicketsForStatus(
+  input: z.infer<typeof LoadMoreTicketsSchema>,
+): Promise<ServerActionResult<{ items: TicketWithRelations[]; nextCursor: string | null }>> {
+  try {
+    const { projectId, statusId, cursor } = LoadMoreTicketsSchema.parse(input);
+    const limit = input.limit ?? TICKET_PAGE_SIZE;
+    const userId = await requireUserId();
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, workspaceId: true },
+    });
+    if (!project) return { ok: false, error: "invalid_project" };
+    await requireMembership(project.workspaceId, userId);
+
+    const rows = await prisma.ticket.findMany({
+      where: { projectId, statusId, archivedAt: null },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+      cursor: { id: cursor },
+      skip: 1,
+      include: {
+        assignee: { select: { id: true, name: true, email: true, image: true } },
+        labels: { select: { id: true, name: true, color: true } },
+        previews: {
+          where: { attachment: { mimeType: { startsWith: "image/" } } },
+          orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+          take: 4,
+          select: {
+            id: true,
+            attachmentId: true,
+            attachment: { select: { mimeType: true } },
+          },
+        },
+      },
+    });
+
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore ? (page[page.length - 1]?.id ?? null) : null;
+    const items: TicketWithRelations[] = page.map((t) => {
+      const { previews, ...rest } = t;
+      return {
+        ...rest,
+        imagePreviews: previews.map((p) => ({
+          id: p.id,
+          attachmentId: p.attachmentId,
+          mimeType: p.attachment.mimeType,
+        })),
+      };
+    });
+
+    return { ok: true, data: { items, nextCursor } };
+  } catch (error) {
+    logger.error("loadMoreTicketsForStatus.failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     return { ok: false, error: error instanceof Error ? error.message : "unknown" };
