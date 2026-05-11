@@ -954,6 +954,18 @@ function DesktopPanel({
     const scroller = scrollerRef.current;
     const bottom = bottomRef.current;
     if (!scroller || !bottom || typeof IntersectionObserver === "undefined") return;
+    console.log("[scroll-debug] chat scroller MOUNTED");
+    const onScroll = () => {
+      console.log(
+        "[scroll-debug] chat scrollTop=",
+        scroller.scrollTop,
+        "scrollHeight=",
+        scroller.scrollHeight,
+        "clientHeight=",
+        scroller.clientHeight,
+      );
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
     const io = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
@@ -962,7 +974,11 @@ function DesktopPanel({
       { root: scroller, threshold: 0 },
     );
     io.observe(bottom);
-    return () => io.disconnect();
+    return () => {
+      console.log("[scroll-debug] chat scroller UNMOUNTED");
+      scroller.removeEventListener("scroll", onScroll);
+      io.disconnect();
+    };
   }, [messages.length > 0]);
 
   // Sticky-bottom: pin the inner chat scroller to its bottom on first
@@ -981,13 +997,27 @@ function DesktopPanel({
     const pin = () => {
       scroller.scrollTop = scroller.scrollHeight;
     };
+    console.log(
+      "[scroll-debug] messages effect — count=",
+      messages.length,
+      "atBottom=",
+      atBottomRef.current,
+      "didInitial=",
+      didInitialScrollRef.current,
+    );
     if (!didInitialScrollRef.current) {
       didInitialScrollRef.current = true;
       atBottomRef.current = true;
+      console.log("[scroll-debug] pin (initial)");
       pin();
       return;
     }
-    if (atBottomRef.current) pin();
+    if (atBottomRef.current) {
+      console.log("[scroll-debug] pin (sticky follow)");
+      pin();
+    } else {
+      console.log("[scroll-debug] NOT pinning — user scrolled up");
+    }
   }, [messages]);
 
   const pickRepo = async (): Promise<string | null> => {
