@@ -9,6 +9,7 @@ import {
   emptyResponseMessageBody,
 } from "@/server/services/agent-job-outcome";
 import { getOrCreateConversationForTicket } from "@/server/services/conversations";
+import { reconcileBuildingTicket } from "@/server/services/ticket-status";
 
 // =============================================================================
 // Mirror layer for AgentJob → Conversation/Message.
@@ -658,6 +659,16 @@ async function applyClaudeLine(
           error: err instanceof Error ? err.message : String(err),
         });
       }
+    } else {
+      // SUCCESS path: agent finished its turn cleanly and is yielding to the
+      // user. Log STEP_COMPLETED if applicable and demote ticket to Blocked.
+      // Fire-and-forget so a slow activity insert never stalls wire mirroring.
+      void persistTurnEndSuccess(job).catch((err: unknown) => {
+        logger.warn("mirror.turn-end.failed", {
+          jobId: job.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
     }
     return { textAppended, turnEnded };
   }
@@ -715,6 +726,96 @@ async function mirrorWireAppend(job: AgentJob, appendOutput: string): Promise<vo
   if (textAppended && !turnEnded && state.agentMessageId) {
     await flushAgentBody(job, state, false);
   }
+}
+
+// Per-turn end handling for the SUCCESS path. Fires when Claude emits a
+// `result/subtype=success` event — i.e. the agent finished its turn cleanly
+// and is yielding control back to the user. Two side-effects:
+//
+//   1. STEP_COMPLETED activity. If the prompt that started this turn was a
+//      workflow step (`[Workflow N/M: <name>]`), log a STEP_COMPLETED row so
+//      the workflow panel can mark the step done. Idempotent on
+//      (ticketId, payload.name) so we don't double-log against the
+//      renderer-side handler in ticket-workflow-panel.tsx that fires on the
+//      same event when the dialog is mounted.
+//
+//   2. Status demotion to Blocked. The agent's CLI process is still alive
+//      (waiting on stdin for the next prompt), but the contract — see
+//      ticket-agent-panel.tsx:935 — is "no auto-chain between workflow
+//      steps." So the ticket should move out of Running until the user
+//      decides what's next. excludeJobId is critical: our job is still
+//      RUNNING and would otherwise look like a live sibling to the
+//      reconciler and abort the demote.
+async function persistTurnEndSuccess(job: AgentJob): Promise<void> {
+  if (!job.workspaceId || !job.ticketId) return;
+
+  const lastUser = await prisma.message.findFirst({
+    where: { agentJobId: job.id, role: "USER" },
+    orderBy: { createdAt: "desc" },
+    select: { body: true },
+  });
+  let stepName: string | null = null;
+  if (lastUser?.body) {
+    // Matches `[Workflow: Plan]` and `[Workflow 1/3: Plan]`. Same shape the
+    // renderer dispatches in ticket-workflow-panel.tsx:307 / 341.
+    const m = lastUser.body.match(/^\[Workflow(?:\s+\d+\/\d+)?:\s*([^\]]+)\]/);
+    if (m?.[1]) stepName = m[1].trim();
+  }
+
+  if (stepName) {
+    const existing = await prisma.ticketActivity.findFirst({
+      where: {
+        ticketId: job.ticketId,
+        kind: "STEP_COMPLETED",
+        payload: { path: ["name"], equals: stepName },
+      },
+      select: { id: true },
+    });
+    if (!existing) {
+      try {
+        const activity = await prisma.ticketActivity.create({
+          data: {
+            ticketId: job.ticketId,
+            workspaceId: job.workspaceId,
+            jobId: job.id,
+            kind: "STEP_COMPLETED",
+            payload: { name: stepName } as Prisma.InputJsonValue,
+          },
+          select: { id: true, kind: true, payload: true, jobId: true, createdAt: true },
+        });
+        await publishWorkspaceEvent(job.workspaceId, {
+          name: "ticket.activity",
+          workspaceId: job.workspaceId,
+          ticketId: job.ticketId,
+          activity: {
+            id: activity.id,
+            kind: activity.kind,
+            payload: activity.payload as Record<string, unknown>,
+            jobId: activity.jobId,
+            createdAt: activity.createdAt.toISOString(),
+          },
+        });
+      } catch (err) {
+        logger.warn("mirror.step-completed.activity.failed", {
+          jobId: job.id,
+          stepName,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+
+  await reconcileBuildingTicket({
+    ticketId: job.ticketId,
+    byUserId: job.userId,
+    excludeJobId: job.id,
+    jobStatus: "SUCCEEDED",
+  }).catch((err: unknown) => {
+    logger.warn("mirror.turn-end.reconcile.failed", {
+      jobId: job.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
 }
 
 // Shared terminal-outcome handling: classify the run, persist the result on
