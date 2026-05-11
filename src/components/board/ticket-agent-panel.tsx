@@ -2,7 +2,7 @@
 
 import { formatDistanceToNowStrict } from "date-fns";
 import { Folder, Loader2, Play, Send, Square } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { dispatchTicketToAgent, listAgents } from "@/actions/agents";
 import { mintAgentApiKey } from "@/actions/api-keys";
@@ -604,10 +604,16 @@ function DesktopPanel({
   const [input, setInput] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
   // Tracks whether we've performed the one-shot scroll-to-bottom for this
   // ticket's hydrated history. Reset on ticket switch so a freshly opened
   // ticket lands at its most recent message instead of the top.
   const didInitialScrollRef = useRef(false);
+  // Whether the user is "following the bottom". True while they're at (or
+  // within SCROLL_STICKY_THRESHOLD px of) the bottom; flips false the moment
+  // they scroll up to read history. The streaming/hydration effects read this
+  // to decide whether to re-pin, instead of yanking unconditionally.
+  const stickyBottomRef = useRef(true);
   const currentAssistantId = useRef<string | null>(null);
   const jobIdRef = useRef<string | null>(null);
   jobIdRef.current = jobId;
@@ -670,6 +676,7 @@ function DesktopPanel({
     currentAssistantId.current = null;
     messagesRef.current = [];
     didInitialScrollRef.current = false;
+    stickyBottomRef.current = true;
 
     void (async () => {
       try {
@@ -917,25 +924,58 @@ function DesktopPanel({
     });
   }, []);
 
-  // Auto-scroll the chat to the bottom on message changes. The first non-empty
-  // change for a ticket is the hydration drop — also scroll on a double rAF so
-  // we land at the bottom after Markdown layout AND any post-mount reflow from
-  // the dialog open animation finish, which can otherwise leave scrollHeight
-  // stale at the moment of the effect (the symptom: opening a ticket with
-  // existing history shows the top of the conversation).
-  useEffect(() => {
+  // Sticky-bottom auto-scroll. The chat re-anchors to the bottom only while
+  // the user is already there — scrolling up to read context no longer gets
+  // yanked back by every streamed text delta or realtime upsert. First
+  // hydration is unconditional (and double-rAF'd) so opening a ticket lands
+  // at the most recent message even if Markdown layout settles a frame late.
+  useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el || messages.length === 0) return;
     const scrollToBottom = () => {
       const cur = scrollRef.current;
-      if (cur) cur.scrollTo({ top: cur.scrollHeight });
+      if (cur) cur.scrollTop = cur.scrollHeight;
     };
-    scrollToBottom();
     if (!didInitialScrollRef.current) {
       didInitialScrollRef.current = true;
+      stickyBottomRef.current = true;
+      scrollToBottom();
+      // Markdown / code-block layout often finishes a frame or two after the
+      // messages drop — re-pin on the second rAF so we land at the bottom
+      // even when scrollHeight grows post-effect.
       requestAnimationFrame(() => requestAnimationFrame(scrollToBottom));
+      return;
     }
+    if (stickyBottomRef.current) scrollToBottom();
   }, [messages]);
+
+  // Watch the content wrapper for height growth (streaming text expanding,
+  // Markdown finishing layout, images loading) and re-pin to the bottom only
+  // while the user is sticky. Without this, a chunk that updates messages
+  // before its rendered height grows leaves the view stranded above the new
+  // text — the visible symptom is the bottom margin "creeping up" mid-stream.
+  useEffect(() => {
+    const el = scrollRef.current;
+    const inner = contentRef.current;
+    if (!el || !inner || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (stickyBottomRef.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(inner);
+    return () => ro.disconnect();
+  }, []);
+
+  // Track sticky-to-bottom intent: any time the user moves more than
+  // SCROLL_STICKY_THRESHOLD px above the bottom, drop the follow. Programmatic
+  // scroll-to-bottom calls also fire this and correctly leave the ref true,
+  // so resuming follow is "scroll back to the bottom".
+  const handleScrollerScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const SCROLL_STICKY_THRESHOLD = 64;
+    stickyBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_STICKY_THRESHOLD;
+  }, []);
 
   const pickRepo = async (): Promise<string | null> => {
     const bridge = getDesktopBridge();
@@ -1249,50 +1289,54 @@ function DesktopPanel({
       {messages.length > 0 && (
         <div
           ref={scrollRef}
-          className="flex max-h-[420px] flex-col gap-3 overflow-y-auto rounded-lg bg-muted/20 p-3"
+          onScroll={handleScrollerScroll}
+          className="max-h-[420px] overflow-y-auto rounded-lg bg-muted/20 p-3"
         >
-          {messages.map((m, i) => {
-            const isStreaming = busy && m.role === "assistant" && i === messages.length - 1;
-            const isAssistant = m.role === "assistant";
-            const displayText = m.text;
-            const author = m.role === "user" ? "You" : m.role === "assistant" ? "Claude" : "System";
-            const align = m.role === "user" ? "self-end items-end" : "self-start items-start";
-            const time = formatDistanceToNowStrict(new Date(m.createdAt), { addSuffix: true });
-            return (
-              <div key={m.id} className={`flex max-w-[85%] flex-col gap-1 ${align}`}>
-                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                  <span className="font-medium">{author}</span>
-                  <span title={new Date(m.createdAt).toLocaleString()}>{time}</span>
+          <div ref={contentRef} className="flex flex-col gap-3">
+            {messages.map((m, i) => {
+              const isStreaming = busy && m.role === "assistant" && i === messages.length - 1;
+              const isAssistant = m.role === "assistant";
+              const displayText = m.text;
+              const author =
+                m.role === "user" ? "You" : m.role === "assistant" ? "Claude" : "System";
+              const align = m.role === "user" ? "self-end items-end" : "self-start items-start";
+              const time = formatDistanceToNowStrict(new Date(m.createdAt), { addSuffix: true });
+              return (
+                <div key={m.id} className={`flex max-w-[85%] flex-col gap-1 ${align}`}>
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <span className="font-medium">{author}</span>
+                    <span title={new Date(m.createdAt).toLocaleString()}>{time}</span>
+                  </div>
+                  <div
+                    className={
+                      m.role === "user"
+                        ? "rounded-lg bg-primary/10 px-3 py-2 text-[13px] whitespace-pre-wrap"
+                        : m.role === "system"
+                          ? "max-w-full pl-1 text-[11px] font-mono text-muted-foreground/80 break-all leading-snug"
+                          : "min-w-0 rounded-lg bg-background px-3 py-2 break-words"
+                    }
+                  >
+                    {isAssistant ? (
+                      <Markdown className="text-[13px]">{displayText}</Markdown>
+                    ) : (
+                      m.text
+                    )}
+                    {isStreaming && (
+                      <span className="ml-1 inline-block align-middle">
+                        <Loader2 className="inline size-3 animate-spin" />
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div
-                  className={
-                    m.role === "user"
-                      ? "rounded-lg bg-primary/10 px-3 py-2 text-[13px] whitespace-pre-wrap"
-                      : m.role === "system"
-                        ? "max-w-full pl-1 text-[11px] font-mono text-muted-foreground/80 break-all leading-snug"
-                        : "min-w-0 rounded-lg bg-background px-3 py-2 break-words"
-                  }
-                >
-                  {isAssistant ? (
-                    <Markdown className="text-[13px]">{displayText}</Markdown>
-                  ) : (
-                    m.text
-                  )}
-                  {isStreaming && (
-                    <span className="ml-1 inline-block align-middle">
-                      <Loader2 className="inline size-3 animate-spin" />
-                    </span>
-                  )}
+              );
+            })}
+            {busy &&
+              (messages.length === 0 || messages[messages.length - 1]!.role !== "assistant") && (
+                <div className="self-start text-[12px] text-muted-foreground">
+                  <Loader2 className="inline size-3 animate-spin" /> thinking…
                 </div>
-              </div>
-            );
-          })}
-          {busy &&
-            (messages.length === 0 || messages[messages.length - 1]!.role !== "assistant") && (
-              <div className="self-start text-[12px] text-muted-foreground">
-                <Loader2 className="inline size-3 animate-spin" /> thinking…
-              </div>
-            )}
+              )}
+          </div>
         </div>
       )}
 
