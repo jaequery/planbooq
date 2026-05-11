@@ -13,7 +13,10 @@ import { prisma } from "@/server/db";
 import { inngest } from "@/server/inngest/client";
 import { generateTicketDraft } from "@/server/openrouter";
 import { recordStatusChangedActivity } from "@/server/services/ticket-activity";
-import { autoTransitionPlanningToTodo } from "@/server/services/ticket-status";
+import {
+  autoTransitionPlanningToTodo,
+  moveTicketToStatusKey,
+} from "@/server/services/ticket-status";
 
 const TICKET_RELATIONS_INCLUDE = {
   assignee: { select: { id: true, name: true, email: true, image: true } },
@@ -293,7 +296,7 @@ export async function createTicket(
 const QuickCreateSchema = z.object({
   projectId: z.string().min(1),
   prompt: z.string().min(1).max(2000),
-  autoPlan: z.boolean().optional().default(true),
+  autoExecute: z.boolean().optional().default(true),
 });
 
 export async function quickCreateTicket(
@@ -332,16 +335,41 @@ export async function quickCreateTicket(
         ? `${draftDesc}${draftDesc ? "\n\n" : ""}${images.join("\n\n")}`.slice(0, 5000)
         : draftDesc;
 
+    // When auto-execute is on, the agent needs the plan as context once the
+    // run kicks off. When it's off, the ticket is intentionally a draft —
+    // skip the plan so it stays in Backlog instead of auto-promoting to Todo.
     const plan =
-      data.autoPlan && draftResult.draft.plan?.trim() ? draftResult.draft.plan : undefined;
+      data.autoExecute && draftResult.draft.plan?.trim() ? draftResult.draft.plan : undefined;
 
-    return await createTicket({
+    const created = await createTicket({
       projectId: project.id,
       statusId: backlog.id,
       title: draftResult.draft.title,
       description: composed || undefined,
       plan,
     });
+    if (!created.ok) return created;
+
+    if (data.autoExecute) {
+      const building = await prisma.status.findFirst({
+        where: { workspaceId: project.workspaceId, key: "building" },
+        select: { id: true },
+      });
+      if (building && created.data.statusId !== building.id) {
+        await moveTicketToStatusKey({
+          ticketId: created.data.id,
+          toStatusKey: "building",
+          byUserId: userId,
+        });
+        const refreshed = await prisma.ticket.findUnique({
+          where: { id: created.data.id },
+          include: TICKET_RELATIONS_INCLUDE,
+        });
+        if (refreshed) return { ok: true, data: refreshed };
+      }
+    }
+
+    return created;
   } catch (error) {
     logger.error("quickCreateTicket.failed", {
       error: error instanceof Error ? error.message : String(error),
