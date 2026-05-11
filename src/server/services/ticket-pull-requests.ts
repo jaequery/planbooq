@@ -103,11 +103,12 @@ export async function ensureLegacyPrRecorded(
   });
 }
 
-export async function markPullRequestMerged(prUrl: string): Promise<void> {
-  await prisma.ticketPullRequest.updateMany({
+export async function markPullRequestMerged(prUrl: string): Promise<{ flipped: number }> {
+  const result = await prisma.ticketPullRequest.updateMany({
     where: { url: prUrl, status: "OPEN" },
     data: { status: "MERGED", mergedAt: new Date() },
   });
+  return { flipped: result.count };
 }
 
 export async function markPullRequestClosed(prUrl: string): Promise<void> {

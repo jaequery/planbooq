@@ -155,7 +155,7 @@ export function SettingsTabs({
       value={active}
       onValueChange={onValueChange}
       orientation="vertical"
-      className="flex flex-col gap-4 md:flex-row md:gap-6"
+      className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row md:gap-6"
     >
       <aside className="flex flex-col gap-3 md:w-56 md:shrink-0">
         <div className="relative">
@@ -203,7 +203,7 @@ export function SettingsTabs({
           )}
         </TabsPrimitive.List>
       </aside>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 overflow-y-auto">
         <TabsPrimitive.Content value="appearance" className="focus-visible:outline-none">
           {appearance}
         </TabsPrimitive.Content>

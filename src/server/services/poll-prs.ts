@@ -80,7 +80,11 @@ export async function pollMergedPrsForWorkspace(args: {
     }
     if (!status.status.merged) continue;
 
-    const outcome = await autoCompleteTicketByPrUrl(pr.htmlUrl);
+    const outcome = await autoCompleteTicketByPrUrl(pr.htmlUrl, {
+      prTitle: status.status.title,
+      prNumber: status.status.number,
+      byUserId: userId,
+    });
     if (outcome.kind === "moved") moved += 1;
   }
 

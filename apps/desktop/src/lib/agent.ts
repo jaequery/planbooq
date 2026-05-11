@@ -623,6 +623,32 @@ async function branchExists(repoPath: string, branch: string, sessionId: string)
   return r.code === 0;
 }
 
+// Return the path of the worktree currently checked out on `branch`, or null.
+// `git worktree add <path> <branch>` refuses if the branch is already used by
+// another worktree, even when the new path is free. Callers use this to either
+// reuse the existing worktree or detect a stale registration to prune.
+async function findWorktreeForBranch(
+  repoPath: string,
+  branch: string,
+  sessionId: string,
+): Promise<string | null> {
+  const r = await runOnce("git", ["worktree", "list", "--porcelain"], repoPath, sessionId);
+  if (r.code !== 0) return null;
+  let currentPath: string | null = null;
+  for (const line of r.stdout.split(/\r?\n/)) {
+    if (line.startsWith("worktree ")) {
+      currentPath = line.slice("worktree ".length).trim();
+    } else if (line.startsWith("branch ")) {
+      const ref = line.slice("branch ".length).trim();
+      const name = ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : ref;
+      if (name === branch && currentPath) return currentPath;
+    } else if (line.trim() === "") {
+      currentPath = null;
+    }
+  }
+  return null;
+}
+
 function userMessage(text: string): string {
   return `${JSON.stringify({
     type: "user",
@@ -760,7 +786,7 @@ export function registerAgentIpc(): void {
         if (err instanceof WorktreeNameError) return { ok: false, error: err.message };
         throw err;
       }
-      const wtPath = path.join(path.dirname(input.repoPath), wtName);
+      let wtPath = path.join(path.dirname(input.repoPath), wtName);
 
       // Make `git worktree add` idempotent. Retries on the same ticket would
       // otherwise collide on either the branch (`-b` refuses to create over an
@@ -787,13 +813,40 @@ export function registerAgentIpc(): void {
           };
         }
       } else if (brExists) {
-        emit({ type: "stderr", sessionId, line: `$ git worktree add ${wtPath} ${input.branch}\n` });
-        result = await runOnce(
-          "git",
-          ["worktree", "add", wtPath, input.branch],
-          input.repoPath,
-          sessionId,
-        );
+        // The branch may already be checked out at another worktree (e.g. the
+        // user previously spawned this PR in a different project directory).
+        // `git worktree add … <branch>` refuses in that case; reuse the
+        // existing worktree if it's still on disk, or prune a stale entry.
+        const existing = await findWorktreeForBranch(input.repoPath, input.branch, sessionId);
+        if (existing && (await pathExists(existing))) {
+          emit({
+            type: "stderr",
+            sessionId,
+            line: `(branch ${input.branch} is already checked out at ${existing} — reusing that worktree)\n`,
+          });
+          wtPath = existing;
+          result = { code: 0, stderr: "", stdout: "" };
+        } else {
+          if (existing) {
+            emit({
+              type: "stderr",
+              sessionId,
+              line: `(branch ${input.branch} was registered at ${existing}, but that path is gone — pruning stale worktree)\n`,
+            });
+            await runOnce("git", ["worktree", "prune"], input.repoPath, sessionId);
+          }
+          emit({
+            type: "stderr",
+            sessionId,
+            line: `$ git worktree add ${wtPath} ${input.branch}\n`,
+          });
+          result = await runOnce(
+            "git",
+            ["worktree", "add", wtPath, input.branch],
+            input.repoPath,
+            sessionId,
+          );
+        }
       } else {
         emit({
           type: "stderr",
