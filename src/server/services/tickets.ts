@@ -5,8 +5,8 @@ import type { ServerActionResult, TicketWithRelations } from "@/lib/types";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
 import { inngest } from "@/server/inngest/client";
-import { autoTransitionPlanningToTodo } from "@/server/services/ticket-status";
 import { ensureLegacyPrRecorded } from "@/server/services/ticket-pull-requests";
+import { autoTransitionPlanningToTodo } from "@/server/services/ticket-status";
 
 const TICKET_RELATIONS_INCLUDE = {
   assignee: { select: { id: true, name: true, email: true, image: true } },
@@ -354,6 +354,37 @@ export async function archiveTicketSvc(
   }
 }
 
+export async function unarchiveTicketSvc(
+  userId: string,
+  ticketId: string,
+): Promise<ServerActionResult<TicketWithRelations>> {
+  try {
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
+    if (!ticket) return { ok: false, error: "ticket_not_found" };
+    if (!ticket.archivedAt) return { ok: false, error: "ticket_not_archived" };
+    await requireMembership(ticket.workspaceId, userId);
+    const updated = await prisma.ticket.update({
+      where: { id: ticketId },
+      data: { archivedAt: null },
+      include: TICKET_RELATIONS_INCLUDE,
+    });
+    await publishWorkspaceEvent(ticket.workspaceId, {
+      name: "ticket.unarchived",
+      ticketId,
+      workspaceId: ticket.workspaceId,
+      projectId: ticket.projectId,
+      ticket: updated,
+      by: userId,
+    });
+    return { ok: true, data: updated };
+  } catch (error) {
+    logger.error("unarchiveTicketSvc.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
 export async function deleteTicketSvc(
   userId: string,
   ticketId: string,
@@ -415,6 +446,31 @@ export async function getTicketSvc(
     if (refreshed) return { ok: true, data: refreshed };
   }
   return { ok: true, data: ticket };
+}
+
+export async function listArchivedProjectTicketsSvc(
+  userId: string,
+  projectId: string,
+  opts: { limit?: number } = {},
+): Promise<ServerActionResult<{ items: TicketWithRelations[] }>> {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { id: true, workspaceId: true },
+  });
+  if (!project) return { ok: false, error: "invalid_project" };
+  try {
+    await requireMembership(project.workspaceId, userId);
+  } catch {
+    return { ok: false, error: "forbidden" };
+  }
+  const limit = Math.min(Math.max(opts.limit ?? 100, 1), 200);
+  const items = await prisma.ticket.findMany({
+    where: { projectId, archivedAt: { not: null } },
+    include: TICKET_RELATIONS_INCLUDE,
+    orderBy: [{ archivedAt: "desc" }, { id: "desc" }],
+    take: limit,
+  });
+  return { ok: true, data: { items } };
 }
 
 export async function listProjectTicketsSvc(

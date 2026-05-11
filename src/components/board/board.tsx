@@ -17,7 +17,8 @@ import { Archive, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { listProjectArchivedTickets, moveTicket } from "@/actions/ticket";
+import { moveTicket } from "@/actions/ticket";
+import { ArchivedTicketsDialog } from "@/components/board/archived-tickets-dialog";
 import { ChatOrb } from "@/components/board/chat-orb";
 import { Column } from "@/components/board/column";
 import { ProjectDocsPanel } from "@/components/board/project-docs-panel";
@@ -74,8 +75,6 @@ function byUpdatedDesc(a: Ticket, b: Ticket): number {
   return diff !== 0 ? diff : b.id.localeCompare(a.id);
 }
 
-const SHOW_ARCHIVED_STORAGE_KEY = "pbq:board-show-archived";
-
 export function Board({ initialData, currentUserId }: Props): React.ReactElement {
   const router = useRouter();
   const [statuses, setStatuses] = useState<StatusWithTickets[]>(initialData.statuses);
@@ -83,27 +82,15 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
   const [detailTicketId, setDetailTicketId] = useState<string | null>(null);
   const [autoRunOnOpen, setAutoRunOnOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [archivedOpen, setArchivedOpen] = useState(false);
   const [liveAgents, setLiveAgents] = useState<ReadonlyMap<string, LiveAgentState>>(new Map());
-  // Archived tickets live in their own slice so the active `statuses` array
-  // (used by DnD, optimistic insert, move reconciliation) stays untouched.
-  const [archivedByStatus, setArchivedByStatus] = useState<
-    ReadonlyMap<string, TicketWithRelations[]>
-  >(new Map());
-  const [showArchived, setShowArchived] = useState(false);
-  const [archivedLoaded, setArchivedLoaded] = useState(false);
-  const [archivedLoading, setArchivedLoading] = useState(false);
   const currentProjectId = initialData.project.id;
 
   const allTickets = useMemo(() => {
     const map = new Map<string, TicketWithRelations>();
     for (const s of statuses) for (const t of s.tickets) map.set(t.id, t);
-    // Keep archived tickets reachable for the detail dialog regardless of
-    // toggle state — once we've fetched them they're cheap to look up.
-    for (const arr of archivedByStatus.values()) {
-      for (const t of arr) map.set(t.id, t);
-    }
     return map;
-  }, [statuses, archivedByStatus]);
+  }, [statuses]);
 
   const localClientIdRef = useRef<string | null>(null);
   // Mirror of `statuses` for callbacks that don't (and shouldn't) re-bind on
@@ -120,47 +107,6 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
   // by ticketId with a short TTL so a *later* re-merge of the same ticket
   // still pulls.
   const autoPullDedupeRef = useRef<Map<string, number>>(new Map());
-
-  // Move a ticket from the active `statuses` slice into the archived slice.
-  // Called from both the local optimistic path (dropdown → archive) and the
-  // realtime `ticket.archived` event from other tabs/users. Reading from
-  // `statusesRef.current` keeps this callback stable instead of re-binding
-  // every render.
-  const archiveLocally = useCallback((ticketId: string) => {
-    const found = statusesRef.current.flatMap((s) => s.tickets).find((t) => t.id === ticketId);
-    setStatuses((prev) =>
-      prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== ticketId) })),
-    );
-    if (!found) return;
-    const stamped: TicketWithRelations = {
-      ...found,
-      archivedAt: found.archivedAt ?? new Date(),
-    };
-    setArchivedByStatus((prev) => {
-      const cur = prev.get(stamped.statusId) ?? [];
-      if (cur.some((t) => t.id === ticketId)) return prev;
-      const next = new Map(prev);
-      next.set(stamped.statusId, [stamped, ...cur]);
-      return next;
-    });
-  }, []);
-
-  const removeArchivedLocally = useCallback((ticketId: string) => {
-    setArchivedByStatus((prev) => {
-      if (prev.size === 0) return prev;
-      const next = new Map(prev);
-      let mutated = false;
-      for (const [k, arr] of prev) {
-        const filtered = arr.filter((t) => t.id !== ticketId);
-        if (filtered.length !== arr.length) {
-          mutated = true;
-          if (filtered.length === 0) next.delete(k);
-          else next.set(k, filtered);
-        }
-      }
-      return mutated ? next : prev;
-    });
-  }, []);
 
   const handleEvent = useCallback(
     (event: Parameters<Parameters<typeof useBoardChannel>[1]>[0], fromClientId: string | null) => {
@@ -344,13 +290,25 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
             detail: { ticketId: event.ticket.id },
           }),
         );
-      } else if (event.name === "ticket.archived") {
-        archiveLocally(event.ticketId);
-      } else if (event.name === "ticket.deleted") {
+      } else if (event.name === "ticket.archived" || event.name === "ticket.deleted") {
         setStatuses((prev) =>
           prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== event.ticketId) })),
         );
-        removeArchivedLocally(event.ticketId);
+      } else if (event.name === "ticket.unarchived") {
+        setStatuses((prev) => {
+          const alreadyPresent = prev.some((s) => s.tickets.some((t) => t.id === event.ticket.id));
+          if (alreadyPresent) return prev;
+          const restored: TicketWithRelations = {
+            ...event.ticket,
+            assignee: event.ticket.assignee ?? null,
+            labels: event.ticket.labels ?? [],
+          };
+          return prev.map((s) => {
+            if (s.id !== restored.statusId) return s;
+            const next = [...s.tickets, restored].sort(byUpdatedDesc);
+            return { ...s, tickets: next };
+          });
+        });
       } else if (event.name === "ticket.created") {
         setStatuses((prev) => {
           // De-dupe by id against the latest state (closure-captured maps go
@@ -370,13 +328,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         });
       }
     },
-    [
-      currentProjectId,
-      router,
-      initialData.project.localPath,
-      archiveLocally,
-      removeArchivedLocally,
-    ],
+    [currentProjectId, router, initialData.project.localPath],
   );
 
   const { status: rtStatus, clientId: rtClientId } = useBoardChannel(
@@ -564,22 +516,34 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
     );
   }, []);
 
-  const onTicketArchived = useCallback(
-    (ticketId: string) => {
-      archiveLocally(ticketId);
-    },
-    [archiveLocally],
-  );
+  const onTicketArchived = useCallback((ticketId: string) => {
+    setStatuses((prev) =>
+      prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== ticketId) })),
+    );
+  }, []);
 
-  const onTicketDeleted = useCallback(
-    (ticketId: string) => {
-      setStatuses((prev) =>
-        prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== ticketId) })),
-      );
-      removeArchivedLocally(ticketId);
-    },
-    [removeArchivedLocally],
-  );
+  const onTicketUnarchived = useCallback((ticket: TicketWithRelations) => {
+    setStatuses((prev) => {
+      const alreadyPresent = prev.some((s) => s.tickets.some((t) => t.id === ticket.id));
+      if (alreadyPresent) return prev;
+      const restored: TicketWithRelations = {
+        ...ticket,
+        assignee: ticket.assignee ?? null,
+        labels: ticket.labels ?? [],
+      };
+      return prev.map((s) => {
+        if (s.id !== restored.statusId) return s;
+        const next = [...s.tickets, restored].sort(byUpdatedDesc);
+        return { ...s, tickets: next };
+      });
+    });
+  }, []);
+
+  const onTicketDeleted = useCallback((ticketId: string) => {
+    setStatuses((prev) =>
+      prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== ticketId) })),
+    );
+  }, []);
 
   const onOpenDetail = useCallback((ticketId: string, autoRunAction = false) => {
     setAutoRunOnOpen(autoRunAction);
@@ -703,95 +667,22 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
   const isFiltered = normalizedQuery.length > 0;
   const visibleStatuses = useMemo(
     () =>
-      statuses.map((status) => {
-        const archived = showArchived ? (archivedByStatus.get(status.id) ?? []) : [];
-        const merged = archived.length > 0 ? [...status.tickets, ...archived] : status.tickets;
-        return {
-          ...status,
-          tickets: merged.filter((ticket) => {
-            if (!normalizedQuery) return true;
-            return (
-              ticket.title.toLowerCase().includes(normalizedQuery) ||
-              (ticket.description?.toLowerCase().includes(normalizedQuery) ?? false)
-            );
-          }),
-        };
-      }),
-    [normalizedQuery, statuses, archivedByStatus, showArchived],
+      statuses.map((status) => ({
+        ...status,
+        tickets: status.tickets.filter((ticket) => {
+          if (!normalizedQuery) return true;
+          return (
+            ticket.title.toLowerCase().includes(normalizedQuery) ||
+            (ticket.description?.toLowerCase().includes(normalizedQuery) ?? false)
+          );
+        }),
+      })),
+    [normalizedQuery, statuses],
   );
   const visibleTicketCount = visibleStatuses.reduce(
     (sum, status) => sum + status.tickets.length,
     0,
   );
-  const totalArchivedCount = useMemo(() => {
-    let n = 0;
-    for (const arr of archivedByStatus.values()) n += arr.length;
-    return n;
-  }, [archivedByStatus]);
-
-  // Hydrate the show-archived preference from localStorage on mount. Matches
-  // the `pbq:*` convention used by sidebar-state.tsx and the chat-orb auto-plan
-  // toggle so the storage namespace stays consistent.
-  useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(SHOW_ARCHIVED_STORAGE_KEY);
-      if (stored === "1") setShowArchived(true);
-    } catch {}
-  }, []);
-
-  // Lazy-load archived tickets on first toggle-on. Archived rows can grow
-  // unbounded over time, so we keep them out of the SSR payload entirely and
-  // only fetch when the user explicitly asks to see them. Cached after the
-  // first successful fetch.
-  useEffect(() => {
-    if (!showArchived || archivedLoaded || archivedLoading) return;
-    let cancelled = false;
-    setArchivedLoading(true);
-    void listProjectArchivedTickets({ projectId: currentProjectId })
-      .then((result) => {
-        if (cancelled) return;
-        if (!result.ok) {
-          toast.error(`Could not load archived tickets: ${result.error}`);
-          return;
-        }
-        setArchivedByStatus((prev) => {
-          const next = new Map<string, TicketWithRelations[]>(prev);
-          // Group by statusId; overlay onto any tickets that were already
-          // pushed into the slice by realtime archive events while the fetch
-          // was in flight.
-          const grouped = new Map<string, TicketWithRelations[]>();
-          for (const t of result.data) {
-            const cur = grouped.get(t.statusId) ?? [];
-            cur.push(t);
-            grouped.set(t.statusId, cur);
-          }
-          for (const [statusId, fresh] of grouped) {
-            const local = next.get(statusId) ?? [];
-            const seen = new Set(fresh.map((t) => t.id));
-            const carryover = local.filter((t) => !seen.has(t.id));
-            next.set(statusId, [...carryover, ...fresh]);
-          }
-          return next;
-        });
-        setArchivedLoaded(true);
-      })
-      .finally(() => {
-        if (!cancelled) setArchivedLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [showArchived, archivedLoaded, archivedLoading, currentProjectId]);
-
-  const toggleShowArchived = useCallback(() => {
-    setShowArchived((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem(SHOW_ARCHIVED_STORAGE_KEY, next ? "1" : "0");
-      } catch {}
-      return next;
-    });
-  }, []);
 
   return (
     <LiveAgentsContext.Provider value={liveAgents}>
@@ -830,19 +721,14 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           <div className="ml-auto flex items-center gap-2">
             <Button
               type="button"
-              variant={showArchived ? "secondary" : "ghost"}
+              variant="ghost"
               size="sm"
-              onClick={toggleShowArchived}
-              aria-pressed={showArchived}
-              title={showArchived ? "Hide archived tickets" : "Show archived tickets"}
-              className="h-8 text-[14px]"
+              className="h-8 gap-1.5 text-[13px] text-muted-foreground"
+              onClick={() => setArchivedOpen(true)}
+              aria-label="View archived tickets"
             >
               <Archive className="h-3.5 w-3.5" />
-              {showArchived ? "Hide archived" : "Show archived"}
-              {showArchived && archivedLoaded && totalArchivedCount > 0 ? (
-                <span className="tabular-nums text-muted-foreground/80">{totalArchivedCount}</span>
-              ) : null}
-              {archivedLoading ? <span className="text-muted-foreground/60">…</span> : null}
+              Archived
             </Button>
             <RealtimeIndicator status={rtStatus} />
           </div>
@@ -885,6 +771,13 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           onOptimisticInsert={insertOptimisticTicket}
           onOptimisticReplace={replaceOptimisticTicket}
           onOptimisticRollback={rollbackOptimisticTicket}
+        />
+        <ArchivedTicketsDialog
+          projectId={currentProjectId}
+          open={archivedOpen}
+          onOpenChange={setArchivedOpen}
+          statuses={statusOptions}
+          onRestored={onTicketUnarchived}
         />
         {detailTicket ? (
           <TicketDetailDialog

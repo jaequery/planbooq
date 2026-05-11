@@ -11,7 +11,18 @@ import type {
   Workspace,
 } from "@prisma/client";
 
-export type { Label, Member, Priority, Project, Role, Status, Ticket, TicketPullRequest, User, Workspace };
+export type {
+  Label,
+  Member,
+  Priority,
+  Project,
+  Role,
+  Status,
+  Ticket,
+  TicketPullRequest,
+  User,
+  Workspace,
+};
 
 export type TicketAssignee = Pick<User, "id" | "name" | "email" | "image">;
 export type TicketLabel = Pick<Label, "id" | "name" | "color">;
@@ -101,6 +112,14 @@ export type AblyChannelEvent =
       ticketId: string;
       workspaceId: string;
       projectId: string;
+      by: string;
+    }
+  | {
+      name: "ticket.unarchived";
+      ticketId: string;
+      workspaceId: string;
+      projectId: string;
+      ticket: TicketWithRelations;
       by: string;
     }
   | {
@@ -214,6 +233,7 @@ export type AblyChannelEvent =
         id: string;
         kind:
           | "PR_CREATED"
+          | "PR_MERGED"
           | "COMMIT_PUSHED"
           | "TEST_RUN"
           | "BUILD"

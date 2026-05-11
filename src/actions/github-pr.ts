@@ -146,7 +146,11 @@ export async function mergePullRequest(
 
     if (outcome.kind === "ok") {
       logger.info("github_pr.merge.ok", { ticketId: id, sha: outcome.sha });
-      const completion = await autoCompleteTicketByPrUrl(ticket.prUrl);
+      const completion = await autoCompleteTicketByPrUrl(ticket.prUrl, {
+        prNumber: pr.number,
+        byUserId: userId,
+        sha: outcome.sha,
+      });
       logger.info("github_pr.merge.auto_complete", { ticketId: id, outcome: completion.kind });
       revalidatePath(`/p/${ticket.project.slug}`);
 

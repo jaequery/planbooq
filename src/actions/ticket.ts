@@ -505,11 +505,55 @@ export async function archiveTicket(
   }
 }
 
+const UnarchiveSchema = z.object({ ticketId: z.string().min(1) }).strict();
+
+export async function unarchiveTicket(
+  input: z.infer<typeof UnarchiveSchema>,
+): Promise<ServerActionResult<TicketWithRelations>> {
+  try {
+    const data = UnarchiveSchema.parse(input);
+    const userId = await requireUserId();
+
+    const ticket = await prisma.ticket.findUnique({ where: { id: data.ticketId } });
+    if (!ticket) return { ok: false, error: "ticket_not_found" };
+    if (!ticket.archivedAt) return { ok: false, error: "ticket_not_archived" };
+    await requireMembership(ticket.workspaceId, userId);
+
+    const updated = await prisma.ticket.update({
+      where: { id: ticket.id },
+      data: { archivedAt: null },
+      include: TICKET_RELATIONS_INCLUDE,
+    });
+
+    const project = await prisma.project.findUnique({
+      where: { id: ticket.projectId },
+      select: { slug: true },
+    });
+    if (project) revalidatePath(`/p/${project.slug}`);
+
+    await publishWorkspaceEvent(ticket.workspaceId, {
+      name: "ticket.unarchived",
+      ticketId: ticket.id,
+      workspaceId: ticket.workspaceId,
+      projectId: ticket.projectId,
+      ticket: updated,
+      by: userId,
+    });
+
+    return { ok: true, data: updated };
+  } catch (error) {
+    logger.error("unarchiveTicket.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: error instanceof Error ? error.message : "unknown" };
+  }
+}
+
 const ListArchivedSchema = z.object({ projectId: z.string().min(1) }).strict();
 
-export async function listProjectArchivedTickets(
+export async function listArchivedTickets(
   input: z.infer<typeof ListArchivedSchema>,
-): Promise<ServerActionResult<TicketWithRelations[]>> {
+): Promise<ServerActionResult<{ items: TicketWithRelations[] }>> {
   try {
     const data = ListArchivedSchema.parse(input);
     const userId = await requireUserId();
@@ -521,40 +565,15 @@ export async function listProjectArchivedTickets(
     if (!project) return { ok: false, error: "invalid_project" };
     await requireMembership(project.workspaceId, userId);
 
-    const rows = await prisma.ticket.findMany({
+    const items = await prisma.ticket.findMany({
       where: { projectId: project.id, archivedAt: { not: null } },
+      include: TICKET_RELATIONS_INCLUDE,
       orderBy: [{ archivedAt: "desc" }, { id: "desc" }],
-      include: {
-        assignee: { select: { id: true, name: true, email: true, image: true } },
-        labels: { select: { id: true, name: true, color: true } },
-        previews: {
-          where: { attachment: { mimeType: { startsWith: "image/" } } },
-          orderBy: [{ position: "asc" }, { createdAt: "asc" }],
-          take: 4,
-          select: {
-            id: true,
-            attachmentId: true,
-            attachment: { select: { mimeType: true } },
-          },
-        },
-      },
+      take: 100,
     });
-
-    const items: TicketWithRelations[] = rows.map((t) => {
-      const { previews, ...rest } = t;
-      return {
-        ...rest,
-        imagePreviews: previews.map((p) => ({
-          id: p.id,
-          attachmentId: p.attachmentId,
-          mimeType: p.attachment.mimeType,
-        })),
-      };
-    });
-
-    return { ok: true, data: items };
+    return { ok: true, data: { items } };
   } catch (error) {
-    logger.error("listProjectArchivedTickets.failed", {
+    logger.error("listArchivedTickets.failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     return { ok: false, error: error instanceof Error ? error.message : "unknown" };

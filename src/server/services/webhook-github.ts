@@ -6,7 +6,10 @@ import { logger } from "@/lib/logger";
 import { parseTicketRef } from "@/lib/ticket-identifier";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
-import { recordStatusChangedActivity } from "@/server/services/ticket-activity";
+import {
+  recordPrMergedActivity,
+  recordStatusChangedActivity,
+} from "@/server/services/ticket-activity";
 import {
   markPullRequestMerged,
   recordTicketPullRequest,
@@ -107,17 +110,44 @@ export async function linkTicketPrUrlFromPrBody(
   return { kind: "linked", ticketId: ticket.id, workspaceId: ticket.workspaceId };
 }
 
-export async function autoCompleteTicketByPrUrl(prUrl: string): Promise<AutoCompleteOutcome> {
+type MergeMetadata = {
+  prTitle?: string | null;
+  prNumber?: number | null;
+  prActor?: string | null;
+  byUserId?: string | null;
+  sha?: string | null;
+};
+
+export async function autoCompleteTicketByPrUrl(
+  prUrl: string,
+  metadata: MergeMetadata = {},
+): Promise<AutoCompleteOutcome> {
   // Mark the PR row as merged regardless of whether it's currently the
   // ticket's "active" pointer — a re-shipped ticket may have superseded
   // this PR locally before the merge webhook arrived.
-  await markPullRequestMerged(prUrl);
+  // `flipped` is the OPEN→MERGED transition count; we use it as the
+  // idempotency gate for the activity log so duplicate webhooks don't
+  // double-log.
+  const { flipped } = await markPullRequestMerged(prUrl);
 
   const ticket = await prisma.ticket.findFirst({
     where: { prUrl, archivedAt: null },
     select: { id: true, workspaceId: true, projectId: true, statusId: true },
   });
   if (!ticket) return { kind: "no_match" };
+
+  if (flipped > 0) {
+    await recordPrMergedActivity({
+      ticketId: ticket.id,
+      workspaceId: ticket.workspaceId,
+      prUrl,
+      prTitle: metadata.prTitle ?? null,
+      prNumber: metadata.prNumber ?? null,
+      prActor: metadata.prActor ?? null,
+      byUserId: metadata.byUserId ?? null,
+      sha: metadata.sha ?? null,
+    });
+  }
 
   const completed = await prisma.status.findFirst({
     where: { workspaceId: ticket.workspaceId, name: { equals: "Completed", mode: "insensitive" } },

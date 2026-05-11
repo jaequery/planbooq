@@ -65,6 +65,56 @@ export async function recordStatusChangedActivity(args: {
   }
 }
 
+export async function recordPrMergedActivity(args: {
+  ticketId: string;
+  workspaceId: string;
+  prUrl: string;
+  prTitle: string | null;
+  prNumber: number | null;
+  prActor: string | null;
+  byUserId: string | null;
+  sha: string | null;
+}): Promise<void> {
+  try {
+    const payload = {
+      prUrl: args.prUrl,
+      prTitle: args.prTitle,
+      prNumber: args.prNumber,
+      prActor: args.prActor,
+      byUserId: args.byUserId,
+      sha: args.sha,
+    };
+
+    const activity = await prisma.ticketActivity.create({
+      data: {
+        ticketId: args.ticketId,
+        workspaceId: args.workspaceId,
+        kind: "PR_MERGED",
+        payload: payload as Prisma.InputJsonValue,
+      },
+      select: { id: true, kind: true, payload: true, jobId: true, createdAt: true },
+    });
+
+    await publishWorkspaceEvent(args.workspaceId, {
+      name: "ticket.activity",
+      workspaceId: args.workspaceId,
+      ticketId: args.ticketId,
+      activity: {
+        id: activity.id,
+        kind: activity.kind,
+        payload: activity.payload as Record<string, unknown>,
+        jobId: activity.jobId,
+        createdAt: activity.createdAt.toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.warn("ticketActivity.pr-merged.failed", {
+      ticketId: args.ticketId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 export async function recordStepActivity(args: {
   ticketId: string;
   workspaceId: string;
