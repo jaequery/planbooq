@@ -13,11 +13,12 @@ import {
 } from "@dnd-kit/core";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { Search, X } from "lucide-react";
+import { Archive, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { moveTicket } from "@/actions/ticket";
+import { ArchivedTicketsDialog } from "@/components/board/archived-tickets-dialog";
 import { ChatOrb } from "@/components/board/chat-orb";
 import { Column } from "@/components/board/column";
 import { ProjectDocsPanel } from "@/components/board/project-docs-panel";
@@ -81,6 +82,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
   const [detailTicketId, setDetailTicketId] = useState<string | null>(null);
   const [autoRunOnOpen, setAutoRunOnOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [archivedOpen, setArchivedOpen] = useState(false);
   const [liveAgents, setLiveAgents] = useState<ReadonlyMap<string, LiveAgentState>>(new Map());
   const currentProjectId = initialData.project.id;
 
@@ -292,6 +294,21 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         setStatuses((prev) =>
           prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== event.ticketId) })),
         );
+      } else if (event.name === "ticket.unarchived") {
+        setStatuses((prev) => {
+          const alreadyPresent = prev.some((s) => s.tickets.some((t) => t.id === event.ticket.id));
+          if (alreadyPresent) return prev;
+          const restored: TicketWithRelations = {
+            ...event.ticket,
+            assignee: event.ticket.assignee ?? null,
+            labels: event.ticket.labels ?? [],
+          };
+          return prev.map((s) => {
+            if (s.id !== restored.statusId) return s;
+            const next = [...s.tickets, restored].sort(byUpdatedDesc);
+            return { ...s, tickets: next };
+          });
+        });
       } else if (event.name === "ticket.created") {
         setStatuses((prev) => {
           // De-dupe by id against the latest state (closure-captured maps go
@@ -505,6 +522,23 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
     );
   }, []);
 
+  const onTicketUnarchived = useCallback((ticket: TicketWithRelations) => {
+    setStatuses((prev) => {
+      const alreadyPresent = prev.some((s) => s.tickets.some((t) => t.id === ticket.id));
+      if (alreadyPresent) return prev;
+      const restored: TicketWithRelations = {
+        ...ticket,
+        assignee: ticket.assignee ?? null,
+        labels: ticket.labels ?? [],
+      };
+      return prev.map((s) => {
+        if (s.id !== restored.statusId) return s;
+        const next = [...s.tickets, restored].sort(byUpdatedDesc);
+        return { ...s, tickets: next };
+      });
+    });
+  }, []);
+
   const onTicketDeleted = useCallback((ticketId: string) => {
     setStatuses((prev) =>
       prev.map((s) => ({ ...s, tickets: s.tickets.filter((t) => t.id !== ticketId) })),
@@ -685,6 +719,17 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
             </span>
           ) : null}
           <div className="ml-auto flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 text-[13px] text-muted-foreground"
+              onClick={() => setArchivedOpen(true)}
+              aria-label="View archived tickets"
+            >
+              <Archive className="h-3.5 w-3.5" />
+              Archived
+            </Button>
             <RealtimeIndicator status={rtStatus} />
           </div>
         </div>
@@ -726,6 +771,13 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           onOptimisticInsert={insertOptimisticTicket}
           onOptimisticReplace={replaceOptimisticTicket}
           onOptimisticRollback={rollbackOptimisticTicket}
+        />
+        <ArchivedTicketsDialog
+          projectId={currentProjectId}
+          open={archivedOpen}
+          onOpenChange={setArchivedOpen}
+          statuses={statusOptions}
+          onRestored={onTicketUnarchived}
         />
         {detailTicket ? (
           <TicketDetailDialog

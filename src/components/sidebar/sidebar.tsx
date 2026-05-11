@@ -23,6 +23,7 @@ const COUNT_AFFECTING_EVENTS: ReadonlySet<AblyChannelEvent["name"]> = new Set([
   "ticket.moved",
   "ticket.deleted",
   "ticket.archived",
+  "ticket.unarchived",
 ]);
 
 export function Sidebar({ projects, workspaceId }: Props): React.ReactElement {
@@ -104,7 +105,9 @@ export function Sidebar({ projects, workspaceId }: Props): React.ReactElement {
                       style={{ backgroundColor: project.color }}
                     />
                     <span className="truncate">{project.name}</span>
-                    {(project.reviewCount ?? 0) > 0 || (project.buildingCount ?? 0) > 0 || (project.blockedCount ?? 0) > 0 ? (
+                    {(project.reviewCount ?? 0) > 0 ||
+                    (project.buildingCount ?? 0) > 0 ||
+                    (project.blockedCount ?? 0) > 0 ? (
                       <span className="ml-auto flex shrink-0 items-center gap-1">
                         {(project.buildingCount ?? 0) > 0 ? (
                           <span
