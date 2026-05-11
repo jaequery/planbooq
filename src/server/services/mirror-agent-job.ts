@@ -688,13 +688,25 @@ async function applyClaudeLine(
           error: err instanceof Error ? err.message : String(err),
         });
       }
+      // FAILURE path: also log STEP_COMPLETED (result=failure) so the
+      // activity log records the step finishing regardless of outcome, and
+      // flip the matching WorkflowStepRun to FAILED. Fire-and-forget so a
+      // slow activity insert never stalls wire mirroring.
+      void persistTurnEnd(job, { kind: "failure", error: summary }).catch((err: unknown) => {
+        logger.warn("mirror.turn-end.failed", {
+          jobId: job.id,
+          result: "failure",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
     } else {
       // SUCCESS path: agent finished its turn cleanly and is yielding to the
       // user. Log STEP_COMPLETED if applicable and demote ticket to Blocked.
       // Fire-and-forget so a slow activity insert never stalls wire mirroring.
-      void persistTurnEndSuccess(job).catch((err: unknown) => {
+      void persistTurnEnd(job, { kind: "success" }).catch((err: unknown) => {
         logger.warn("mirror.turn-end.failed", {
           jobId: job.id,
+          result: "success",
           error: err instanceof Error ? err.message : String(err),
         });
       });
@@ -765,25 +777,35 @@ async function mirrorWireAppend(job: AgentJob, appendOutput: string): Promise<vo
   }
 }
 
-// Per-turn end handling for the SUCCESS path. Fires when Claude emits a
-// `result/subtype=success` event — i.e. the agent finished its turn cleanly
-// and is yielding control back to the user. Two side-effects:
+type TurnEndOutcome = { kind: "success" } | { kind: "failure"; error: string };
+
+// Per-turn end handling. Fires when Claude emits a `result` event — i.e. the
+// agent finished its turn and is yielding control back to the user, either
+// cleanly (success) or with an error. Side-effects:
 //
-//   1. STEP_COMPLETED activity. If the prompt that started this turn was a
-//      workflow step (`[Workflow N/M: <name>]`), log a STEP_COMPLETED row so
-//      the workflow panel can mark the step done. Idempotent on
-//      (ticketId, payload.name) so we don't double-log against the
-//      renderer-side handler in ticket-workflow-panel.tsx that fires on the
-//      same event when the dialog is mounted.
+//   1. WorkflowStepRun transition. The matching step row (resolved via
+//      per-message FK → job FK → name lookup) flips PENDING/RUNNING to
+//      SUCCEEDED on success or FAILED on failure. Idempotent CAS so a
+//      re-fire of the same turn-end can't bounce a terminal step.
 //
-//   2. Status demotion to Blocked. The agent's CLI process is still alive
-//      (waiting on stdin for the next prompt), but the contract — see
-//      ticket-agent-panel.tsx:935 — is "no auto-chain between workflow
+//   2. STEP_COMPLETED activity. If the prompt that started this turn was a
+//      workflow step (`[Workflow N/M: <name>]`), log a STEP_COMPLETED row
+//      tagged with `result: "success" | "failure"` (plus an `error` summary
+//      on failure) so the activity log records the step finishing regardless
+//      of outcome. Idempotent on (ticketId, payload.name) — first writer
+//      wins, mirroring the existing dedup against the renderer-side handler
+//      in ticket-workflow-panel.tsx.
+//
+//   3. (Success only) Status demotion to Blocked. The agent's CLI process is
+//      still alive (waiting on stdin for the next prompt), but the contract —
+//      see ticket-agent-panel.tsx:935 — is "no auto-chain between workflow
 //      steps." So the ticket should move out of Running until the user
 //      decides what's next. excludeJobId is critical: our job is still
 //      RUNNING and would otherwise look like a live sibling to the
-//      reconciler and abort the demote.
-async function persistTurnEndSuccess(job: AgentJob): Promise<void> {
+//      reconciler and abort the demote. On failure we skip reconcile — the
+//      higher-level NOTE write in applyClaudeLine and mirrorJobTerminal's
+//      terminal handling already drive the ticket out of Building.
+async function persistTurnEnd(job: AgentJob, outcome: TurnEndOutcome): Promise<void> {
   if (!job.workspaceId || !job.ticketId) return;
 
   // Find the user message that opened the just-finished turn. We use it for
@@ -831,22 +853,28 @@ async function persistTurnEndSuccess(job: AgentJob): Promise<void> {
   }
 
   if (stepRunIdToClose) {
-    // Idempotent CAS — only PENDING/RUNNING flip to SUCCEEDED. A re-fire of
-    // the same turn-end (e.g. retries from the reaper) doesn't bounce a
-    // completed step back, and a step that was already canceled stays
-    // canceled.
+    // Idempotent CAS — only PENDING/RUNNING flip to their terminal state. A
+    // re-fire of the same turn-end (e.g. retries from the reaper) doesn't
+    // bounce a completed step back, and a step that was already canceled
+    // stays canceled.
+    const terminalStatus = outcome.kind === "success" ? "SUCCEEDED" : "FAILED";
     await prisma.workflowStepRun
       .updateMany({
         where: {
           id: stepRunIdToClose,
           status: { in: ["PENDING", "RUNNING"] },
         },
-        data: { status: "SUCCEEDED", finishedAt: new Date() },
+        data: { status: terminalStatus, finishedAt: new Date() },
       })
       .catch(() => undefined);
   }
 
   if (stepName) {
+    // First-writer-wins dedup per (ticketId, name): if a STEP_COMPLETED row
+    // already exists for this step — even with a different result — keep it
+    // and skip. Matches the prior idempotency contract and prevents the
+    // renderer-side handler in ticket-workflow-panel.tsx from racing us into
+    // a duplicate row.
     const existing = await prisma.ticketActivity.findFirst({
       where: {
         ticketId: job.ticketId,
@@ -857,13 +885,20 @@ async function persistTurnEndSuccess(job: AgentJob): Promise<void> {
     });
     if (!existing) {
       try {
+        const payload: Record<string, unknown> = {
+          name: stepName,
+          result: outcome.kind === "success" ? "success" : "failure",
+        };
+        if (outcome.kind === "failure") {
+          payload.error = outcome.error.slice(0, 480);
+        }
         const activity = await prisma.ticketActivity.create({
           data: {
             ticketId: job.ticketId,
             workspaceId: job.workspaceId,
             jobId: job.id,
             kind: "STEP_COMPLETED",
-            payload: { name: stepName } as Prisma.InputJsonValue,
+            payload: payload as Prisma.InputJsonValue,
           },
           select: { id: true, kind: true, payload: true, jobId: true, createdAt: true },
         });
@@ -883,23 +918,29 @@ async function persistTurnEndSuccess(job: AgentJob): Promise<void> {
         logger.warn("mirror.step-completed.activity.failed", {
           jobId: job.id,
           stepName,
+          result: outcome.kind,
           error: err instanceof Error ? err.message : String(err),
         });
       }
     }
   }
 
-  await reconcileBuildingTicket({
-    ticketId: job.ticketId,
-    byUserId: job.userId,
-    excludeJobId: job.id,
-    jobStatus: "SUCCEEDED",
-  }).catch((err: unknown) => {
-    logger.warn("mirror.turn-end.reconcile.failed", {
-      jobId: job.id,
-      error: err instanceof Error ? err.message : String(err),
+  // Reconcile only on success. The failure path already routes through the
+  // NOTE write in applyClaudeLine and mirrorJobTerminal; running reconcile
+  // here would race with those.
+  if (outcome.kind === "success") {
+    await reconcileBuildingTicket({
+      ticketId: job.ticketId,
+      byUserId: job.userId,
+      excludeJobId: job.id,
+      jobStatus: "SUCCEEDED",
+    }).catch((err: unknown) => {
+      logger.warn("mirror.turn-end.reconcile.failed", {
+        jobId: job.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
     });
-  });
+  }
 }
 
 // Shared terminal-outcome handling: classify the run, persist the result on
@@ -1097,7 +1138,7 @@ export async function mirrorJobTerminal(args: {
 
   // Fail/cancel the linked WorkflowStepRun so the panel stops showing the
   // step as in-progress when the underlying job died. SUCCEEDED is handled
-  // per-turn by persistTurnEndSuccess — a single AgentJob can span multiple
+  // per-turn by persistTurnEnd — a single AgentJob can span multiple
   // workflow steps (warm-send), so we don't close stepRun=SUCCEEDED here.
   if (args.status !== "SUCCEEDED" && args.job.workflowStepRunId) {
     await prisma.workflowStepRun

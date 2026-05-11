@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, Loader2, Play, Plus } from "lucide-react";
+import { ChevronDown, Loader2, Play } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { getProjectLocalPath } from "@/actions/project";
@@ -73,6 +73,14 @@ export function TicketWorkflowPanel({
   const [pending, start] = useTransition();
   // FIFO of step names we've dispatched but not yet logged as completed.
   const pendingStepsRef = useRef<string[]>([]);
+  // Timestamp of the last local push to pendingStepsRef. refresh() uses this
+  // to avoid the race where an in-flight server fetch returns agentLive=false
+  // moments AFTER runAll() pushed steps but BEFORE the server has registered
+  // the new AgentJob row — without the grace window, refresh() would wipe
+  // the freshly-queued steps and the falling edge handler would later find
+  // an empty queue, never logging "completed" or advancing the UI.
+  const pendingStepsTouchedAtRef = useRef<number>(0);
+  const REFRESH_CLEAR_GRACE_MS = 8_000;
   const wasRunningRef = useRef<boolean>(false);
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
   const [currentStep, setCurrentStep] = useState<string | null>(null);
@@ -101,19 +109,8 @@ export function TicketWorkflowPanel({
       const next = !!detail.running;
       // Falling edge: agent just went idle. If we have a pending step, that
       // step finished — log completion and, if more queued, start the next.
-      console.log(
-        "[wf-debug] agent-busy event running=",
-        next,
-        "wasRunning=",
-        wasRunningRef.current,
-        "queue=",
-        [...pendingStepsRef.current],
-      );
       if (wasRunningRef.current && !next && pendingStepsRef.current.length > 0) {
         const finished = pendingStepsRef.current.shift()!;
-        console.log("[wf-debug] falling edge — shift", finished, "remaining=", [
-          ...pendingStepsRef.current,
-        ]);
         void logWorkflowActivity({
           ticketId,
           text: `Workflow step completed: ${finished}`,
@@ -126,7 +123,6 @@ export function TicketWorkflowPanel({
         const upcoming = pendingStepsRef.current[0];
         setCurrentStep(upcoming ?? null);
         if (upcoming) {
-          console.log("[wf-debug] logging started:", upcoming);
           void logWorkflowActivity({
             ticketId,
             text: `Workflow step started: ${upcoming}`,
@@ -186,8 +182,15 @@ export function TicketWorkflowPanel({
       if (!a.agentLive) {
         if (wasRunningRef.current) wasRunningRef.current = false;
         setRunning(false);
-        setCurrentStep(null);
-        pendingStepsRef.current = [];
+        // Only clear the local queue if it hasn't been touched recently.
+        // A fresh runAll() may have just populated it while the server has
+        // yet to learn about the new AgentJob; clearing here would wipe
+        // legitimate pending work.
+        const sinceTouched = Date.now() - pendingStepsTouchedAtRef.current;
+        if (sinceTouched > REFRESH_CLEAR_GRACE_MS) {
+          setCurrentStep(null);
+          pendingStepsRef.current = [];
+        }
       }
     }
     onReady?.();
@@ -340,7 +343,6 @@ export function TicketWorkflowPanel({
   }
 
   function logStarted(name: string) {
-    console.log("[wf-debug] logStarted called for:", name);
     void logWorkflowActivity({
       ticketId,
       text: `Workflow step started: ${name}`,
@@ -354,6 +356,7 @@ export function TicketWorkflowPanel({
     }
     const queueWasEmpty = pendingStepsRef.current.length === 0;
     pendingStepsRef.current.push(step.name);
+    pendingStepsTouchedAtRef.current = Date.now();
     setCompletedSteps((prev) => {
       if (!prev.has(step.name)) return prev;
       const out = new Set(prev);
@@ -371,12 +374,6 @@ export function TicketWorkflowPanel({
   }
 
   function runAll() {
-    console.log(
-      "[wf-debug] runAll() called. queue before=",
-      [...pendingStepsRef.current],
-      "wf.steps=",
-      wf?.steps.map((s) => ({ name: s.name, enabled: s.enabled })),
-    );
     if (!wf) return;
     const enabled = wf.steps.filter((s) => s.enabled);
     if (enabled.length === 0) {
@@ -397,6 +394,7 @@ export function TicketWorkflowPanel({
         .join("\n");
       const queueWasEmpty = pendingStepsRef.current.length === 0;
       pendingStepsRef.current.push(defaultName);
+      pendingStepsTouchedAtRef.current = Date.now();
       if (queueWasEmpty) {
         setCurrentStep(defaultName);
         logStarted(defaultName);
@@ -411,6 +409,7 @@ export function TicketWorkflowPanel({
     }));
     const queueWasEmpty = pendingStepsRef.current.length === 0;
     for (const s of enabled) pendingStepsRef.current.push(s.name);
+    pendingStepsTouchedAtRef.current = Date.now();
     setCompletedSteps((prev) => {
       if (prev.size === 0) return prev;
       const out = new Set(prev);
@@ -433,7 +432,6 @@ export function TicketWorkflowPanel({
   }
 
   const enabledCount = wf.steps.filter((s) => s.enabled).length;
-  const editable = wf.hasOverride;
   const currentLabel = wf.hasOverride
     ? "Workflow"
     : wf.templateName || "Choose workflow";
@@ -447,6 +445,119 @@ export function TicketWorkflowPanel({
       }
       await refresh();
     });
+  }
+
+  // First mutation against a template-backed workflow forks the template
+  // into a ticket-scoped override so edits don't silently rewrite the
+  // shared template for every other ticket. `setTicketWorkflowFromTemplate`
+  // preserves template order (workflow.ts:905-918), so we can map the
+  // user's clicked-step (by its current index in `wf.steps`) onto the new
+  // ticket-scoped step.
+  async function promoteToOverride(): Promise<WorkflowState | null> {
+    if (!wf) return null;
+    if (wf.hasOverride) return wf;
+    if (!wf.templateId) return null;
+    const r = await setTicketWorkflowFromTemplate({
+      ticketId,
+      templateId: wf.templateId,
+    });
+    if (!r.ok) {
+      toast.error(r.error);
+      return null;
+    }
+    const fresh = await getTicketWorkflow(ticketId);
+    if (!fresh.ok) return null;
+    const next: WorkflowState = {
+      hasOverride: fresh.hasOverride,
+      templateId: fresh.templateId,
+      templateName: fresh.templateName,
+      agentLive: fresh.agentLive,
+      steps: fresh.steps,
+    };
+    setWf(next);
+    return next;
+  }
+
+  async function handleAdd(name: string, prompt: string): Promise<boolean> {
+    if (!wf) return false;
+    if (!wf.hasOverride) {
+      const promoted = await promoteToOverride();
+      // Promotion succeeds with no template too (no-op) — only fail-out
+      // if there *was* a template and the fork explicitly failed.
+      if (!promoted && wf.templateId) return false;
+    }
+    const r = await addTicketStep({ ticketId, name, prompt });
+    if (!r.ok) {
+      toast.error(r.error);
+      return false;
+    }
+    await refresh();
+    return true;
+  }
+
+  async function handleUpdate(
+    id: string,
+    patch: { name?: string; prompt?: string; enabled?: boolean },
+  ): Promise<void> {
+    if (!wf) return;
+    let targetId = id;
+    if (!wf.hasOverride) {
+      const idx = wf.steps.findIndex((s) => s.id === id);
+      if (idx < 0) return;
+      const promoted = await promoteToOverride();
+      if (!promoted) return;
+      const newId = promoted.steps[idx]?.id;
+      if (!newId) return;
+      targetId = newId;
+    }
+    const r = await updateTicketStep({ id: targetId, ...patch });
+    if (!r.ok) {
+      toast.error(r.error);
+      return;
+    }
+    await refresh();
+  }
+
+  async function handleRemove(id: string): Promise<void> {
+    if (!wf) return;
+    let targetId = id;
+    if (!wf.hasOverride) {
+      const idx = wf.steps.findIndex((s) => s.id === id);
+      if (idx < 0) return;
+      const promoted = await promoteToOverride();
+      if (!promoted) return;
+      const newId = promoted.steps[idx]?.id;
+      if (!newId) return;
+      targetId = newId;
+    }
+    const r = await removeTicketStep(targetId);
+    if (!r.ok) {
+      toast.error(r.error);
+      return;
+    }
+    await refresh();
+  }
+
+  async function handleReorder(orderedStepIds: string[]): Promise<void> {
+    if (!wf) return;
+    let nextIds = orderedStepIds;
+    if (!wf.hasOverride) {
+      const indexes = orderedStepIds.map((sid) =>
+        wf.steps.findIndex((s) => s.id === sid),
+      );
+      if (indexes.some((i) => i < 0)) return;
+      const promoted = await promoteToOverride();
+      if (!promoted) return;
+      const mapped = indexes.map((i) => promoted.steps[i]?.id);
+      if (mapped.some((v) => !v)) return;
+      nextIds = mapped as string[];
+    }
+    const r = await reorderTicketSteps({ ticketId, orderedStepIds: nextIds });
+    if (!r.ok) {
+      toast.error(r.error);
+      return;
+    }
+    await refresh();
   }
 
   return (
@@ -514,250 +625,26 @@ export function TicketWorkflowPanel({
         </button>
       </header>
 
-      {editable ? (
-        <StepList
-          steps={wf.steps.map((s) => ({
-            id: s.id as string,
-            name: s.name,
-            prompt: s.prompt,
-            position: s.position,
-            enabled: s.enabled,
-          }))}
-          onAdd={async (name, prompt) => {
-            const r = await addTicketStep({ ticketId, name, prompt });
-            if (!r.ok) {
-              toast.error(r.error);
-              return false;
-            }
-            await refresh();
-            return true;
-          }}
-          onUpdate={async (id, patch) => {
-            const r = await updateTicketStep({ id, ...patch });
-            if (!r.ok) {
-              toast.error(r.error);
-              return;
-            }
-            await refresh();
-          }}
-          onRemove={async (id) => {
-            const r = await removeTicketStep(id);
-            if (!r.ok) {
-              toast.error(r.error);
-              return;
-            }
-            await refresh();
-          }}
-          onReorder={async (orderedStepIds) => {
-            const r = await reorderTicketSteps({ ticketId, orderedStepIds });
-            if (!r.ok) {
-              toast.error(r.error);
-              return;
-            }
-            await refresh();
-          }}
-          onRunStep={(s) => runStep(s)}
-          stepStatus={(s) => statusFor(s.name)}
-        />
-      ) : wf.steps.length === 0 ? (
-        <>
-          <p className="text-xs text-muted-foreground/70">
-            Pick a template above, or set a project default in Settings → Workflows.
-          </p>
-          <AddStepInline
-            disabled={pending}
-            onAdd={async (name) => {
-              if (wf.templateId) {
-                const r = await setTicketWorkflowFromTemplate({
-                  ticketId,
-                  templateId: wf.templateId,
-                });
-                if (!r.ok) {
-                  toast.error(r.error);
-                  return false;
-                }
-              }
-              const r = await addTicketStep({
-                ticketId,
-                name,
-                prompt: "Describe what this step should do.",
-              });
-              if (!r.ok) {
-                toast.error(r.error);
-                return false;
-              }
-              await refresh();
-              return true;
-            }}
-          />
-        </>
-      ) : (
-        <>
-          <ul className="flex flex-col">
-            {wf.steps.map((s, i) => (
-              <ReadOnlyStepRow
-                key={`${s.position}-${s.name}`}
-                step={s}
-                index={i}
-                onRun={() => runStep(s)}
-                status={statusFor(s.name)}
-              />
-            ))}
-          </ul>
-          <AddStepInline
-            disabled={pending}
-            withBorder
-            onAdd={async (name) => {
-              if (wf.templateId) {
-                const r = await setTicketWorkflowFromTemplate({
-                  ticketId,
-                  templateId: wf.templateId,
-                });
-                if (!r.ok) {
-                  toast.error(r.error);
-                  return false;
-                }
-              }
-              const r = await addTicketStep({
-                ticketId,
-                name,
-                prompt: "Describe what this step should do.",
-              });
-              if (!r.ok) {
-                toast.error(r.error);
-                return false;
-              }
-              await refresh();
-              return true;
-            }}
-          />
-        </>
+      {!wf.hasOverride && wf.steps.length === 0 && (
+        <p className="text-xs text-muted-foreground/70">
+          Pick a template above, or set a project default in Settings → Workflows.
+        </p>
       )}
-    </div>
-  );
-}
-
-function ReadOnlyStepRow({
-  step,
-  index,
-  onRun,
-  status,
-}: {
-  step: { name: string; prompt: string; enabled: boolean };
-  index: number;
-  onRun: () => void;
-  status: "pending" | "running" | "completed";
-}): React.ReactElement {
-  return (
-    <li
-      className={`group flex items-center gap-2 border-b border-border/40 py-1.5 text-sm last:border-b-0 ${
-        step.enabled ? "" : "opacity-60"
-      }`}
-    >
-      <span
-        className="flex w-5 shrink-0 items-center justify-end text-[11px] tabular-nums text-muted-foreground/60"
-        aria-label={`Step ${status}`}
-        title={status === "completed" ? "Completed" : status === "running" ? "Running" : "Pending"}
-      >
-        {status === "completed" ? (
-          <Check className="size-3.5 text-emerald-500/80" aria-hidden />
-        ) : status === "running" ? (
-          <Loader2 className="size-3.5 animate-spin text-foreground/70" aria-hidden />
-        ) : (
-          <>{index + 1}.</>
-        )}
-      </span>
-      <span className="flex-1 truncate">{step.name}</span>
-      {!step.enabled && <span className="text-[11px] text-muted-foreground">disabled</span>}
-      <button
-        type="button"
-        onClick={onRun}
-        disabled={!step.enabled}
-        aria-label="Run this step"
-        title="Run this step"
-        className="text-muted-foreground/40 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-0"
-      >
-        <Play className="size-3.5" />
-      </button>
-    </li>
-  );
-}
-
-function AddStepInline({
-  onAdd,
-  disabled,
-  withBorder,
-}: {
-  onAdd: (name: string) => Promise<boolean>;
-  disabled?: boolean;
-  withBorder?: boolean;
-}): React.ReactElement {
-  const [value, setValue] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [pending, start] = useTransition();
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    if (adding) inputRef.current?.focus();
-  }, [adding]);
-
-  function submit() {
-    const n = value.trim();
-    if (!n) {
-      setAdding(false);
-      return;
-    }
-    start(async () => {
-      const ok = await onAdd(n);
-      if (ok) {
-        setValue("");
-        setAdding(false);
-      }
-    });
-  }
-
-  return (
-    <div
-      className={`flex items-center gap-2 py-1.5 ${withBorder ? "border-t border-border/40" : ""}`}
-    >
-      {adding ? (
-        <>
-          <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground/40">
-            {pending ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <Plus className="size-3.5" />
-            )}
-          </span>
-          <input
-            ref={inputRef}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                submit();
-              } else if (e.key === "Escape") {
-                setValue("");
-                setAdding(false);
-              }
-            }}
-            onBlur={submit}
-            placeholder="Step name"
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50"
-          />
-        </>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setAdding(true)}
-          disabled={disabled || pending}
-          className="-ml-1 flex h-7 items-center gap-1.5 rounded px-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <Plus className="size-3.5" />
-          Add Step
-        </button>
-      )}
+      <StepList
+        steps={wf.steps.map((s) => ({
+          id: s.id as string,
+          name: s.name,
+          prompt: s.prompt,
+          position: s.position,
+          enabled: s.enabled,
+        }))}
+        onAdd={(name, prompt) => handleAdd(name, prompt)}
+        onUpdate={handleUpdate}
+        onRemove={handleRemove}
+        onReorder={handleReorder}
+        onRunStep={(s) => runStep(s)}
+        stepStatus={(s) => statusFor(s.name)}
+      />
     </div>
   );
 }
