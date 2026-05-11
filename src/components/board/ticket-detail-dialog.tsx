@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, GitMerge, GitPullRequest, Pencil, Wand2, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
   getPullRequestStatus,
@@ -163,14 +163,6 @@ export function TicketDetailDialog({
   const ticketPrUrl = ticket.prUrl;
   const showPrStatus = open && isGitHubPrUrl(ticketPrUrl);
 
-  useEffect(() => {
-    console.log("[scroll-debug] TicketDetailDialog MOUNTED ticketId=", ticket.id);
-    return () => console.log("[scroll-debug] TicketDetailDialog UNMOUNTED ticketId=", ticket.id);
-  }, [ticket.id]);
-
-  const renderCount = useRef(0);
-  renderCount.current += 1;
-  console.log("[scroll-debug] TicketDetailDialog render #", renderCount.current);
 
   const loadStatus = useCallback((): void => {
     startStatusTransition(async () => {
@@ -590,28 +582,7 @@ export function TicketDetailDialog({
         </div>
 
         <div className="flex min-h-0 flex-1">
-          <div
-            ref={(el) => {
-              if (!el) return;
-              if ((el as { __dbgWired?: boolean }).__dbgWired) return;
-              (el as { __dbgWired?: boolean }).__dbgWired = true;
-              el.addEventListener(
-                "scroll",
-                () => {
-                  console.log(
-                    "[scroll-debug] OUTER dialog scrollTop=",
-                    el.scrollTop,
-                    "scrollHeight=",
-                    el.scrollHeight,
-                    "clientHeight=",
-                    el.clientHeight,
-                  );
-                },
-                { passive: true },
-              );
-            }}
-            className="flex min-w-0 flex-1 flex-col overflow-y-auto"
-          >
+          <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
             <div className="px-8 py-6">
               {isEditingTitle ? (
                 <Input

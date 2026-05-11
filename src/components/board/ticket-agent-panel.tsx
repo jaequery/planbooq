@@ -650,6 +650,17 @@ function DesktopPanel({
     }
   };
 
+  // Stable ref so the load effect doesn't re-fire every parent render when
+  // onReady is passed as an inline arrow function. Without this, the effect's
+  // [projectId, onReady] deps tripped on every render — setRepoPathLoaded(false)
+  // briefly unmounted the entire chat panel, collapsing the outer dialog by
+  // ~190px and clamping its scrollTop to 0. That was the "dialog keeps jumping
+  // back to the top" symptom.
+  const onReadyRef = useRef(onReady);
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
+
   useEffect(() => {
     let cancelled = false;
     setRepoPath(null);
@@ -659,12 +670,12 @@ function DesktopPanel({
       if (cancelled) return;
       if (result.ok) setRepoPath(result.localPath);
       setRepoPathLoaded(true);
-      onReady?.();
+      onReadyRef.current?.();
     })();
     return () => {
       cancelled = true;
     };
-  }, [projectId, onReady]);
+  }, [projectId]);
 
   // Hydrate from server in two passes:
   //   1. /api/v1/tickets/:id/messages → durable per-ticket Conversation. This
@@ -954,18 +965,6 @@ function DesktopPanel({
     const scroller = scrollerRef.current;
     const bottom = bottomRef.current;
     if (!scroller || !bottom || typeof IntersectionObserver === "undefined") return;
-    console.log("[scroll-debug] chat scroller MOUNTED");
-    const onScroll = () => {
-      console.log(
-        "[scroll-debug] chat scrollTop=",
-        scroller.scrollTop,
-        "scrollHeight=",
-        scroller.scrollHeight,
-        "clientHeight=",
-        scroller.clientHeight,
-      );
-    };
-    scroller.addEventListener("scroll", onScroll, { passive: true });
     const io = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
@@ -974,11 +973,7 @@ function DesktopPanel({
       { root: scroller, threshold: 0 },
     );
     io.observe(bottom);
-    return () => {
-      console.log("[scroll-debug] chat scroller UNMOUNTED");
-      scroller.removeEventListener("scroll", onScroll);
-      io.disconnect();
-    };
+    return () => io.disconnect();
   }, [messages.length > 0]);
 
   // Sticky-bottom: pin the inner chat scroller to its bottom on first
@@ -997,27 +992,13 @@ function DesktopPanel({
     const pin = () => {
       scroller.scrollTop = scroller.scrollHeight;
     };
-    console.log(
-      "[scroll-debug] messages effect — count=",
-      messages.length,
-      "atBottom=",
-      atBottomRef.current,
-      "didInitial=",
-      didInitialScrollRef.current,
-    );
     if (!didInitialScrollRef.current) {
       didInitialScrollRef.current = true;
       atBottomRef.current = true;
-      console.log("[scroll-debug] pin (initial)");
       pin();
       return;
     }
-    if (atBottomRef.current) {
-      console.log("[scroll-debug] pin (sticky follow)");
-      pin();
-    } else {
-      console.log("[scroll-debug] NOT pinning — user scrolled up");
-    }
+    if (atBottomRef.current) pin();
   }, [messages]);
 
   const pickRepo = async (): Promise<string | null> => {
@@ -1487,6 +1468,14 @@ function WebPanel({
   const [jobs, setJobs] = useState<Job[]>([]);
   const [pending, startTransition] = useTransition();
 
+  // Stable ref — same reason as DesktopPanel: inline onReady arrow functions
+  // from the parent would otherwise re-trigger this effect every render, which
+  // briefly resets agentsLoaded and unmounts the panel content.
+  const onReadyRef = useRef(onReady);
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
+
   useEffect(() => {
     setAgentsLoaded(false);
     void listAgents({ workspaceId }).then((res) => {
@@ -1496,9 +1485,9 @@ function WebPanel({
         if (live.length > 0) setSelectedAgent(live[0]!.id);
       }
       setAgentsLoaded(true);
-      onReady?.();
+      onReadyRef.current?.();
     });
-  }, [workspaceId, onReady]);
+  }, [workspaceId]);
 
   useEffect(() => {
     let stopped = false;
