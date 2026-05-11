@@ -416,7 +416,8 @@ function classifyStepKind(name: string): StepKind {
  *            activity exists, OR the PR is up (PR ⇒ build implicitly done)
  * - pr     → ticket.prUrl is set, OR a PR_CREATED activity exists
  * - test   → a TEST_RUN activity exists
- * - unknown→ null (let client decide via FIFO)
+ * - unknown→ matched by AgentJob prompt prefix (`[Workflow ...: <name>`),
+ *            otherwise null (client FIFO fallback).
  */
 async function deriveStepCompletion(args: {
   ticketId: string;
@@ -464,30 +465,164 @@ async function deriveStepCompletion(args: {
     }));
   }
 
+  // Per-step prompt-prefix match: workflow runs dispatch each step's prompt
+  // wrapped as `[Workflow N/M: <name>]\n...` (see ticket-workflow-panel
+  // runStep/runAll). A SUCCEEDED AgentJob with that prefix proves the step
+  // ran to completion — the only reliable signal for `unknown`-kind steps
+  // (e.g. "Plan") whose names don't match a regex bucket.
+  let succeededPrompts: string[] = [];
+  if (args.steps.length > 0) {
+    const succeeded = await prisma.agentJob.findMany({
+      where: {
+        ticketId: args.ticketId,
+        status: "SUCCEEDED",
+        prompt: { contains: "[Workflow" },
+      },
+      select: { prompt: true },
+      orderBy: { createdAt: "asc" },
+    });
+    succeededPrompts = succeeded.map((j) => j.prompt);
+  }
+  function stepRanSuccessfully(name: string): boolean {
+    const lower = name.toLowerCase();
+    // Match `[Workflow: name]` or `[Workflow 2/3: name]`. Compare names
+    // case-insensitively because the dispatcher preserves user casing.
+    return succeededPrompts.some((p) => {
+      const head = p.slice(0, 200).toLowerCase();
+      return (
+        head.includes(`[workflow: ${lower}]`) ||
+        new RegExp(`\\[workflow\\s+\\d+/\\d+:\\s*${lower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]`).test(head)
+      );
+    });
+  }
+
   for (let i = 0; i < args.steps.length; i++) {
     const step = args.steps[i];
     const kind = kinds[i];
     if (!step || !kind) continue;
     const name = step.name;
+    const ran = stepRanSuccessfully(name);
     let completed: boolean | null;
     switch (kind) {
       case "build":
-        completed = terminal || !!args.prUrl || hasBuildJob || hasBuildActivity;
+        completed = terminal || !!args.prUrl || hasBuildJob || hasBuildActivity || ran;
         break;
       case "pr":
-        completed = terminal || !!args.prUrl || hasPrActivity;
+        completed = terminal || !!args.prUrl || hasPrActivity || ran;
         break;
       case "test":
-        completed = terminal || hasTestActivity;
+        completed = terminal || hasTestActivity || ran;
         break;
       default:
-        // Unknown-kind steps: terminal status still implies done. Otherwise
-        // fall back to the client FIFO heuristic (null).
-        completed = terminal ? true : null;
+        // Unknown-kind steps: terminal status or a matching SUCCEEDED job
+        // proves it ran. Otherwise fall back to client FIFO heuristic.
+        completed = terminal || ran ? true : null;
     }
     out.set(name, completed);
   }
   return out;
+}
+
+/**
+ * Reconcile a ticket's agent run state. The board treats a ticket as
+ * "Running" while it sits in the `building` status, but that status is set
+ * client-side by the workflow panel and only ever cleared by signals that
+ * may never arrive (clean Claude Code exit, PR url written, etc). When the
+ * dialog is closed mid-run, when the desktop bridge crashes, or when
+ * Claude Code is killed externally, the AgentJob/WorkflowRun rows are left
+ * in RUNNING forever and the ticket is stuck on "Running".
+ *
+ * This function is the read-side self-heal: idempotent, safe to call from
+ * any read path. We consider an AgentJob "live" only if it has been touched
+ * within `STALE_MS`; anything older is treated as dead and marked FAILED so
+ * future reads stop pretending the agent is still working. WorkflowRuns
+ * whose latest job is dead are CANCELED along with their PENDING/RUNNING
+ * step rows. When the ticket is stuck in `building` and the agent is dead
+ * AND a PR exists, we run the existing end-of-run picker to advance to
+ * review/completed/blocked.
+ */
+const AGENT_STALE_MS = 90_000;
+
+async function reconcileTicketAgentState(
+  ticketId: string,
+  byUserId: string,
+): Promise<{ live: boolean }> {
+  const lastJob = await prisma.agentJob.findFirst({
+    where: { ticketId },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, status: true, updatedAt: true, finishedAt: true },
+  });
+  const now = Date.now();
+  const isLive =
+    lastJob?.status === "RUNNING" &&
+    now - lastJob.updatedAt.getTime() < AGENT_STALE_MS;
+
+  if (isLive) return { live: true };
+
+  // Mark the stalest RUNNING job(s) as FAILED so the panel stops trusting
+  // them. We only touch jobs whose updatedAt is past the stale window — any
+  // newer RUNNING job we leave alone (caller will see live:false but the
+  // job will be reconciled next call when it crosses the threshold).
+  const staleCutoff = new Date(now - AGENT_STALE_MS);
+  await prisma.agentJob.updateMany({
+    where: {
+      ticketId,
+      status: "RUNNING",
+      updatedAt: { lt: staleCutoff },
+    },
+    data: {
+      status: "FAILED",
+      error: "agent went stale (no updates within 90s)",
+      finishedAt: new Date(),
+    },
+  });
+
+  // Cancel any orphaned WorkflowRun rows. We close PENDING/RUNNING step
+  // rows along with the run itself — the read-time deriveStepCompletion is
+  // the source of truth for which steps actually finished, so canceling
+  // here just stops the run from being considered "in progress".
+  const orphanRuns = await prisma.workflowRun.findMany({
+    where: { ticketId, status: "RUNNING" },
+    select: { id: true },
+  });
+  if (orphanRuns.length > 0) {
+    const finishedAt = new Date();
+    await prisma.$transaction([
+      prisma.workflowStepRun.updateMany({
+        where: {
+          runId: { in: orphanRuns.map((r) => r.id) },
+          status: { in: ["PENDING", "RUNNING"] },
+        },
+        data: { status: "CANCELED", finishedAt },
+      }),
+      prisma.workflowRun.updateMany({
+        where: { id: { in: orphanRuns.map((r) => r.id) } },
+        data: { status: "CANCELED", finishedAt },
+      }),
+    ]);
+  }
+
+  // If the ticket is sitting in `building` with no live agent and a PR
+  // already exists, advance it via the existing end-of-run picker. We
+  // intentionally don't auto-revert when no PR exists — that path needs
+  // user judgement (could be partial work worth resuming) and silently
+  // moving the card would be more surprising than leaving it.
+  try {
+    const ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: { prUrl: true, status: { select: { key: true } } },
+    });
+    if (ticket?.status?.key === "building" && ticket.prUrl) {
+      // decideEndOfRunStatus reads its own session for auth; we already
+      // verified membership in the caller, so just delegate.
+      void byUserId;
+      await decideEndOfRunStatus(ticketId);
+    }
+  } catch {
+    // tolerated — reconcile is best-effort
+  }
+
+  return { live: false };
 }
 
 export async function getTicketWorkflow(ticketId: string): Promise<
@@ -495,6 +630,10 @@ export async function getTicketWorkflow(ticketId: string): Promise<
     hasOverride: boolean;
     templateId: string | null;
     templateName: string | null;
+    /** True when an AgentJob for this ticket is RUNNING and has been touched
+     *  within the staleness window. Use this — not the client `running`
+     *  state — to decide whether the agent is actually working. */
+    agentLive: boolean;
     steps: Array<{
       id: string | null;
       name: string;
@@ -512,6 +651,11 @@ export async function getTicketWorkflow(ticketId: string): Promise<
   if (!ticket) return { ok: false, error: "not_found" };
   const ctx = await requireMember(ticket.workspaceId);
   if (!ctx.ok) return ctx;
+
+  // Self-heal stale RUNNING AgentJob/WorkflowRun rows before deriving step
+  // state, so the panel sees an accurate picture even when the previous
+  // session ended without a clean exit event.
+  const live = await reconcileTicketAgentState(ticketId, ctx.userId);
 
   const ticketState = await prisma.ticket.findUnique({
     where: { id: ticketId },
@@ -537,6 +681,7 @@ export async function getTicketWorkflow(ticketId: string): Promise<
       hasOverride: true,
       templateId: null,
       templateName: null,
+      agentLive: live.live,
       steps: overrideSteps.map((s) => ({
         ...s,
         source: "ticket" as const,
@@ -583,6 +728,7 @@ export async function getTicketWorkflow(ticketId: string): Promise<
     hasOverride: false,
     templateId: tpl?.id ?? null,
     templateName: tpl?.name ?? null,
+    agentLive: live.live,
     steps: tplSteps.map((s) => ({
       id: s.id,
       name: s.name,

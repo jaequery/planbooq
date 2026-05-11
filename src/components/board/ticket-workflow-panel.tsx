@@ -32,6 +32,7 @@ type WorkflowState = {
   hasOverride: boolean;
   templateId: string | null;
   templateName: string | null;
+  agentLive: boolean;
   steps: Array<{
     id: string | null;
     name: string;
@@ -151,8 +152,20 @@ export function TicketWorkflowPanel({
         hasOverride: a.hasOverride,
         templateId: a.templateId,
         templateName: a.templateName,
+        agentLive: a.agentLive,
         steps: a.steps,
       });
+      // Server is the source of truth for whether the agent is actually
+      // working. If it says no live job, clear any stale client `running`
+      // state — the agent-busy falling-edge event may never have fired
+      // (panel unmounted, bridge crashed, Claude killed externally) and
+      // without this we'd stay disabled forever.
+      if (!a.agentLive) {
+        if (wasRunningRef.current) wasRunningRef.current = false;
+        setRunning(false);
+        setCurrentStep(null);
+        pendingStepsRef.current = [];
+      }
     }
     const t = await listWorkflowTemplates({ workspaceId });
     if (t.ok) setTemplates(t.templates);
@@ -161,6 +174,19 @@ export function TicketWorkflowPanel({
   useEffect(() => {
     refresh();
   }, [ticketId]);
+
+  // While we believe the agent is running, poll the server every 30s so
+  // server-side reconciliation (stale-job sweep) gets exercised even when
+  // no client event arrives. The poll stops as soon as the server reports
+  // agentLive=false (refresh() clears `running` in that case).
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => {
+      void refresh();
+    }, 30_000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running, ticketId]);
 
   // Refetch when the board reports a ticket.updated/moved for this ticket —
   // the payload may include a new prUrl or a status change that flips steps
