@@ -58,7 +58,7 @@ export default async function ProjectLayout({
     prisma.status.findMany({
       where: {
         workspaceId: membership.workspaceId,
-        key: { in: ["review", "building"] },
+        key: { in: ["review", "building", "blocked"] },
       },
       select: { id: true, key: true },
     }),
@@ -81,13 +81,15 @@ export default async function ProjectLayout({
   const allProjects = projectRows.map((p) => {
     let reviewCount = 0;
     let buildingCount = 0;
+    let blockedCount = 0;
     for (const c of ticketCounts) {
       if (c.projectId !== p.id) continue;
       const key = statusKeyById.get(c.statusId);
       if (key === "review") reviewCount = c._count._all;
       else if (key === "building") buildingCount = c._count._all;
+      else if (key === "blocked") blockedCount = c._count._all;
     }
-    return { ...p, reviewCount, buildingCount };
+    return { ...p, reviewCount, buildingCount, blockedCount };
   });
 
   return (
