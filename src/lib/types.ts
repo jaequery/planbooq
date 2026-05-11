@@ -229,6 +229,11 @@ export type AblyChannelEvent =
       by: string;
     }
   | {
+      name: "ticket.workflow.run";
+      workspaceId: string;
+      ticketId: string;
+    }
+  | {
       name: "ticket.activity";
       workspaceId: string;
       ticketId: string;

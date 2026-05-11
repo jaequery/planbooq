@@ -68,6 +68,7 @@ export function TicketAgentPanel(props: Props): React.ReactElement {
           ticketId={props.ticketId}
           workspaceId={props.workspaceId}
           projectId={props.projectId}
+          autoRun={props.autoRunAction === true}
           onReady={() => setWorkflowReady(true)}
         />
         {isDesktop ? (

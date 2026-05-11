@@ -208,6 +208,15 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         );
         return;
       }
+      if (event.name === "ticket.workflow.run") {
+        // Auto-run from chat-orb: server promoted the ticket to Building and
+        // asked any connected client to fire its default workflow. Open the
+        // dialog with autoRunOnOpen so the workflow panel kicks runAll() once
+        // its data is loaded.
+        setAutoRunOnOpen(true);
+        setDetailTicketId(event.ticketId);
+        return;
+      }
       if (!("projectId" in event) || event.projectId !== currentProjectId) return;
       if (event.name === "ticket.moved") {
         const destStatus = statusesRef.current.find((s) => s.id === event.toStatusId);

@@ -280,21 +280,10 @@ export function ChatOrb({
       } else {
         onOptimisticInsert({ ...result.data, assignee: null, labels: [] });
       }
-      if (submittedAutoExecute) {
-        // Kick the local desktop agent so the ticket actually runs the moment
-        // it's created. Server has already moved it to Running; this fires the
-        // same event the workflow panel uses when the user clicks Run.
-        window.dispatchEvent(
-          new CustomEvent("planbooq:workflow-run", {
-            detail: {
-              ticketId: result.data.id,
-              prompts: [
-                `[Workflow 1/1: build]\nBuild the project to satisfy the ticket's title and description. When complete, follow the shipping steps in PLANBOOQ.md to open a PR.`,
-              ],
-            },
-          }),
-        );
-      }
+      // Auto-run is dispatched server-side via Ably (ticket.workflow.run on
+      // workspace channel). The board's realtime handler opens the ticket
+      // dialog with autoRunOnOpen, and the workflow panel kicks runAll() once
+      // its data is loaded.
       toast.success(
         submittedAutoExecute ? "Ticket created and running" : "Ticket created in Backlog",
       );
@@ -410,8 +399,8 @@ export function ChatOrb({
               className="inline-flex flex-shrink-0 items-center gap-1.5 self-center rounded-full px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
               title={
                 autoExecute
-                  ? "Auto-execute: on — ticket runs immediately after creation"
-                  : "Auto-execute: off — ticket lands in Backlog as a draft"
+                  ? "Auto-run: on — ticket runs immediately after creation"
+                  : "Auto-run: off — ticket lands in Backlog as a draft"
               }
             >
               <span
@@ -426,7 +415,7 @@ export function ChatOrb({
                   }`}
                 />
               </span>
-              <span>Auto-execute</span>
+              <span>Auto-run</span>
             </button>
           </div>
         </div>

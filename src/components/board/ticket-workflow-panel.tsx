@@ -50,11 +50,13 @@ export function TicketWorkflowPanel({
   ticketId,
   workspaceId,
   projectId,
+  autoRun,
   onReady,
 }: {
   ticketId: string;
   workspaceId: string;
   projectId: string;
+  autoRun?: boolean;
   onReady?: () => void;
 }): React.ReactElement | null {
   const [wf, setWf] = useState<WorkflowState | null>(null);
@@ -177,6 +179,22 @@ export function TicketWorkflowPanel({
   useEffect(() => {
     refresh();
   }, [ticketId]);
+
+  // Auto-run guard: fire runAll() exactly once per ticket when the panel
+  // mounts with autoRun=true and the workflow data has loaded. Triggered
+  // by the chat-orb's auto-run path (server publishes ticket.workflow.run
+  // → board opens this dialog with autoRunAction=true).
+  const autoRunFiredRef = useRef(false);
+  useEffect(() => {
+    if (!autoRun) return;
+    if (autoRunFiredRef.current) return;
+    if (!wf) return;
+    if (!hasLocalPath) return;
+    if (running) return;
+    autoRunFiredRef.current = true;
+    runAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRun, wf, hasLocalPath, running]);
 
   // While we believe the agent is running, poll the server every 30s so
   // server-side reconciliation (stale-job sweep) gets exercised even when

@@ -361,12 +361,21 @@ export async function quickCreateTicket(
           toStatusKey: "building",
           byUserId: userId,
         });
-        const refreshed = await prisma.ticket.findUnique({
-          where: { id: created.data.id },
-          include: TICKET_RELATIONS_INCLUDE,
-        });
-        if (refreshed) return { ok: true, data: refreshed };
       }
+      // Broadcast workflow-run intent on the workspace channel. A subscribed
+      // client with a desktop bridge picks this up, opens the ticket, and
+      // fires the project's default workflow against the local Claude Code.
+      // No-op if no client is connected — ticket just sits in Building.
+      await publishWorkspaceEvent(project.workspaceId, {
+        name: "ticket.workflow.run",
+        workspaceId: project.workspaceId,
+        ticketId: created.data.id,
+      });
+      const refreshed = await prisma.ticket.findUnique({
+        where: { id: created.data.id },
+        include: TICKET_RELATIONS_INCLUDE,
+      });
+      if (refreshed) return { ok: true, data: refreshed };
     }
 
     return created;
