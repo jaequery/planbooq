@@ -4,7 +4,7 @@ import Link from "next/link";
 const serif = Instrument_Serif({
   subsets: ["latin"],
   weight: "400",
-  style: ["normal", "italic"],
+  style: ["normal"],
   variable: "--font-landing-serif",
 });
 
@@ -54,7 +54,8 @@ function Hero(): React.ReactElement {
   return (
     <section className="mt-12 flex flex-col items-center text-center sm:mt-16">
       <h1 className="font-[var(--font-landing-serif)] max-w-3xl text-balance text-5xl leading-[1.05] tracking-tight sm:text-7xl">
-        The kanban that already <em className="italic text-[#3A5A40]">picks winners</em> for you
+        The kanban that already{" "}
+        <strong className="font-semibold text-[#3A5A40]">picks winners</strong> for you
       </h1>
       <p className="mt-7 max-w-xl text-balance text-base leading-relaxed text-[#1F2A1E]/75 sm:text-lg">
         Every ticket spawns N AI variants in parallel — each with a live preview URL and
@@ -513,7 +514,7 @@ function BottomCTA(): React.ReactElement {
     <section className="mt-28 sm:mt-36">
       <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
         <h2 className="font-[var(--font-landing-serif)] text-4xl leading-tight tracking-tight sm:text-6xl">
-          Planbooq <em className="italic text-[#3A5A40]">pays attention</em>.
+          Planbooq <strong className="font-semibold text-[#3A5A40]">pays attention</strong>.
         </h2>
         <p className="mt-5 max-w-xl text-balance text-[15px] leading-relaxed text-[#1F2A1E]/70">
           One surface for the new bottleneck: deciding fast on AI output. Real-time multiplayer
