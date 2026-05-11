@@ -1,1 +1,1 @@
-export const TICKET_PAGE_SIZE = 50;
+export const TICKET_PAGE_SIZE = 25;
