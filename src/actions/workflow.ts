@@ -7,7 +7,11 @@ import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { getPrStatusForUser, parseGitHubPrUrl } from "@/server/services/github-pr";
-import { moveTicketToStatusKey } from "@/server/services/ticket-status";
+import { mirrorJobTerminal } from "@/server/services/mirror-agent-job";
+import {
+  moveTicketToStatusKey,
+  reconcileBuildingTicket,
+} from "@/server/services/ticket-status";
 
 type Ok<T> = T extends Record<string, never> ? { ok: true } : { ok: true } & T;
 type Err = { ok: false; error: string };
@@ -559,23 +563,76 @@ async function reconcileTicketAgentState(
 
   if (isLive) return { live: true };
 
-  // Mark the stalest RUNNING job(s) as FAILED so the panel stops trusting
-  // them. We only touch jobs whose updatedAt is past the stale window — any
-  // newer RUNNING job we leave alone (caller will see live:false but the
-  // job will be reconciled next call when it crosses the threshold).
+  // Find stale RUNNING jobs and reap them through the mirror layer. Two-phase:
+  //   Phase A — mark each job FAILED via a status-CAS (UPDATE WHERE
+  //             status='RUNNING') so concurrent watchdog invocations from
+  //             parallel requests can't double-fire; the loser of the race
+  //             sees 0 rows updated and skips its mirror call. mirrorJobTerminal
+  //             runs only for jobs we actually transitioned, which is what
+  //             writes `outcome` and emits the SYSTEM "no output" message on
+  //             EMPTY_RESPONSE.
+  //   Phase B — reconcile each unique ticketId exactly once. Calling
+  //             reconcileBuildingTicket inside Phase A would early-return on
+  //             "sibling-running" the first time around because a second stale
+  //             job still in RUNNING state would look live to the reconciler.
+  // Select includes workspaceId/agentId/kind/userId because mirrorJobTerminal
+  // dispatches mode (`modeForJob`) by job.kind and publishes Ably by
+  // job.workspaceId — a stripped job triggers a silent plain-mode fallback.
   const staleCutoff = new Date(now - AGENT_STALE_MS);
-  await prisma.agentJob.updateMany({
-    where: {
-      ticketId,
-      status: "RUNNING",
-      updatedAt: { lt: staleCutoff },
-    },
-    data: {
-      status: "FAILED",
-      error: "agent went stale (no updates within 90s)",
-      finishedAt: new Date(),
+  const stale = await prisma.agentJob.findMany({
+    where: { ticketId, status: "RUNNING", updatedAt: { lt: staleCutoff } },
+    select: {
+      id: true,
+      workspaceId: true,
+      ticketId: true,
+      userId: true,
+      agentId: true,
+      kind: true,
+      source: true,
+      prompt: true,
+      output: true,
+      status: true,
+      exitCode: true,
+      error: true,
+      worktreePath: true,
+      claudeSessionId: true,
+      workflowStepRunId: true,
+      outcome: true,
+      outcomeReason: true,
+      sourceJobId: true,
+      continuationAttempt: true,
+      startedAt: true,
+      finishedAt: true,
+      createdAt: true,
+      updatedAt: true,
     },
   });
+  const reaped: { ticketId: string; jobStatus: "FAILED"; userId: string | null }[] = [];
+  for (const job of stale) {
+    // Status-CAS: only proceed if THIS request is the one that flips
+    // RUNNING → FAILED. Any other watchdog firing concurrently sees count=0
+    // and is a no-op, which is what makes the per-request loop idempotent
+    // under load. The 90s threshold is intentionally tighter than the
+    // Inngest reaper's 10-minute STALE_AFTER_MS so the user gets feedback
+    // sooner; the CAS prevents that tighter loop from racing itself.
+    const update = await prisma.agentJob.updateMany({
+      where: { id: job.id, status: "RUNNING" },
+      data: {
+        status: "FAILED",
+        error: "agent went stale (no updates within 90s)",
+        finishedAt: new Date(),
+      },
+    });
+    if (update.count === 0) continue;
+    await mirrorJobTerminal({
+      job: { ...job, status: "FAILED" },
+      status: "FAILED",
+      finalOutput: job.output ?? "",
+    }).catch(() => undefined);
+    if (job.ticketId) {
+      reaped.push({ ticketId: job.ticketId, jobStatus: "FAILED", userId: job.userId });
+    }
+  }
 
   // Cancel any orphaned WorkflowRun rows. We close PENDING/RUNNING step
   // rows along with the run itself — the read-time deriveStepCompletion is
@@ -602,24 +659,34 @@ async function reconcileTicketAgentState(
     ]);
   }
 
-  // If the ticket is sitting in `building` with no live agent and a PR
-  // already exists, advance it via the existing end-of-run picker. We
-  // intentionally don't auto-revert when no PR exists — that path needs
-  // user judgement (could be partial work worth resuming) and silently
-  // moving the card would be more surprising than leaving it.
-  try {
-    const ticket = await prisma.ticket.findUnique({
-      where: { id: ticketId },
-      select: { prUrl: true, status: { select: { key: true } } },
-    });
-    if (ticket?.status?.key === "building" && ticket.prUrl) {
-      // decideEndOfRunStatus reads its own session for auth; we already
-      // verified membership in the caller, so just delegate.
-      void byUserId;
-      await decideEndOfRunStatus(ticketId);
-    }
-  } catch {
-    // tolerated — reconcile is best-effort
+  // Phase B — reconcile ticket status exactly once. reconcileBuildingTicket
+  // already knows the right policy (PR → review/blocked, no-PR → blocked),
+  // so we delegate instead of recomputing here. The old "leave in building
+  // if no PR" carve-out is gone: in this product surface a ticket sitting
+  // on Running with a dead agent is more surprising than one that moved to
+  // Blocked, which at least invites a human to look.
+  const seen = new Set<string>();
+  for (const r of reaped) {
+    if (seen.has(r.ticketId)) continue;
+    seen.add(r.ticketId);
+    await reconcileBuildingTicket({
+      ticketId: r.ticketId,
+      byUserId: r.userId ?? byUserId,
+      jobStatus: r.jobStatus,
+    }).catch(() => undefined);
+  }
+
+  // Even if no jobs were reaped this call (e.g. the previous watchdog already
+  // marked them FAILED but didn't have the new reconcile path), the ticket
+  // could still be stranded in `building`. Run one belt-and-suspenders
+  // reconcile for the current ticket so historical strandings self-heal on
+  // the next workflow read.
+  if (!seen.has(ticketId)) {
+    await reconcileBuildingTicket({
+      ticketId,
+      byUserId,
+      jobStatus: lastJob?.status === "FAILED" ? "FAILED" : null,
+    }).catch(() => undefined);
   }
 
   return { live: false };
