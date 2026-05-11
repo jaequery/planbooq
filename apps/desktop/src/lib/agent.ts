@@ -1,11 +1,97 @@
-import { BrowserWindow, ipcMain } from "electron";
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { createWriteStream, type WriteStream } from "node:fs";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import { BrowserWindow, ipcMain } from "electron";
 import log from "electron-log/main";
 import { writeAttachmentsToWorktree } from "./files";
-import { WorktreeNameError, formatWorktreeName } from "./worktree-name";
+import { formatWorktreeName, WorktreeNameError } from "./worktree-name";
+
+// =============================================================================
+// Per-session wire log
+//
+// Writes every stdout/stderr line, every heartbeat fire, and every lifecycle
+// event for a given session to ~/.planbooq/agent-logs/<sessionId>.log. The
+// file is the source of truth when a session freezes — wire events written
+// in real time as they come off claude's stdout, so the timestamp on the last
+// line tells us exactly when claude went silent and what it was doing.
+//
+// Fire-and-forget: a write failure logs to electron-log and is swallowed.
+// The agent session must never break because logging hiccuped.
+// =============================================================================
+
+const AGENT_LOG_DIR = path.join(os.homedir(), ".planbooq", "agent-logs");
+const logStreams = new Map<string, WriteStream>();
+
+async function ensureLogDir(): Promise<void> {
+  try {
+    await fs.mkdir(AGENT_LOG_DIR, { recursive: true });
+  } catch (err) {
+    log.warn("agent-log.mkdir.failed", err);
+  }
+}
+
+function logPathFor(sessionId: string): string {
+  return path.join(AGENT_LOG_DIR, `${sessionId}.log`);
+}
+
+function openLogStream(sessionId: string): WriteStream | null {
+  const cached = logStreams.get(sessionId);
+  if (cached) return cached;
+  try {
+    const stream = createWriteStream(logPathFor(sessionId), { flags: "a" });
+    stream.on("error", (err) =>
+      log.warn("agent-log.stream.error", { sessionId, err: err.message }),
+    );
+    logStreams.set(sessionId, stream);
+    return stream;
+  } catch (err) {
+    log.warn("agent-log.open.failed", {
+      sessionId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
+function logLine(
+  sessionId: string,
+  kind: string,
+  payload?: Record<string, unknown> | string,
+): void {
+  const stream = openLogStream(sessionId);
+  if (!stream) return;
+  const ts = new Date().toISOString();
+  let line: string;
+  if (typeof payload === "string") {
+    // Inline content, preserve as-is but strip trailing newlines so the file
+    // stays one-record-per-line.
+    line = `${ts}\t${kind}\t${payload.replace(/\n+$/, "")}\n`;
+  } else if (payload) {
+    line = `${ts}\t${kind}\t${JSON.stringify(payload)}\n`;
+  } else {
+    line = `${ts}\t${kind}\n`;
+  }
+  // write returns false when the buffer is full — we don't backpressure
+  // because logging stalling the bridge is worse than dropping log lines.
+  stream.write(line);
+}
+
+function closeLogStream(sessionId: string): void {
+  const stream = logStreams.get(sessionId);
+  if (!stream) return;
+  logStreams.delete(sessionId);
+  try {
+    stream.end();
+  } catch {}
+}
+
+// Ensure the dir exists at module load — most spawn calls will fire before
+// we'd otherwise create it lazily on first write, which avoids a missed
+// initial line if mkdir is slow.
+void ensureLogDir();
 
 type Session = {
   proc: ChildProcess;
@@ -48,6 +134,7 @@ function startHeartbeat(session: Session, sessionId: string): void {
     // Fire-and-forget. Server route returns immediately for heartbeat-only
     // PATCH; failures (network blip, auth expiry) are non-fatal — the reaper
     // will catch the row if heartbeats truly stop.
+    const startedAt = Date.now();
     void fetch(url, {
       method: "PATCH",
       headers: {
@@ -55,19 +142,32 @@ function startHeartbeat(session: Session, sessionId: string): void {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ heartbeat: true }),
-    }).catch((err) => {
-      log.warn("planbooq.heartbeat.failed", {
-        sessionId,
-        jobId,
-        error: err instanceof Error ? err.message : String(err),
+    })
+      .then((res) => {
+        logLine(sessionId, "heartbeat", {
+          jobId,
+          ok: res.ok,
+          status: res.status,
+          ms: Date.now() - startedAt,
+        });
+      })
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.warn("planbooq.heartbeat.failed", { sessionId, jobId, error: msg });
+        logLine(sessionId, "heartbeat", {
+          jobId,
+          ok: false,
+          error: msg,
+          ms: Date.now() - startedAt,
+        });
       });
-    });
   };
   // First tick immediately to close the window between session start and
   // the first scheduled tick (otherwise updatedAt could go stale before any
   // heartbeat lands).
   tick();
   session.heartbeatTimer = setInterval(tick, HEARTBEAT_MS);
+  logLine(sessionId, "heartbeat-start", { jobId, intervalMs: HEARTBEAT_MS });
 }
 
 function attachHeartbeatTarget(
@@ -81,6 +181,9 @@ function attachHeartbeatTarget(
   s.jobId = jobId;
   s.apiBaseUrl = apiBaseUrl;
   s.apiToken = apiToken;
+  // Token redacted in the log — the apiBaseUrl is plenty to correlate
+  // heartbeat targets when reading the file.
+  logLine(sessionId, "attach", { jobId, apiBaseUrl });
   startHeartbeat(s, sessionId);
 }
 
@@ -90,7 +193,7 @@ function emit(payload: Record<string, unknown>): void {
 }
 
 function isSafeBranch(s: string): boolean {
-  return /^[A-Za-z0-9._/\-]{1,200}$/.test(s) && !s.includes("..");
+  return /^[A-Za-z0-9._/-]{1,200}$/.test(s) && !s.includes("..");
 }
 
 type TicketContext = {
@@ -351,7 +454,10 @@ function runOnce(
 }
 
 function lastNonEmptyLine(s: string): string {
-  const lines = s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = s
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
   return lines[lines.length - 1] ?? "";
 }
 
@@ -365,7 +471,12 @@ async function pathExists(p: string): Promise<boolean> {
 }
 
 async function branchExists(repoPath: string, branch: string, sessionId: string): Promise<boolean> {
-  const r = await runOnce("git", ["rev-parse", "--verify", `refs/heads/${branch}`], repoPath, sessionId);
+  const r = await runOnce(
+    "git",
+    ["rev-parse", "--verify", `refs/heads/${branch}`],
+    repoPath,
+    sessionId,
+  );
   return r.code === 0;
 }
 
@@ -402,6 +513,13 @@ function spawnClaude(
     env,
     stdio: ["pipe", "pipe", "pipe"],
   });
+  logLine(sessionId, "spawn", {
+    cwd,
+    args,
+    pid: proc.pid,
+    resume: opts.resumeId ?? null,
+    ticketId: opts.ticket?.ticketId ?? null,
+  });
 
   let buffer = "";
   proc.stdout?.on("data", (b: Buffer) => {
@@ -410,20 +528,29 @@ function spawnClaude(
     buffer = lines.pop() ?? "";
     for (const line of lines) {
       if (!line.trim()) continue;
+      // Log the raw wire line BEFORE emitting to the renderer. This is the
+      // record we read when a session freezes: timestamps on consecutive
+      // stdout lines tell us where the gap is.
+      logLine(sessionId, "stdout", line);
       emit({ type: "agent", sessionId, line });
     }
   });
-  proc.stderr?.on("data", (b: Buffer) =>
-    emit({ type: "stderr", sessionId, line: b.toString() }),
-  );
+  proc.stderr?.on("data", (b: Buffer) => {
+    const s = b.toString();
+    logLine(sessionId, "stderr", s);
+    emit({ type: "stderr", sessionId, line: s });
+  });
   proc.on("error", (err) => {
     log.error("claude spawn error", err);
+    logLine(sessionId, "spawn-error", { error: err.message });
     emit({ type: "stderr", sessionId, line: `[spawn error] ${err.message}\n` });
   });
   proc.on("exit", (code) => {
     const s = sessions.get(sessionId);
     if (s) clearHeartbeat(s);
     sessions.delete(sessionId);
+    logLine(sessionId, "exit", { code: code ?? 0 });
+    closeLogStream(sessionId);
     emit({ type: "exit", sessionId, code: code ?? 0 });
   });
   return proc;
@@ -455,8 +582,7 @@ export function registerAgentIpc(): void {
       if (!input.ticket?.identifier) {
         return {
           ok: false,
-          error:
-            "missing ticket.identifier — worktree name requires [project].[ticket#] format",
+          error: "missing ticket.identifier — worktree name requires [project].[ticket#] format",
         };
       }
       let wtName: string;
@@ -501,7 +627,11 @@ export function registerAgentIpc(): void {
           sessionId,
         );
       } else {
-        emit({ type: "stderr", sessionId, line: `$ git worktree add -b ${input.branch} ${wtPath}\n` });
+        emit({
+          type: "stderr",
+          sessionId,
+          line: `$ git worktree add -b ${input.branch} ${wtPath}\n`,
+        });
         result = await runOnce(
           "git",
           ["worktree", "add", "-b", input.branch, wtPath],
@@ -559,7 +689,12 @@ export function registerAgentIpc(): void {
         heartbeatTimer: null,
       });
       if (input.jobId && input.ticket?.apiBaseUrl && input.ticket?.apiToken) {
-        attachHeartbeatTarget(sessionId, input.jobId, input.ticket.apiBaseUrl, input.ticket.apiToken);
+        attachHeartbeatTarget(
+          sessionId,
+          input.jobId,
+          input.ticket.apiBaseUrl,
+          input.ticket.apiToken,
+        );
       }
       const preamble =
         "Before doing anything else, read `PLANBOOQ.md` in the worktree root — it contains the ticket context, the `./.planbooq/pbq` CLI, and the exact shipping/error flow you must follow. Apply its rules for the entire session.\n\n";
@@ -600,7 +735,12 @@ export function registerAgentIpc(): void {
         heartbeatTimer: null,
       });
       if (input.jobId && input.ticket?.apiBaseUrl && input.ticket?.apiToken) {
-        attachHeartbeatTarget(sessionId, input.jobId, input.ticket.apiBaseUrl, input.ticket.apiToken);
+        attachHeartbeatTarget(
+          sessionId,
+          input.jobId,
+          input.ticket.apiBaseUrl,
+          input.ticket.apiToken,
+        );
       }
       proc.stdin?.write(userMessage(input.message));
       return { ok: true, sessionId };
@@ -620,6 +760,7 @@ export function registerAgentIpc(): void {
   ipcMain.handle("planbooq:agent:stop", async (_, input: { sessionId: string }) => {
     const s = sessions.get(input.sessionId);
     if (!s) return { ok: false, error: "session not found" };
+    logLine(input.sessionId, "stop", { source: "user" });
     clearHeartbeat(s);
     s.proc.kill();
     sessions.delete(input.sessionId);
