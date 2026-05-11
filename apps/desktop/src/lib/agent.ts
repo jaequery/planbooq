@@ -668,10 +668,13 @@ export function registerAgentIpc(): void {
           error: `broker unavailable: ${err instanceof Error ? err.message : String(err)}`,
         };
       }
-      const r = await callBroker<OneshotRequest, OneshotResponse>("POST", "/oneshot", {
-        prompt: input.prompt,
-        timeoutMs: input.timeoutMs,
-      });
+      const brokerTimeoutMs = Math.max(1000, Math.min(60_000, input.timeoutMs ?? 20_000));
+      const r = await callBroker<OneshotRequest, OneshotResponse>(
+        "POST",
+        "/oneshot",
+        { prompt: input.prompt, timeoutMs: brokerTimeoutMs },
+        brokerTimeoutMs + 5_000,
+      );
       if (r.ok) return { ok: true, text: r.text };
       return { ok: false, error: r.error };
     },

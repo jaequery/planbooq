@@ -965,21 +965,29 @@ function DesktopPanel({
     return () => io.disconnect();
   }, [messages.length > 0]);
 
-  // Sticky-bottom: scroll the sentinel into view on first hydration (so
-  // opening a ticket lands on the newest message) and again on subsequent
-  // message changes ONLY if the user is currently at the bottom. Anyone
-  // who has scrolled up to read history is left alone.
+  // Sticky-bottom: pin the inner chat scroller to its bottom on first
+  // hydration (so opening a ticket lands on the newest message) and again
+  // on subsequent message changes ONLY if the user is already at the
+  // bottom. Anyone who has scrolled up to read history is left alone.
+  //
+  // We set `scroller.scrollTop = scroller.scrollHeight` directly instead
+  // of calling `bottomRef.current.scrollIntoView()` — scrollIntoView is
+  // recursive and would also scroll the dialog's outer overflow-y-auto
+  // container, causing the whole popup to visibly jump.
   useEffect(() => {
     if (messages.length === 0) return;
-    const bottom = bottomRef.current;
-    if (!bottom) return;
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const pin = () => {
+      scroller.scrollTop = scroller.scrollHeight;
+    };
     if (!didInitialScrollRef.current) {
       didInitialScrollRef.current = true;
       atBottomRef.current = true;
-      bottom.scrollIntoView({ block: "end" });
+      pin();
       return;
     }
-    if (atBottomRef.current) bottom.scrollIntoView({ block: "end" });
+    if (atBottomRef.current) pin();
   }, [messages]);
 
   const pickRepo = async (): Promise<string | null> => {

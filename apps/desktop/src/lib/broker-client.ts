@@ -41,7 +41,12 @@ function brokerEntryPath(): string {
 
 type HttpResult = { status: number; body: string };
 
-function httpRequest(method: string, urlPath: string, body?: unknown): Promise<HttpResult> {
+function httpRequest(
+  method: string,
+  urlPath: string,
+  body?: unknown,
+  timeoutMs = 10_000,
+): Promise<HttpResult> {
   return new Promise((resolve, reject) => {
     const payload = body === undefined ? undefined : JSON.stringify(body);
     const req = http.request(
@@ -57,7 +62,7 @@ function httpRequest(method: string, urlPath: string, body?: unknown): Promise<H
                 "Content-Type": "application/json",
                 "Content-Length": Buffer.byteLength(payload),
               },
-        timeout: 10_000,
+        timeout: timeoutMs,
       },
       (res) => {
         let buf = "";
@@ -82,8 +87,9 @@ export async function callBroker<TReq, TRes>(
   method: "GET" | "POST",
   path: string,
   body?: TReq,
+  timeoutMs?: number,
 ): Promise<TRes> {
-  const r = await httpRequest(method, path, body);
+  const r = await httpRequest(method, path, body, timeoutMs);
   if (r.body.length === 0) return {} as TRes;
   return JSON.parse(r.body) as TRes;
 }
