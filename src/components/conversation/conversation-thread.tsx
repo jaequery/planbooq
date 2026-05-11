@@ -8,6 +8,7 @@ import {
   CircleDot,
   CirclePlay,
   GitCommit,
+  GitMerge,
   GitPullRequest,
   Hammer,
   Loader2,
@@ -22,6 +23,7 @@ type ServerActivity = {
   id: string;
   kind:
     | "PR_CREATED"
+    | "PR_MERGED"
     | "COMMIT_PUSHED"
     | "TEST_RUN"
     | "BUILD"
@@ -343,6 +345,31 @@ function ActivityRow({ activity }: { activity: ServerActivity }): React.ReactEle
           <span className="inline-flex items-center gap-1.5">
             <GitPullRequest className="size-3.5 shrink-0 text-purple-500" />
             <span>PR opened</span>
+            {url && (
+              <a
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[11px] text-blue-500 hover:underline"
+              >
+                {url.replace(/^https:\/\/github\.com\//, "")}
+              </a>
+            )}
+          </span>
+        );
+      }
+      case "PR_MERGED": {
+        const url = typeof p.prUrl === "string" ? p.prUrl : null;
+        const number = typeof p.prNumber === "number" ? p.prNumber : null;
+        const title = typeof p.prTitle === "string" ? p.prTitle : null;
+        const actor = typeof p.prActor === "string" ? p.prActor : null;
+        const label = number !== null ? `PR #${number} merged` : "PR merged";
+        return (
+          <span className="inline-flex items-center gap-1.5">
+            <GitMerge className="size-3.5 shrink-0 text-purple-500" />
+            <span>{label}</span>
+            {title && <span className="text-muted-foreground">— {title}</span>}
+            {actor && <span className="text-muted-foreground">by {actor}</span>}
             {url && (
               <a
                 href={url}

@@ -214,6 +214,7 @@ export type AblyChannelEvent =
         id: string;
         kind:
           | "PR_CREATED"
+          | "PR_MERGED"
           | "COMMIT_PUSHED"
           | "TEST_RUN"
           | "BUILD"

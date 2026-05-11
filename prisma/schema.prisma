@@ -406,6 +406,7 @@ model AgentJob {
 
 enum TicketActivityKind {
   PR_CREATED
+  PR_MERGED
   COMMIT_PUSHED
   TEST_RUN
   BUILD
