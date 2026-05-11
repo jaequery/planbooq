@@ -604,11 +604,11 @@ function DesktopPanel({
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  // Chat list uses flex-direction: column-reverse so the browser natively
-  // anchors scroll position to the visual bottom. No manual scroll-to-bottom,
-  // no ResizeObserver re-pinning, no sticky-bottom tracking — those caused
-  // visible up/down jumps every time a bubble's height changed (spinner
-  // appearing, Markdown settling, "thinking…" toggling).
+  // Chat list has zero auto-scroll. Manual sticky-bottom (#141) and
+  // flex-col-reverse (this PR, earlier attempt) both produced visible
+  // up/down jumps whenever a bubble's height changed mid-stream. The user
+  // controls the viewport — nothing in this component sets scrollTop,
+  // observes resize, or scrolls anything into view.
   const currentAssistantId = useRef<string | null>(null);
   const jobIdRef = useRef<string | null>(null);
   jobIdRef.current = jobId;
@@ -1261,19 +1261,13 @@ function DesktopPanel({
     <div className="flex flex-col gap-3">
       {messages.length > 0 && (
         <div className="max-h-[420px] overflow-y-auto rounded-lg bg-muted/20 p-3">
-          {/* column-reverse keeps the view pinned to the visual bottom natively
-              as content grows/shrinks. Render messages in reverse so the newest
-              (first DOM child) sits at the visual bottom. */}
-          <div className="flex flex-col-reverse gap-3">
-            {busy &&
-              (messages.length === 0 || messages[messages.length - 1]!.role !== "assistant") && (
-                <div className="self-start text-[12px] text-muted-foreground">
-                  <Loader2 className="inline size-3 animate-spin" /> thinking…
-                </div>
-              )}
-            {messages.map((_unused, idx) => {
-              const i = messages.length - 1 - idx;
-              const m = messages[i]!;
+          {/* No programmatic scrolling anywhere in this component. column-reverse
+              was tried as a "pin to bottom" trick but still produced visible
+              jumps whenever a bubble's height changed (spinner toggling,
+              Markdown settling, "thinking…" appearing). User controls the
+              viewport — we render top-down and never touch scrollTop. */}
+          <div className="flex flex-col gap-3">
+            {messages.map((m, i) => {
               const isStreaming = busy && m.role === "assistant" && i === messages.length - 1;
               const isAssistant = m.role === "assistant";
               const displayText = m.text;
@@ -1310,6 +1304,12 @@ function DesktopPanel({
                 </div>
               );
             })}
+            {busy &&
+              (messages.length === 0 || messages[messages.length - 1]!.role !== "assistant") && (
+                <div className="self-start text-[12px] text-muted-foreground">
+                  <Loader2 className="inline size-3 animate-spin" /> thinking…
+                </div>
+              )}
           </div>
         </div>
       )}
