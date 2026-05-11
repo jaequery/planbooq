@@ -132,6 +132,19 @@ const STALE_AFTER_MS = 10 * 60 * 1000;
 // reconcile itself bails when a sibling job is still RUNNING, so this is
 // safe to run frequently against every building ticket.
 const STRANDED_BUILDING_AFTER_MS = 3 * 60 * 1000;
+// Targeted stale window for the "building ticket + RUNNING-but-dead AgentJob"
+// case. Tighter than the global STALE_AFTER_MS because we only act on rows
+// whose ticket is visibly stuck in `building` (Running) — the cost of false-
+// positive killing a legitimately slow Claude run is bounded to a SYSTEM
+// "no output" message and a Blocked move that the user can override.
+//
+// Combined with bridge heartbeats (agent-session-manager.ts pings every 30s
+// while a session is alive), `updatedAt` reflects bridge-confirmed liveness,
+// not just wire-event activity — so a job past this window is genuinely
+// dead, not mid-tool-call. This is Planbooq's distributed analog of
+// Paperclip's process.kill(pid, 0) reaper
+// (~/Sites/paperclip/server/src/services/heartbeat.ts:6406).
+const STRANDED_RUNNING_AFTER_MS = 2 * 60 * 1000;
 
 export const reapStaleAgentJobs = inngest.createFunction(
   {
@@ -140,8 +153,9 @@ export const reapStaleAgentJobs = inngest.createFunction(
     triggers: [{ cron: "*/2 * * * *" }],
   },
   async ({ step }) => {
-    const cutoff = new Date(Date.now() - STALE_AFTER_MS);
-    const strandedCutoff = new Date(Date.now() - STRANDED_BUILDING_AFTER_MS);
+    const now = Date.now();
+    const cutoff = new Date(now - STALE_AFTER_MS);
+    const strandedCutoff = new Date(now - STRANDED_BUILDING_AFTER_MS);
 
     const stale = await step.run("find-stale", () =>
       prisma.agentJob.findMany({
@@ -230,6 +244,109 @@ export const reapStaleAgentJobs = inngest.createFunction(
             });
           });
         }
+      });
+    }
+
+    // Targeted pass: tickets in `building` whose latest AgentJob is
+    // *still RUNNING* but hasn't been touched in STRANDED_RUNNING_AFTER_MS.
+    // The global stale sweep above uses a 10-minute threshold to protect
+    // legitimately slow Claude operations across all job kinds; here we
+    // narrow to "building" tickets and use a tighter 2-min window because:
+    //   1) The user can SEE these tickets stuck on "Running" — UX cost is
+    //      visible and ongoing.
+    //   2) Bridge heartbeats (agent-session-manager.ts) bump `updatedAt`
+    //      every 30s while a session is alive, so a 2-min gap means the
+    //      bridge stopped reporting, not that Claude is mid-tool-call.
+    //   3) Status-CAS in the reaping loop makes this idempotent under
+    //      concurrent runs (parallel cron / parallel workflow watchdog).
+    const strandedRunningCutoff = new Date(now - STRANDED_RUNNING_AFTER_MS);
+    const strandedRunningJobs = await step.run("find-stranded-running", () =>
+      prisma.agentJob.findMany({
+        where: {
+          status: "RUNNING",
+          updatedAt: { lt: strandedRunningCutoff },
+          ticket: { status: { key: "building" }, archivedAt: null },
+        },
+        select: {
+          id: true,
+          workspaceId: true,
+          ticketId: true,
+          userId: true,
+          agentId: true,
+          kind: true,
+        },
+        take: 200,
+      }),
+    );
+
+    if (strandedRunningJobs.length > 0) {
+      await step.run("reap-stranded-running", async () => {
+        const reapedTicketIds = new Set<string>();
+        for (const job of strandedRunningJobs) {
+          // Status-CAS: a parallel reaper / workflow watchdog may have
+          // already flipped this job; skip if we didn't win the race.
+          const update = await prisma.agentJob.updateMany({
+            where: { id: job.id, status: "RUNNING" },
+            data: {
+              status: "FAILED",
+              finishedAt: new Date(),
+              error: `stranded: no heartbeat for >${Math.round(STRANDED_RUNNING_AFTER_MS / 60000)}m (server watchdog)`,
+            },
+          });
+          if (update.count === 0) continue;
+
+          await mirrorJobTerminal({
+            job: {
+              id: job.id,
+              workspaceId: job.workspaceId,
+              ticketId: job.ticketId,
+              agentId: job.agentId,
+              kind: job.kind,
+            } as Parameters<typeof mirrorJobTerminal>[0]["job"],
+            status: "FAILED",
+            finalOutput: "",
+          }).catch((error: unknown) => {
+            logger.warn("agent.job.mirror.failed", {
+              jobId: job.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+
+          if (job.workspaceId) {
+            await publishWorkspaceEvent(job.workspaceId, {
+              name: "agent.delta",
+              jobId: job.id,
+              ticketId: job.ticketId,
+              workspaceId: job.workspaceId,
+              kind: (job.kind as "PLAN" | "EXECUTE" | "CHAT") ?? "CHAT",
+              status: "FAILED",
+            });
+          }
+
+          if (job.ticketId) reapedTicketIds.add(job.ticketId);
+        }
+
+        // Reconcile each affected ticket once (no liveSibling tripping —
+        // all stale RUNNING siblings for the same ticket got marked FAILED
+        // in the loop above).
+        for (const ticketId of reapedTicketIds) {
+          const sourceJob = strandedRunningJobs.find((j) => j.ticketId === ticketId);
+          await reconcileBuildingTicket({
+            ticketId,
+            byUserId: sourceJob?.userId ?? null,
+            jobStatus: "FAILED",
+          }).catch((error: unknown) => {
+            logger.warn("ticket.reconcile.failed", {
+              ticketId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        }
+
+        logger.warn("agent.job.stranded-running.reaped", {
+          count: strandedRunningJobs.length,
+          ticketCount: reapedTicketIds.size,
+        });
       });
     }
 

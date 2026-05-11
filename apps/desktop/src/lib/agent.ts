@@ -7,9 +7,82 @@ import log from "electron-log/main";
 import { writeAttachmentsToWorktree } from "./files";
 import { WorktreeNameError, formatWorktreeName } from "./worktree-name";
 
-type Session = { proc: ChildProcess; cwd: string };
+type Session = {
+  proc: ChildProcess;
+  cwd: string;
+  // Heartbeat plumbing — populated when the renderer hands us a jobId at
+  // start/resume time. Main is the authoritative spawner of the `claude`
+  // child, so it owns the liveness signal: every HEARTBEAT_MS we PATCH the
+  // server, bumping AgentJob.updatedAt to confirm "the bridge has eyes on a
+  // live child." If main quits (Electron app closed) or the child exits,
+  // heartbeats stop and the server reaper marks the row FAILED.
+  // Mirrors Paperclip's spawn-side liveness check
+  // (~/Sites/paperclip/server/src/services/heartbeat.ts:6406), adapted to
+  // Planbooq's two-process architecture: we can't process.kill(pid,0) from
+  // the Next.js server because it doesn't own the handle, so the owner
+  // (Electron main) pushes the signal instead.
+  jobId: string | null;
+  apiBaseUrl: string | null;
+  apiToken: string | null;
+  heartbeatTimer: ReturnType<typeof setInterval> | null;
+};
 
 const sessions = new Map<string, Session>();
+
+const HEARTBEAT_MS = 30_000;
+
+function clearHeartbeat(session: Session): void {
+  if (session.heartbeatTimer) {
+    clearInterval(session.heartbeatTimer);
+    session.heartbeatTimer = null;
+  }
+}
+
+function startHeartbeat(session: Session, sessionId: string): void {
+  if (!session.jobId || !session.apiBaseUrl || !session.apiToken) return;
+  clearHeartbeat(session);
+  const jobId = session.jobId;
+  const url = `${session.apiBaseUrl}/api/desktop-jobs/${jobId}`;
+  const token = session.apiToken;
+  const tick = (): void => {
+    // Fire-and-forget. Server route returns immediately for heartbeat-only
+    // PATCH; failures (network blip, auth expiry) are non-fatal — the reaper
+    // will catch the row if heartbeats truly stop.
+    void fetch(url, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ heartbeat: true }),
+    }).catch((err) => {
+      log.warn("planbooq.heartbeat.failed", {
+        sessionId,
+        jobId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  };
+  // First tick immediately to close the window between session start and
+  // the first scheduled tick (otherwise updatedAt could go stale before any
+  // heartbeat lands).
+  tick();
+  session.heartbeatTimer = setInterval(tick, HEARTBEAT_MS);
+}
+
+function attachHeartbeatTarget(
+  sessionId: string,
+  jobId: string,
+  apiBaseUrl: string,
+  apiToken: string,
+): void {
+  const s = sessions.get(sessionId);
+  if (!s) return;
+  s.jobId = jobId;
+  s.apiBaseUrl = apiBaseUrl;
+  s.apiToken = apiToken;
+  startHeartbeat(s, sessionId);
+}
 
 function emit(payload: Record<string, unknown>): void {
   for (const w of BrowserWindow.getAllWindows())
@@ -348,6 +421,8 @@ function spawnClaude(
     emit({ type: "stderr", sessionId, line: `[spawn error] ${err.message}\n` });
   });
   proc.on("exit", (code) => {
+    const s = sessions.get(sessionId);
+    if (s) clearHeartbeat(s);
     sessions.delete(sessionId);
     emit({ type: "exit", sessionId, code: code ?? 0 });
   });
@@ -365,6 +440,10 @@ export function registerAgentIpc(): void {
         firstMessage: string;
         ticket?: TicketContext;
         attachments?: Array<{ id: string; ext: string; base64: string }>;
+        // Optional AgentJob id created server-side BEFORE this call. When
+        // present (plus ticket.apiBaseUrl + apiToken), main starts pushing
+        // heartbeats so the server's reaper knows the bridge is alive.
+        jobId?: string;
       },
     ) => {
       if (!input?.repoPath || !input?.branch || !input?.firstMessage)
@@ -471,7 +550,17 @@ export function registerAgentIpc(): void {
       }
 
       const proc = spawnClaude(wtPath, sessionId, { ticket: input.ticket });
-      sessions.set(sessionId, { proc, cwd: wtPath });
+      sessions.set(sessionId, {
+        proc,
+        cwd: wtPath,
+        jobId: null,
+        apiBaseUrl: null,
+        apiToken: null,
+        heartbeatTimer: null,
+      });
+      if (input.jobId && input.ticket?.apiBaseUrl && input.ticket?.apiToken) {
+        attachHeartbeatTarget(sessionId, input.jobId, input.ticket.apiBaseUrl, input.ticket.apiToken);
+      }
       const preamble =
         "Before doing anything else, read `PLANBOOQ.md` in the worktree root — it contains the ticket context, the `./.planbooq/pbq` CLI, and the exact shipping/error flow you must follow. Apply its rules for the entire session.\n\n";
       proc.stdin?.write(userMessage(preamble + firstMessage));
@@ -489,6 +578,7 @@ export function registerAgentIpc(): void {
         claudeSessionId: string;
         message: string;
         ticket?: TicketContext;
+        jobId?: string;
       },
     ) => {
       if (!input?.worktreePath || !input?.claudeSessionId || !input?.message)
@@ -501,7 +591,17 @@ export function registerAgentIpc(): void {
         resumeId: input.claudeSessionId,
         ticket: input.ticket,
       });
-      sessions.set(sessionId, { proc, cwd: input.worktreePath });
+      sessions.set(sessionId, {
+        proc,
+        cwd: input.worktreePath,
+        jobId: null,
+        apiBaseUrl: null,
+        apiToken: null,
+        heartbeatTimer: null,
+      });
+      if (input.jobId && input.ticket?.apiBaseUrl && input.ticket?.apiToken) {
+        attachHeartbeatTarget(sessionId, input.jobId, input.ticket.apiBaseUrl, input.ticket.apiToken);
+      }
       proc.stdin?.write(userMessage(input.message));
       return { ok: true, sessionId };
     },
@@ -520,6 +620,7 @@ export function registerAgentIpc(): void {
   ipcMain.handle("planbooq:agent:stop", async (_, input: { sessionId: string }) => {
     const s = sessions.get(input.sessionId);
     if (!s) return { ok: false, error: "session not found" };
+    clearHeartbeat(s);
     s.proc.kill();
     sessions.delete(input.sessionId);
     return { ok: true };

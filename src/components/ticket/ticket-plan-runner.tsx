@@ -216,6 +216,7 @@ export function TicketPlanRunner({
             branch,
             firstMessage: prompt,
             ticket: ticketCtx,
+            jobId: jobIdLocal ?? undefined,
           });
           if (!res.ok || !res.sessionId) {
             toast.error(res.error ?? "Failed to start session");

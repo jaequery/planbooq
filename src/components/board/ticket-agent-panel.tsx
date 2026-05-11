@@ -1044,6 +1044,7 @@ function DesktopPanel({
             claudeSessionId: claudeSessionId!,
             message: resumeMessage,
             ticket: ticketCtx,
+            jobId: jobIdRef.current ?? undefined,
           });
           if (!res.ok || !res.sessionId) {
             toast.error(res.error ?? "Resume failed");
@@ -1104,6 +1105,7 @@ function DesktopPanel({
           firstMessage: rewrittenSeed,
           ticket: ticketCtx,
           attachments: seedAttachments,
+          jobId: jobIdRef.current ?? undefined,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

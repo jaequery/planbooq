@@ -345,6 +345,17 @@ enum AgentJobStatus {
   CANCELED
 }
 
+// Outcome classification, distinct from process-level `status`. Inspired by
+// Paperclip's `livenessState`: a run can `SUCCEED` at the process level but
+// still produce no useful output (`EMPTY_RESPONSE`). Surfacing that separately
+// lets the chat thread show an actionable "no output" marker instead of an
+// empty conversation that looks like data loss.
+enum AgentJobOutcome {
+  COMPLETED       // produced text and/or tool use
+  EMPTY_RESPONSE  // exited cleanly but emitted nothing visible
+  FAILED          // crashed, canceled, or errored
+}
+
 model AgentJob {
   id          String         @id @default(cuid())
   agentId     String?
@@ -361,6 +372,17 @@ model AgentJob {
   worktreePath     String?
   claudeSessionId  String?
   workflowStepRunId String?
+  // Outcome classification populated by the mirror layer on terminal status.
+  // Nullable so historical rows aren't lying about a classification they
+  // never went through.
+  outcome     AgentJobOutcome?
+  outcomeReason String? @db.Text
+  // Continuation lineage. `sourceJobId` points at the prior run in a
+  // (future) auto-retry chain; `continuationAttempt` is 0 for user-initiated
+  // runs and increments per retry. Wired now so the data model is ready when
+  // we add a Retry affordance.
+  sourceJobId String?
+  continuationAttempt Int @default(0)
   startedAt   DateTime?
   finishedAt  DateTime?
   createdAt   DateTime       @default(now())
@@ -368,6 +390,8 @@ model AgentJob {
 
   agent  Agent? @relation(fields: [agentId], references: [id], onDelete: Cascade)
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sourceJob   AgentJob?  @relation("AgentJobContinuation", fields: [sourceJobId], references: [id], onDelete: SetNull)
+  continuations AgentJob[] @relation("AgentJobContinuation")
   activities TicketActivity[]
   messages   Message[]
 
@@ -376,6 +400,8 @@ model AgentJob {
   @@index([ticketId, status])
   @@index([ticketId, kind, createdAt])
   @@index([workflowStepRunId])
+  @@index([sourceJobId])
+  @@index([ticketId, outcome])
 }
 
 enum TicketActivityKind {

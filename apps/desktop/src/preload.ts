@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld("planbooq", {
       apiToken: string;
     };
     attachments?: Array<{ id: string; ext: string; base64: string }>;
+    jobId?: string;
   }) => ipcRenderer.invoke("planbooq:agent:start", input),
   agentResume: (input: {
     worktreePath: string;
@@ -37,6 +38,7 @@ contextBridge.exposeInMainWorld("planbooq", {
       apiBaseUrl: string;
       apiToken: string;
     };
+    jobId?: string;
   }) => ipcRenderer.invoke("planbooq:agent:resume", input),
   agentSend: (input: { sessionId: string; message: string }) =>
     ipcRenderer.invoke("planbooq:agent:send", input),
