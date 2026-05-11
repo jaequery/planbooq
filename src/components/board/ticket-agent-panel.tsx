@@ -604,24 +604,35 @@ function DesktopPanel({
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  // Sticky-bottom chat scroll using a bottom sentinel + IntersectionObserver.
-  // This is the standard pattern in Slack/Linear/Discord:
-  //   - On first hydration, scroll the sentinel into view (one-shot).
-  //   - The observer tracks whether the sentinel is visible — i.e. whether
-  //     the user is at the bottom of the chat.
-  //   - When messages change, scroll the sentinel into view ONLY if the
-  //     user is already at the bottom. If they've scrolled up to read
-  //     history, leave their position alone.
-  // IntersectionObserver fires asynchronously after layout settles, so
-  // height changes (loader spinner toggling, Markdown layout, "thinking…"
-  // appearing) don't race with the scroll calculation the way the
-  // useLayoutEffect + ResizeObserver approach did.
+  // Sticky-bottom chat scroll driven by a synchronous scroll listener.
+  //   - On first hydration, snap the scroller to the bottom (one-shot).
+  //   - On every user scroll, recompute whether they're at the bottom from
+  //     scrollTop / scrollHeight and mirror it into React state for the
+  //     "Jump to latest" button.
+  //   - When messages change, recompute the same metric SYNCHRONOUSLY inside
+  //     the effect and pin only if the user is currently at the bottom.
+  //
+  // We previously used an IntersectionObserver on a 1px sentinel for this,
+  // but the IO callback fires async on the next animation frame. If a
+  // streaming chunk arrived in the same tick the user started scrolling up,
+  // the pin effect ran against a stale `atBottomRef = true` and yanked them
+  // back to the bottom. Reading the live scroll position kills that race.
   const scrollerRef = useRef<HTMLDivElement | null>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  // 32px tolerance: forgives the height of a freshly-rendered message and
+  // sub-pixel scroll offsets some browsers report, while staying tight
+  // enough that a deliberate scroll-up (mouse wheel ~ 100px+) is detected
+  // immediately.
+  const AT_BOTTOM_THRESHOLD = 32;
   const atBottomRef = useRef(true);
-  // Mirror of atBottomRef into React state, so the "Jump to latest" button
+  // The pin itself fires a scroll event. Without this guard the listener
+  // would briefly observe scrollTop > scrollHeight - clientHeight on the
+  // way down (some browsers clamp lazily), flicker `atBottom` to false,
+  // and re-render the Jump button for one frame.
+  const isPinningRef = useRef(false);
+  // Mirror of atBottomRef into React state so the "Jump to latest" button
   // can render based on it. The ref stays the source of truth for the
-  // synchronous read inside the scroll-pin effect (state would be stale).
+  // synchronous read inside the pin effect (state would be stale within
+  // the same render).
   const [atBottom, setAtBottom] = useState(true);
   const didInitialScrollRef = useRef(false);
   const currentAssistantId = useRef<string | null>(null);
@@ -961,25 +972,27 @@ function DesktopPanel({
     });
   }, []);
 
-  // Watch a bottom sentinel via IntersectionObserver to track "is the user
-  // at the bottom of the chat?". Runs only when the scroll container exists
-  // (messages.length > 0); the observer is torn down and rebuilt if the
-  // sentinel/scroller pair gets recreated.
+  // Track "is the user at the bottom of the chat?" via a passive scroll
+  // listener that runs synchronously on the user's scroll events. The pin
+  // effect below reads the same scroll position synchronously, so there is
+  // no async observer racing the React commit.
   useEffect(() => {
     const scroller = scrollerRef.current;
-    const bottom = bottomRef.current;
-    if (!scroller || !bottom || typeof IntersectionObserver === "undefined") return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (!entry) return;
-        atBottomRef.current = entry.isIntersecting;
-        setAtBottom(entry.isIntersecting);
-      },
-      { root: scroller, threshold: 0 },
-    );
-    io.observe(bottom);
-    return () => io.disconnect();
+    if (!scroller) return;
+    const update = (): void => {
+      if (isPinningRef.current) return;
+      const next =
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= AT_BOTTOM_THRESHOLD;
+      if (atBottomRef.current !== next) {
+        atBottomRef.current = next;
+        setAtBottom(next);
+      }
+    };
+    scroller.addEventListener("scroll", update, { passive: true });
+    // Seed state once on attach so it reflects reality even if no scroll
+    // event fires (e.g. content shorter than the viewport).
+    update();
+    return () => scroller.removeEventListener("scroll", update);
   }, [messages.length > 0]);
 
   // Sticky-bottom: pin the inner chat scroller to its bottom on first
@@ -988,24 +1001,43 @@ function DesktopPanel({
   // bottom. Anyone who has scrolled up to read history is left alone.
   //
   // We set `scroller.scrollTop = scroller.scrollHeight` directly instead
-  // of calling `bottomRef.current.scrollIntoView()` — scrollIntoView is
-  // recursive and would also scroll the dialog's outer overflow-y-auto
-  // container, causing the whole popup to visibly jump.
+  // of calling `scrollIntoView()` — scrollIntoView is recursive and would
+  // also scroll the dialog's outer overflow-y-auto container, causing the
+  // whole popup to visibly jump.
+  //
+  // The at-bottom check is recomputed synchronously here from the live
+  // scroll position. Reading `atBottomRef` alone would race with the user
+  // scrolling up in the same tick a streaming chunk arrived.
   useEffect(() => {
     if (messages.length === 0) return;
     const scroller = scrollerRef.current;
     if (!scroller) return;
-    const pin = () => {
+    const pin = (): void => {
+      isPinningRef.current = true;
       scroller.scrollTop = scroller.scrollHeight;
       atBottomRef.current = true;
       setAtBottom(true);
+      // Release the suppression on the next frame, after the browser has
+      // emitted the scroll event for our programmatic write.
+      requestAnimationFrame(() => {
+        isPinningRef.current = false;
+      });
     };
     if (!didInitialScrollRef.current) {
       didInitialScrollRef.current = true;
       pin();
       return;
     }
-    if (atBottomRef.current) pin();
+    const nearBottom =
+      scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= AT_BOTTOM_THRESHOLD;
+    if (nearBottom) pin();
+    else if (atBottomRef.current) {
+      // The user scrolled away but the ref hasn't been refreshed yet (e.g.
+      // a chunk landed before the scroll listener fired). Reconcile the
+      // mirror so the Jump button surfaces immediately.
+      atBottomRef.current = false;
+      setAtBottom(false);
+    }
   }, [messages]);
 
   const pickRepo = async (): Promise<string | null> => {
@@ -1388,8 +1420,6 @@ function DesktopPanel({
                     <Loader2 className="inline size-3 animate-spin" /> thinking…
                   </div>
                 )}
-              {/* Sentinel for IntersectionObserver-based sticky-bottom. */}
-              <div ref={bottomRef} aria-hidden className="h-px" />
             </div>
           </div>
           {!atBottom && (
@@ -1398,9 +1428,13 @@ function DesktopPanel({
               onClick={() => {
                 const scroller = scrollerRef.current;
                 if (!scroller) return;
+                isPinningRef.current = true;
                 scroller.scrollTop = scroller.scrollHeight;
                 atBottomRef.current = true;
                 setAtBottom(true);
+                requestAnimationFrame(() => {
+                  isPinningRef.current = false;
+                });
               }}
               aria-label="Jump to most recent message"
               className="absolute right-3 bottom-3 inline-flex items-center gap-1 rounded-full border border-border bg-background/95 px-3 py-1 text-[11px] text-foreground shadow-md backdrop-blur transition-colors hover:bg-muted"
