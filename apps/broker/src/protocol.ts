@@ -33,6 +33,10 @@ export type StartRequest = {
 export type ResumeRequest = {
   worktreePath: string;
   claudeSessionId: string;
+  // First user message of the resumed chat. Main has already prepended the
+  // PLANBOOQ.md preamble (same line as `StartRequest.firstMessage`) so the
+  // resumed Claude session rereads the ticket context at the top of the
+  // new chat.
   message: string;
   ticket?: TicketContext;
   jobId?: string;

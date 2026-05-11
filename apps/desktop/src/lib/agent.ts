@@ -154,6 +154,14 @@ async function findWorktreeForBranch(
   return null;
 }
 
+// Every cold-start user message — fresh worktree (`agentStart`) or resumed
+// session in an existing worktree (`agentResume`) — is prefixed with this
+// line so Claude rereads PLANBOOQ.md at the top of every new chat. Warm
+// continuations via `agentSend` do not get it: Claude already has the file
+// in context from earlier in the same broker session.
+const PLANBOOQ_PREAMBLE =
+  "Before doing anything else, read `PLANBOOQ.md` in the worktree root — it contains the ticket context, the `./.planbooq/pbq` CLI, and the exact shipping/error flow you must follow. Apply its rules for the entire session.\n\n";
+
 async function writeTicketContext(wtPath: string, ctx: TicketContext): Promise<void> {
   const dir = path.join(wtPath, ".planbooq");
   await fs.mkdir(dir, { recursive: true });
@@ -515,9 +523,6 @@ export function registerAgentIpc(): void {
         }
       }
 
-      const preamble =
-        "Before doing anything else, read `PLANBOOQ.md` in the worktree root — it contains the ticket context, the `./.planbooq/pbq` CLI, and the exact shipping/error flow you must follow. Apply its rules for the entire session.\n\n";
-
       try {
         await ensureBrokerRunning();
         startSseRelay();
@@ -530,7 +535,7 @@ export function registerAgentIpc(): void {
 
       const r = await callBroker<StartRequest, StartResponse>("POST", "/start", {
         worktreePath: wtPath,
-        firstMessage: preamble + firstMessage,
+        firstMessage: PLANBOOQ_PREAMBLE + firstMessage,
         ticket: input.ticket,
         jobId: input.jobId,
         workflowStepRunId: input.workflowStepRunId,
@@ -558,6 +563,18 @@ export function registerAgentIpc(): void {
       if (!(await isGitRepo(input.worktreePath)))
         return { ok: false, error: "worktree no longer exists" };
 
+      // Refresh PLANBOOQ.md (and the `./.planbooq/pbq` wrapper) so a resumed
+      // chat reads the current ticket title/identifier/shipping rules rather
+      // than whatever snapshot was written when the worktree was first set
+      // up. Best-effort: a stale file is strictly better than aborting.
+      if (input.ticket) {
+        try {
+          await writeTicketContext(input.worktreePath, input.ticket);
+        } catch (err) {
+          log.warn("writeTicketContext (resume) failed", err);
+        }
+      }
+
       try {
         await ensureBrokerRunning();
         startSseRelay();
@@ -571,7 +588,7 @@ export function registerAgentIpc(): void {
       const r = await callBroker<ResumeRequest, ResumeResponse>("POST", "/resume", {
         worktreePath: input.worktreePath,
         claudeSessionId: input.claudeSessionId,
-        message: input.message,
+        message: PLANBOOQ_PREAMBLE + input.message,
         ticket: input.ticket,
         jobId: input.jobId,
         workflowStepRunId: input.workflowStepRunId,
