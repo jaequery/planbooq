@@ -34,6 +34,8 @@ export default function Home(): React.ReactElement {
 
         <HowItWorks />
 
+        <SoCalMap />
+
         <BottomCTA />
       </div>
     </main>
@@ -47,6 +49,60 @@ function Wordmark(): React.ReactElement {
         Planbooq
       </div>
     </div>
+  );
+}
+
+type Marker = { name: string; x: number; y: number };
+
+const SOCAL_MARKERS: ReadonlyArray<Marker> = [
+  { name: "Santa Barbara", x: 8, y: 22 },
+  { name: "Burbank", x: 30, y: 32 },
+  { name: "Pasadena", x: 36, y: 34 },
+  { name: "Santa Monica", x: 24, y: 42 },
+  { name: "Los Angeles", x: 32, y: 42 },
+  { name: "Long Beach", x: 34, y: 54 },
+  { name: "Anaheim", x: 42, y: 50 },
+  { name: "Irvine", x: 48, y: 58 },
+  { name: "San Diego", x: 68, y: 80 },
+];
+
+const PULSE_PERIOD_S = 2.4;
+
+function SoCalMap(): React.ReactElement {
+  const step = PULSE_PERIOD_S / SOCAL_MARKERS.length;
+  return (
+    <section className="mt-28 sm:mt-36">
+      <div className="flex flex-col items-center text-center">
+        <h2 className="font-[var(--font-landing-serif)] text-4xl tracking-tight sm:text-5xl">
+          Built across <em className="italic text-[#3A5A40]">Southern California</em>
+        </h2>
+        <p className="mt-5 max-w-md text-balance text-[15px] leading-relaxed text-[#1F2A1E]/70">
+          Designed and shipped from the coast.
+        </p>
+      </div>
+      <div
+        role="img"
+        aria-label="Southern California map with city markers"
+        className="relative mx-auto mt-14 aspect-[5/3] w-full max-w-3xl overflow-hidden rounded-[28px] border border-[#1F2A1E]/10 bg-[#EDE2C6] shadow-[0_1px_0_rgba(0,0,0,0.04),0_18px_44px_-22px_rgba(31,42,30,0.25)]"
+      >
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(201,215,203,0.45)_0%,transparent_55%),radial-gradient(circle_at_70%_75%,rgba(201,215,203,0.35)_0%,transparent_50%)]"
+        />
+        {SOCAL_MARKERS.map((m, i) => (
+          <span
+            key={m.name}
+            className="socal-marker absolute size-2 rounded-full bg-[#2F4A2C]"
+            style={{
+              left: `${m.x}%`,
+              top: `${m.y}%`,
+              animationDelay: `${(i * step).toFixed(3)}s`,
+            }}
+            title={m.name}
+          />
+        ))}
+      </div>
+    </section>
   );
 }
 
