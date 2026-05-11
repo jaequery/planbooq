@@ -101,8 +101,19 @@ export function TicketWorkflowPanel({
       const next = !!detail.running;
       // Falling edge: agent just went idle. If we have a pending step, that
       // step finished — log completion and, if more queued, start the next.
+      console.log(
+        "[wf-debug] agent-busy event running=",
+        next,
+        "wasRunning=",
+        wasRunningRef.current,
+        "queue=",
+        [...pendingStepsRef.current],
+      );
       if (wasRunningRef.current && !next && pendingStepsRef.current.length > 0) {
         const finished = pendingStepsRef.current.shift()!;
+        console.log("[wf-debug] falling edge — shift", finished, "remaining=", [
+          ...pendingStepsRef.current,
+        ]);
         void logWorkflowActivity({
           ticketId,
           text: `Workflow step completed: ${finished}`,
@@ -115,6 +126,7 @@ export function TicketWorkflowPanel({
         const upcoming = pendingStepsRef.current[0];
         setCurrentStep(upcoming ?? null);
         if (upcoming) {
+          console.log("[wf-debug] logging started:", upcoming);
           void logWorkflowActivity({
             ticketId,
             text: `Workflow step started: ${upcoming}`,
@@ -328,6 +340,7 @@ export function TicketWorkflowPanel({
   }
 
   function logStarted(name: string) {
+    console.log("[wf-debug] logStarted called for:", name);
     void logWorkflowActivity({
       ticketId,
       text: `Workflow step started: ${name}`,
@@ -358,6 +371,12 @@ export function TicketWorkflowPanel({
   }
 
   function runAll() {
+    console.log(
+      "[wf-debug] runAll() called. queue before=",
+      [...pendingStepsRef.current],
+      "wf.steps=",
+      wf?.steps.map((s) => ({ name: s.name, enabled: s.enabled })),
+    );
     if (!wf) return;
     const enabled = wf.steps.filter((s) => s.enabled);
     if (enabled.length === 0) {
