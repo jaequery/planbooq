@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, GitMerge, GitPullRequest, Wand2, X } from "lucide-react";
+import { ChevronDown, GitMerge, GitPullRequest, Pencil, Wand2, X } from "lucide-react";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
@@ -659,81 +659,105 @@ export function TicketDetailDialog({
                 {(() => {
                   const planText = ticket.plan ?? "";
                   const isLong = planText.length > 280 || planText.split("\n").length > 6;
-                  const showCollapsed = !isEditingPlan && !!ticket.plan && isLong && !isPlanExpanded;
+                  const showCollapsed =
+                    !isEditingPlan && !!ticket.plan && isLong && !isPlanExpanded;
                   return (
                     <>
                       <div className="mb-2 flex items-center justify-between">
                         <div className="text-[11px] font-semibold uppercase tracking-wide text-foreground/80">
                           Plan
                         </div>
-                        {!isEditingPlan && ticket.plan && isLong ? (
-                          <button
-                            type="button"
-                            onClick={() => setIsPlanExpanded((v) => !v)}
-                            aria-expanded={isPlanExpanded}
-                            aria-label={isPlanExpanded ? "Collapse plan" : "Expand plan"}
-                            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
-                          >
-                            <span>{isPlanExpanded ? "Show less" : "Show more"}</span>
-                            <ChevronDown
-                              className={cn(
-                                "h-3.5 w-3.5 transition-transform",
-                                isPlanExpanded && "rotate-180",
-                              )}
-                            />
-                          </button>
+                        {!isEditingPlan ? (
+                          <div className="flex items-center gap-1">
+                            {ticket.plan && isLong ? (
+                              <button
+                                type="button"
+                                onClick={() => setIsPlanExpanded((v) => !v)}
+                                aria-expanded={isPlanExpanded}
+                                aria-label={isPlanExpanded ? "Collapse plan" : "Expand plan"}
+                                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                              >
+                                <span>{isPlanExpanded ? "Show less" : "Show more"}</span>
+                                <ChevronDown
+                                  className={cn(
+                                    "h-3.5 w-3.5 transition-transform",
+                                    isPlanExpanded && "rotate-180",
+                                  )}
+                                />
+                              </button>
+                            ) : null}
+                            {ticket.plan ? (
+                              <button
+                                type="button"
+                                onClick={() => setIsEditingPlan(true)}
+                                aria-label="Edit plan"
+                                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                <span>Edit</span>
+                              </button>
+                            ) : null}
+                          </div>
                         ) : null}
                       </div>
                       {isEditingPlan ? (
-                  <ImageUploadTextarea
-                    workspaceId={ticket.workspaceId}
-                    autoFocus
-                    value={planDraft}
-                    onChange={(e) => setPlanDraft(e.target.value)}
-                    onBlur={commitPlan}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") {
-                        e.preventDefault();
-                        cancelPlan();
-                      } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                        e.preventDefault();
-                        commitPlan();
-                      }
-                    }}
-                    onUploadError={(message) => toast.error(`Image upload failed: ${message}`)}
-                    placeholder="Add or paste an implementation plan…"
-                    aria-label="Ticket plan"
-                    className="min-h-[140px] border-0 bg-transparent p-0 text-[14px] leading-relaxed shadow-none focus-visible:ring-0 md:text-[14px]"
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingPlan(true)}
-                    className={cn(
-                      "block w-full text-left",
-                      !ticket.plan && "text-muted-foreground hover:text-foreground/80",
-                    )}
-                    aria-label="Edit plan"
-                  >
-                    {ticket.plan ? (
-                      <div
-                        className={cn(
-                          "relative",
-                          showCollapsed && "max-h-[7.5rem] overflow-hidden",
-                        )}
-                      >
-                        <Markdown className="text-[14px] text-foreground">{ticket.plan}</Markdown>
-                        {showCollapsed ? (
-                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-muted/90 to-transparent" />
-                        ) : null}
-                      </div>
-                    ) : (
-                      <span className="text-[14px]">
-                        No plan yet. Generate one or write your own…
-                      </span>
-                    )}
-                  </button>
-                )}
+                        <ImageUploadTextarea
+                          workspaceId={ticket.workspaceId}
+                          autoFocus
+                          value={planDraft}
+                          onChange={(e) => setPlanDraft(e.target.value)}
+                          onBlur={commitPlan}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelPlan();
+                            } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                              e.preventDefault();
+                              commitPlan();
+                            }
+                          }}
+                          onUploadError={(message) =>
+                            toast.error(`Image upload failed: ${message}`)
+                          }
+                          placeholder="Add or paste an implementation plan…"
+                          aria-label="Ticket plan"
+                          className="min-h-[140px] border-0 bg-transparent p-0 text-[14px] leading-relaxed shadow-none focus-visible:ring-0 md:text-[14px]"
+                        />
+                      ) : ticket.plan ? (
+                        showCollapsed ? (
+                          <button
+                            type="button"
+                            onClick={() => setIsPlanExpanded(true)}
+                            aria-label="Expand plan"
+                            aria-expanded={false}
+                            className="block w-full text-left"
+                          >
+                            <div className="relative max-h-[7.5rem] overflow-hidden">
+                              <Markdown className="text-[14px] text-foreground">
+                                {ticket.plan}
+                              </Markdown>
+                              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-muted/90 to-transparent" />
+                            </div>
+                          </button>
+                        ) : (
+                          <div className="block w-full text-left">
+                            <Markdown className="text-[14px] text-foreground">
+                              {ticket.plan}
+                            </Markdown>
+                          </div>
+                        )
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingPlan(true)}
+                          className="block w-full text-left text-muted-foreground hover:text-foreground/80"
+                          aria-label="Add plan"
+                        >
+                          <span className="text-[14px]">
+                            No plan yet. Generate one or write your own…
+                          </span>
+                        </button>
+                      )}
                     </>
                   );
                 })()}
@@ -842,7 +866,11 @@ export function TicketDetailDialog({
                               {badge.label}
                             </span>
                           </div>
-                          <div className={showMergeButton ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 gap-2"}>
+                          <div
+                            className={
+                              showMergeButton ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 gap-2"
+                            }
+                          >
                             <Button
                               type="button"
                               variant="outline"
@@ -1008,10 +1036,7 @@ function PullRequestHistory({
       </span>
       <ul className="flex flex-col gap-1">
         {pullRequests.map((pr) => (
-          <li
-            key={pr.id}
-            className="flex items-center justify-between gap-2 text-[12px]"
-          >
+          <li key={pr.id} className="flex items-center justify-between gap-2 text-[12px]">
             <a
               href={pr.url}
               target="_blank"
