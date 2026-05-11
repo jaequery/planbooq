@@ -130,6 +130,39 @@ export async function POST(
     }
   }
 
+  // Cold-resume recovery: caller dispatched a workflow-prefixed prompt but
+  // forgot to thread the stepRunId (legacy renderer, race after refresh,
+  // bridge replay after a crash). Match the prefix's step name against a
+  // PENDING step on an active WorkflowRun for this ticket. Without this,
+  // the agent runs the step but `persistTurnEnd`'s FK chain never resolves
+  // and the step never closes — exactly the timeline bug we just fixed for
+  // the activity rows, but on the data side.
+  //
+  // Strictly opt-in: requires the `[Workflow N/M: <name>]` prefix to be
+  // present in the prompt the caller already chose to send. We do NOT
+  // auto-prefix arbitrary user chat — that would silently absorb unrelated
+  // follow-up messages into the next workflow step.
+  if (!stepRunId) {
+    const prefixMatch = parsed.data.prompt
+      .slice(0, 200)
+      .match(/^\[Workflow(?:\s+\d+\/\d+)?:\s*([^\]]+)\]/);
+    const wantName = prefixMatch?.[1]?.trim() ?? null;
+    if (wantName) {
+      const candidate = await prisma.workflowStepRun
+        .findFirst({
+          where: {
+            name: wantName,
+            status: { in: ["PENDING", "RUNNING"] },
+            run: { ticketId: ticket.id, status: "RUNNING" },
+          },
+          orderBy: { createdAt: "asc" },
+          select: { id: true },
+        })
+        .catch(() => null);
+      if (candidate) stepRunId = candidate.id;
+    }
+  }
+
   const startedAt = new Date();
   const job = await prisma.agentJob.create({
     data: {

@@ -18,7 +18,6 @@ import {
   triggerWorkflowRun,
   updateTicketStep,
 } from "@/actions/workflow";
-import { getDesktopBridge } from "@/lib/use-is-desktop";
 import { StepList } from "@/components/settings/workflows-client";
 import {
   DropdownMenu,
@@ -27,6 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getDesktopBridge } from "@/lib/use-is-desktop";
 
 type WorkflowState = {
   hasOverride: boolean;
@@ -72,15 +72,9 @@ export function TicketWorkflowPanel({
   const [running, setRunning] = useState<boolean>(false);
   const [pending, start] = useTransition();
   // FIFO of step names we've dispatched but not yet logged as completed.
+  // This is now a pure UI hint; authoritative progression lives in
+  // WorkflowStepRun rows server-side and the Inngest chaining function.
   const pendingStepsRef = useRef<string[]>([]);
-  // Timestamp of the last local push to pendingStepsRef. refresh() uses this
-  // to avoid the race where an in-flight server fetch returns agentLive=false
-  // moments AFTER runAll() pushed steps but BEFORE the server has registered
-  // the new AgentJob row — without the grace window, refresh() would wipe
-  // the freshly-queued steps and the falling edge handler would later find
-  // an empty queue, never logging "completed" or advancing the UI.
-  const pendingStepsTouchedAtRef = useRef<number>(0);
-  const REFRESH_CLEAR_GRACE_MS = 8_000;
   const wasRunningRef = useRef<boolean>(false);
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
   const [currentStep, setCurrentStep] = useState<string | null>(null);
@@ -182,15 +176,18 @@ export function TicketWorkflowPanel({
       if (!a.agentLive) {
         if (wasRunningRef.current) wasRunningRef.current = false;
         setRunning(false);
-        // Only clear the local queue if it hasn't been touched recently.
-        // A fresh runAll() may have just populated it while the server has
-        // yet to learn about the new AgentJob; clearing here would wipe
-        // legitimate pending work.
-        const sinceTouched = Date.now() - pendingStepsTouchedAtRef.current;
-        if (sinceTouched > REFRESH_CLEAR_GRACE_MS) {
-          setCurrentStep(null);
-          pendingStepsRef.current = [];
-        }
+        // NOTE: previously this also wiped pendingStepsRef / currentStep
+        // after an 8s grace window. That was destructive — once a workflow
+        // step's prompt was in flight on a slow Claude turn (or the
+        // dialog re-mounted on a tab refresh), the next falling-edge
+        // handler would short-circuit on an empty queue and silently drop
+        // "Step completed: X" + "Step started: X+1" rows. The activity
+        // gap on PLAN-RIF1NL was a direct symptom. Server-side
+        // WorkflowRun/WorkflowStepRun rows are now the authoritative
+        // progression record; the local queue is purely a UI hint and
+        // is allowed to stay populated even across `agentLive=false`
+        // dips. The dialog-re-mount case clears state via the unmount
+        // effect that already nulls the refs at line ~71-73.
       }
     }
     onReady?.();
@@ -298,9 +295,7 @@ export function TicketWorkflowPanel({
         const ctxRes = await getWorkflowStatusContext(ticketId);
         if (!ctxRes.ok || ctxRes.statuses.length === 0) return;
         const allowed = ctxRes.statuses.map((s) => s.key);
-        const stepsBlock = steps
-          .map((s, i) => `${i + 1}. ${s.prompt.slice(0, 400)}`)
-          .join("\n");
+        const stepsBlock = steps.map((s, i) => `${i + 1}. ${s.prompt.slice(0, 400)}`).join("\n");
         const askPrompt = [
           "You are picking the kanban status for a ticket whose workflow steps are about to run via Claude Code.",
           "Common status keys: backlog (not started), todo (planned), building (in progress), blocked (agent is awaiting user input/decision), review (PR open), completed (done).",
@@ -356,7 +351,6 @@ export function TicketWorkflowPanel({
     }
     const queueWasEmpty = pendingStepsRef.current.length === 0;
     pendingStepsRef.current.push(step.name);
-    pendingStepsTouchedAtRef.current = Date.now();
     setCompletedSteps((prev) => {
       if (!prev.has(step.name)) return prev;
       const out = new Set(prev);
@@ -367,9 +361,7 @@ export function TicketWorkflowPanel({
       setCurrentStep(step.name);
       logStarted(step.name);
     }
-    void runPrompts([
-      { name: step.name, prompt: `[Workflow: ${step.name}]\n${step.prompt}` },
-    ]);
+    void runPrompts([{ name: step.name, prompt: `[Workflow: ${step.name}]\n${step.prompt}` }]);
     toast.success(`Running step: ${step.name}`);
   }
 
@@ -394,7 +386,6 @@ export function TicketWorkflowPanel({
         .join("\n");
       const queueWasEmpty = pendingStepsRef.current.length === 0;
       pendingStepsRef.current.push(defaultName);
-      pendingStepsTouchedAtRef.current = Date.now();
       if (queueWasEmpty) {
         setCurrentStep(defaultName);
         logStarted(defaultName);
@@ -409,7 +400,6 @@ export function TicketWorkflowPanel({
     }));
     const queueWasEmpty = pendingStepsRef.current.length === 0;
     for (const s of enabled) pendingStepsRef.current.push(s.name);
-    pendingStepsTouchedAtRef.current = Date.now();
     setCompletedSteps((prev) => {
       if (prev.size === 0) return prev;
       const out = new Set(prev);
@@ -432,9 +422,7 @@ export function TicketWorkflowPanel({
   }
 
   const enabledCount = wf.steps.filter((s) => s.enabled).length;
-  const currentLabel = wf.hasOverride
-    ? "Workflow"
-    : wf.templateName || "Choose workflow";
+  const currentLabel = wf.hasOverride ? "Workflow" : wf.templateName || "Choose workflow";
 
   function pickTemplate(templateId: string) {
     start(async () => {
@@ -542,9 +530,7 @@ export function TicketWorkflowPanel({
     if (!wf) return;
     let nextIds = orderedStepIds;
     if (!wf.hasOverride) {
-      const indexes = orderedStepIds.map((sid) =>
-        wf.steps.findIndex((s) => s.id === sid),
-      );
+      const indexes = orderedStepIds.map((sid) => wf.steps.findIndex((s) => s.id === sid));
       if (indexes.some((i) => i < 0)) return;
       const promoted = await promoteToOverride();
       if (!promoted) return;
@@ -587,9 +573,7 @@ export function TicketWorkflowPanel({
             {templates.map((t) => (
               <DropdownMenuItem key={t.id} onSelect={() => pickTemplate(t.id)}>
                 <span className="truncate">{t.name}</span>
-                <span className="ml-auto text-[11px] text-muted-foreground">
-                  {t.stepCount}
-                </span>
+                <span className="ml-auto text-[11px] text-muted-foreground">{t.stepCount}</span>
               </DropdownMenuItem>
             ))}
             {wf.hasOverride && (

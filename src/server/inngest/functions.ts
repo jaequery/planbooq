@@ -529,6 +529,116 @@ async function resolveVercelPreviewUrl(opts: {
   return null;
 }
 
+/**
+ * Server-driven workflow step chaining. Triggered after a WorkflowStepRun
+ * transitions to SUCCEEDED (see mirror-agent-job.ts `persistTurnEnd`).
+ * Replaces the renderer-side `pendingStepsRef` queue, which evaporated on
+ * dialog close / refresh / app crash — leaving steps like "Score it from A-F"
+ * permanently unfired even though the workflow had more pending steps.
+ *
+ * Contract:
+ *   - Loads the WorkflowRun for the just-completed step.
+ *   - If the run is RUNNING and has another PENDING step (lowest position),
+ *     publishes a `ticket.workflow.dispatch` Ably event carrying that step's
+ *     prompt. The agent panel consumes it and dispatches via the existing
+ *     desktop bridge `send()` path.
+ *   - If no PENDING steps remain and all steps are SUCCEEDED, transitions
+ *     the WorkflowRun to SUCCEEDED. A FAILED step short-circuits chaining
+ *     (we don't auto-dispatch past a failure — the user should look first).
+ *   - Does NOT transition the next step to RUNNING. That happens when the
+ *     desktop-jobs POST route actually creates the AgentJob. Keeping the
+ *     step in PENDING means a missed dispatch (bridge offline, dialog
+ *     closed) is recoverable: the next user turn auto-binds to the
+ *     PENDING step via the desktop-jobs auto-bind path.
+ */
+type WorkflowStepCompletedPayload = {
+  stepRunId: string;
+  workspaceId: string;
+  ticketId: string;
+};
+
+export const workflowStepCompleted = inngest.createFunction(
+  {
+    id: "workflow-step-completed",
+    name: "Workflow step completed — chain next",
+    triggers: [{ event: "workflow/step.completed" }],
+    // Single dispatch per step. Inngest retries are safe — publishing the
+    // same dispatch event twice is dedup'd client-side by stepRunId latch.
+    concurrency: { limit: 8 },
+  },
+  async ({ event, step }) => {
+    const data = event.data as WorkflowStepCompletedPayload;
+
+    const finished = await step.run("load-finished-step", () =>
+      prisma.workflowStepRun.findUnique({
+        where: { id: data.stepRunId },
+        select: {
+          id: true,
+          runId: true,
+          status: true,
+          position: true,
+          run: {
+            select: {
+              id: true,
+              status: true,
+              ticketId: true,
+              workspaceId: true,
+              stepRuns: {
+                select: { id: true, name: true, prompt: true, position: true, status: true },
+                orderBy: { position: "asc" },
+              },
+            },
+          },
+        },
+      }),
+    );
+    if (!finished) return { ok: false, reason: "step_not_found" };
+    if (finished.status !== "SUCCEEDED") return { ok: false, reason: "step_not_succeeded" };
+    if (finished.run.status !== "RUNNING") return { ok: false, reason: "run_not_running" };
+
+    const siblings = finished.run.stepRuns;
+    const anyFailed = siblings.some((s) => s.status === "FAILED" || s.status === "CANCELED");
+    if (anyFailed) {
+      // A prior step failed — don't auto-dispatch downstream. Surface the
+      // failure via the existing FAILED row + STEP_COMPLETED activity and
+      // let the user decide.
+      return { ok: true, reason: "halted-by-prior-failure" };
+    }
+
+    const next = siblings.find((s) => s.status === "PENDING");
+
+    if (!next) {
+      const allDone = siblings.every((s) => s.status === "SUCCEEDED");
+      if (allDone) {
+        await step.run("close-workflow-run", async () => {
+          await prisma.workflowRun.updateMany({
+            where: { id: finished.runId, status: "RUNNING" },
+            data: { status: "SUCCEEDED", finishedAt: new Date() },
+          });
+        });
+        return { ok: true, reason: "workflow-completed" };
+      }
+      return { ok: true, reason: "no-pending-step" };
+    }
+
+    await step.run("publish-dispatch", () =>
+      publishWorkspaceEvent(finished.run.workspaceId, {
+        name: "ticket.workflow.dispatch",
+        workspaceId: finished.run.workspaceId,
+        ticketId: finished.run.ticketId,
+        runId: finished.run.id,
+        stepRunId: next.id,
+        stepName: next.name,
+        position: next.position,
+        total: siblings.length,
+        prompt: next.prompt,
+      }),
+    );
+
+    return { ok: true, reason: "dispatched", nextStepRunId: next.id };
+  },
+);
+
 type ScreenshotsRequestedPayload = {
   ticketId: string;
   workspaceId: string;
@@ -724,4 +834,9 @@ export const captureTicketScreenshots = inngest.createFunction(
   },
 );
 
-export const inngestFunctions = [ticketCreated, reapStaleAgentJobs, captureTicketScreenshots];
+export const inngestFunctions = [
+  ticketCreated,
+  reapStaleAgentJobs,
+  workflowStepCompleted,
+  captureTicketScreenshots,
+];

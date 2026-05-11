@@ -648,6 +648,15 @@ function DesktopPanel({
   // AgentJob.workflowStepRunId = stepRunId — wiring chat to step by FK
   // instead of regex-matching the prompt prefix later.
   const workflowQueueRef = useRef<Array<{ stepRunId: string | null; prompt: string }>>([]);
+  // Per-stepRunId dedup latch for server-driven `ticket.workflow.dispatch`
+  // events. Inngest retries and Ably reconnect-replay can deliver the same
+  // dispatch twice; without this latch we'd send the prompt to Claude twice
+  // and end up with two AgentJobs racing for the same WorkflowStepRun.
+  const dispatchedStepRunIdsRef = useRef<Set<string>>(new Set());
+  // Mirror of `busy` for closures (Ably handler, drain effect) that need the
+  // current value without re-subscribing on every state flip.
+  const busyRef = useRef(false);
+  busyRef.current = busy;
   // Idle watchdog: if no bridge events arrive for IDLE_TIMEOUT_MS while busy,
   // assume the agent stalled (child crashed without flushing `result`, network
   // dropped, unknown event shape) and force the panel out of "thinking…" so
@@ -818,6 +827,25 @@ function DesktopPanel({
   // render the local turn so duplicates from realtime are absorbed.
   const onRealtimeEvent = useCallback(
     (event: AblyChannelEvent) => {
+      if (event.name === "ticket.workflow.dispatch" && event.ticketId === ticketId) {
+        // Server-driven workflow chaining. The Inngest function
+        // `workflow-step-completed` publishes this after a step succeeds and
+        // the run has more PENDING steps. Replaces the renderer-side
+        // pendingStepsRef queue, which evaporated on dialog close / refresh /
+        // crash. Idempotent via dispatchedStepRunIdsRef so Inngest retries
+        // and Ably replay don't double-fire.
+        if (dispatchedStepRunIdsRef.current.has(event.stepRunId)) return;
+        dispatchedStepRunIdsRef.current.add(event.stepRunId);
+        if (busyRef.current || !sendRef.current) {
+          workflowQueueRef.current.push({
+            stepRunId: event.stepRunId,
+            prompt: event.prompt,
+          });
+        } else {
+          void sendRef.current(event.prompt, { workflowStepRunId: event.stepRunId });
+        }
+        return;
+      }
       if (event.name === "message.created" && event.ticketId === ticketId) {
         const next = messageEventToChat(event.message);
         if (!next) return;
@@ -1068,31 +1096,52 @@ function DesktopPanel({
       };
       if (!detail || detail.ticketId !== ticketId || !Array.isArray(detail.steps)) return;
       for (const s of detail.steps) {
+        // Pre-populate the dedup latch for every step we're about to drain
+        // locally. The server-side Inngest chain will ALSO publish a
+        // `ticket.workflow.dispatch` event for steps 2..N once step 1
+        // succeeds. Without seeding the latch here, we'd dispatch each
+        // downstream step twice (once from this local queue drain, once
+        // from the server-driven event). Steps with no stepRunId (legacy
+        // dispatch path) skip the latch — they can't double-fire anyway
+        // because Inngest needs the FK to chain.
+        if (s.stepRunId) dispatchedStepRunIdsRef.current.add(s.stepRunId);
         workflowQueueRef.current.push({
           stepRunId: s.stepRunId ?? null,
           prompt: s.prompt,
         });
       }
       // Kick a drain attempt; further drains happen via the busy effect below.
-      if (!busy && sendRef.current) {
+      if (!busyRef.current && sendRef.current) {
         const next = workflowQueueRef.current.shift();
         if (next) void sendRef.current(next.prompt, { workflowStepRunId: next.stepRunId });
       }
     };
     window.addEventListener("planbooq:workflow-run", onRun);
     return () => window.removeEventListener("planbooq:workflow-run", onRun);
-  }, [ticketId, busy]);
+  }, [ticketId]);
 
-  // Workflow steps no longer auto-chain. When a step finishes, the queue is
-  // intentionally NOT drained — the ticket goes to Blocked and the user must
-  // click Run again to start the next step. This makes "agent done with step,
-  // human reviews, human decides" the explicit contract instead of letting
-  // the agent rubber-stamp itself by saying "Proceeding to Build." mid-turn.
-  // Any prompts left in the queue from a "Run all" click are dropped here.
+  // Drain the workflow queue when the agent goes idle. Two paths populate
+  // the queue:
+  //
+  //   1. `planbooq:workflow-run` (legacy in-tab "Run all" / single Run click).
+  //      The workflow panel pushes ALL enabled step prompts in one shot.
+  //   2. `ticket.workflow.dispatch` (server-driven). Arrives one step at a
+  //      time, but only while a step is in flight — so dispatches received
+  //      mid-turn sit here until the agent finishes the current step.
+  //
+  // Previously this effect WIPED the queue on idle to enforce "human reviews
+  // between steps." That made `Run all` lie (only the first step actually
+  // ran) and lost server-driven dispatches whenever they arrived while busy.
+  // The new contract: progression is governed server-side by WorkflowStepRun
+  // status and the Inngest `workflow-step-completed` function — the local
+  // queue is just a sequencing buffer, not a policy decision.
   useEffect(() => {
     if (busy) return;
     if (workflowQueueRef.current.length === 0) return;
-    workflowQueueRef.current = [];
+    if (!sendRef.current) return;
+    const next = workflowQueueRef.current.shift();
+    if (!next) return;
+    void sendRef.current(next.prompt, { workflowStepRunId: next.stepRunId });
   }, [busy]);
 
   // Broadcast busy/queue state so the workflow panel can reflect "running".

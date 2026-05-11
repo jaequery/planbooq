@@ -234,6 +234,23 @@ export type AblyChannelEvent =
       ticketId: string;
     }
   | {
+      // Server-driven workflow chaining. Published by the Inngest function
+      // `workflow-step-completed` after a WorkflowStepRun transitions to
+      // SUCCEEDED and there's another PENDING step on the same run. The
+      // agent panel consumes this and dispatches the next prompt to the
+      // local Claude Code bridge — replaces the renderer-side pendingSteps
+      // queue, which evaporated on dialog close / refresh / crash.
+      name: "ticket.workflow.dispatch";
+      workspaceId: string;
+      ticketId: string;
+      runId: string;
+      stepRunId: string;
+      stepName: string;
+      position: number;
+      total: number;
+      prompt: string;
+    }
+  | {
       name: "ticket.activity";
       workspaceId: string;
       ticketId: string;

@@ -4,6 +4,7 @@ import type { AgentJob, AgentJobStatus, MessageRole, MessageStatus, Prisma } fro
 import { logger } from "@/lib/logger";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
+import { inngest } from "@/server/inngest/client";
 import {
   classifyAgentJobOutcome,
   emptyResponseMessageBody,
@@ -852,13 +853,14 @@ async function persistTurnEnd(job: AgentJob, outcome: TurnEndOutcome): Promise<v
     stepRunIdToClose = candidate?.id ?? null;
   }
 
+  let stepRunTransitioned = false;
   if (stepRunIdToClose) {
     // Idempotent CAS — only PENDING/RUNNING flip to their terminal state. A
     // re-fire of the same turn-end (e.g. retries from the reaper) doesn't
     // bounce a completed step back, and a step that was already canceled
     // stays canceled.
     const terminalStatus = outcome.kind === "success" ? "SUCCEEDED" : "FAILED";
-    await prisma.workflowStepRun
+    const cas = await prisma.workflowStepRun
       .updateMany({
         where: {
           id: stepRunIdToClose,
@@ -866,7 +868,24 @@ async function persistTurnEnd(job: AgentJob, outcome: TurnEndOutcome): Promise<v
         },
         data: { status: terminalStatus, finishedAt: new Date() },
       })
-      .catch(() => undefined);
+      .catch(() => ({ count: 0 }));
+    stepRunTransitioned = (cas?.count ?? 0) > 0;
+
+    // Backfill stepName from the WorkflowStepRun row when prompt-prefix
+    // matching missed (cold resume, edited prompt). Without this, the
+    // STEP_COMPLETED activity below silently no-ops and the timeline shows
+    // "Step started: X" with no matching completion — the original bug
+    // reported on PLAN-RIF1NL where Issue PR / Score it from A-F never got
+    // completion rows even though the step actually ran.
+    if (!stepName) {
+      const sr = await prisma.workflowStepRun
+        .findUnique({
+          where: { id: stepRunIdToClose },
+          select: { name: true },
+        })
+        .catch(() => null);
+      if (sr?.name) stepName = sr.name;
+    }
   }
 
   if (stepName) {
@@ -922,6 +941,31 @@ async function persistTurnEnd(job: AgentJob, outcome: TurnEndOutcome): Promise<v
           error: err instanceof Error ? err.message : String(err),
         });
       }
+    }
+  }
+
+  // Server-driven workflow chain. Only fire when THIS call is the one that
+  // actually transitioned the step to SUCCEEDED — protects against a retry
+  // of persistTurnEnd (e.g. reaper re-mirror) republishing dispatch events
+  // for an already-progressed run. Failure path is intentionally left for
+  // the user to resolve; auto-chaining past a failure would just compound
+  // the problem.
+  if (stepRunTransitioned && outcome.kind === "success" && stepRunIdToClose) {
+    try {
+      await inngest.send({
+        name: "workflow/step.completed",
+        data: {
+          stepRunId: stepRunIdToClose,
+          workspaceId: job.workspaceId,
+          ticketId: job.ticketId,
+        },
+      });
+    } catch (err) {
+      logger.warn("mirror.workflow-step-completed.send.failed", {
+        jobId: job.id,
+        stepRunId: stepRunIdToClose,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
