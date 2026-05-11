@@ -58,6 +58,7 @@ export function TicketCard({
   const [archiveOpen, setArchiveOpen] = useState(false);
   const ticketStatusKey = statuses.find((s) => s.id === ticket.statusId)?.key;
   const [pendingArchive, startArchiveTransition] = useTransition();
+  const isArchived = ticket.archivedAt != null;
   const {
     attributes,
     listeners,
@@ -71,7 +72,9 @@ export function TicketCard({
   } = useSortable({
     id: ticket.id,
     data: { type: "ticket", statusId: ticket.statusId },
-    disabled: isOverlay,
+    // Archived tickets can't be moved (server rejects the action); disable
+    // drag so users don't see the optimistic move + rollback flash.
+    disabled: isOverlay || isArchived,
   });
   // Insertion-line indicator: dnd-kit's sortable inserts before the hovered
   // card when dragging from below it, and after when dragging from above.
@@ -165,6 +168,7 @@ export function TicketCard({
           isOverlay &&
             "scale-[1.03] rotate-[0.5deg] cursor-grabbing border-border shadow-2xl ring-1 ring-black/10",
           isOptimistic && "animate-pulse opacity-70 pointer-events-none",
+          isArchived && "border-dashed bg-muted/40 opacity-70",
         )}
       >
         {showInsertBefore ? (
@@ -226,11 +230,15 @@ export function TicketCard({
                     <Pencil className="h-4 w-4" />
                     Edit details
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem variant="destructive" onSelect={() => setArchiveOpen(true)}>
-                    <Archive className="h-4 w-4" />
-                    Archive
-                  </DropdownMenuItem>
+                  {isArchived ? null : (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem variant="destructive" onSelect={() => setArchiveOpen(true)}>
+                        <Archive className="h-4 w-4" />
+                        Archive
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -299,6 +307,15 @@ export function TicketCard({
             <Badge variant="outline" className="h-5 rounded-md px-1.5 font-mono text-[12px]">
               {ticket.id.slice(-6).toUpperCase()}
             </Badge>
+            {isArchived ? (
+              <Badge
+                variant="outline"
+                className="h-5 gap-1 rounded-md border-dashed px-1.5 text-[12px] text-muted-foreground"
+              >
+                <Archive className="h-3 w-3" aria-hidden />
+                Archived
+              </Badge>
+            ) : null}
             {ticket.description ? (
               <span className="inline-flex items-center gap-1" title="Has description">
                 <FileText className="h-3 w-3" />
