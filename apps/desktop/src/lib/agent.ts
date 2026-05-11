@@ -111,6 +111,24 @@ type Session = {
   apiBaseUrl: string | null;
   apiToken: string | null;
   heartbeatTimer: ReturnType<typeof setInterval> | null;
+  // Wire-event PATCH plumbing. Main is the spawner that owns the `claude`
+  // child handle, so it's also the only process that can guarantee every
+  // wire line lands on the server — the renderer can unmount mid-session,
+  // miss the first events before registerAgentSession runs, or get cleared
+  // by fast-refresh. We collect stdout/stderr lines here, coalesce them on
+  // a 250ms timer, and PATCH /api/desktop-jobs/:jobId. The renderer keeps
+  // its IPC subscription for live UI rendering — it's no longer in the
+  // critical path for persistence.
+  appendBuffer: string;
+  appendTimer: ReturnType<typeof setTimeout> | null;
+  // Set true by `planbooq:agent:stop` BEFORE the kill so the imminent
+  // `exit` event is classified as CANCELED (user intent) rather than
+  // FAILED (crash/OOM). Mirrors the renderer's previous `stoppedByUser`
+  // set — now lives on the session because main owns the exit PATCH.
+  userStopped: boolean;
+  // Set once main has dispatched a terminal PATCH for this session so
+  // any straggling exit/error from the child doesn't re-fire it.
+  terminalSent: boolean;
 };
 
 const sessions = new Map<string, Session>();
@@ -185,6 +203,131 @@ function attachHeartbeatTarget(
   // heartbeat targets when reading the file.
   logLine(sessionId, "attach", { jobId, apiBaseUrl });
   startHeartbeat(s, sessionId);
+}
+
+// =============================================================================
+// Wire-event PATCH plumbing (spawner-side persistence).
+//
+// Every stdout/stderr line and the exit event get PATCHed to
+// /api/desktop-jobs/:jobId from THIS process — main, the owner of the
+// `claude` child handle. Lines are coalesced on a 250ms timer so a chatty
+// child doesn't issue 10+ PATCH/sec. The exit PATCH is atomic: pending
+// buffer + exit marker + terminal status + exitCode in a single request,
+// so the row never lands in a "saw exit but not status" intermediate.
+// =============================================================================
+
+type WireEvent =
+  | { kind: "agent"; line: string; at?: number }
+  | { kind: "stderr"; line: string; at?: number }
+  | { kind: "exit"; code: number; at?: number }
+  | { kind: "user"; text: string; at?: number };
+
+const APPEND_FLUSH_MS = 250;
+
+function serializeWire(ev: WireEvent): string {
+  // Stamp on serialize. Renderer falls back to Date.now() if absent,
+  // which loses per-line timing on reload — stamping here gives accurate
+  // timestamps for any future re-hydration of the conversation.
+  const stamped = ev.at ? ev : { ...ev, at: Date.now() };
+  return `${JSON.stringify(stamped)}\n`;
+}
+
+function sendPatch(
+  session: Session,
+  sessionId: string,
+  body: Record<string, unknown>,
+  tag: string,
+): void {
+  if (!session.jobId || !session.apiBaseUrl || !session.apiToken) {
+    // Attach hasn't happened yet (or this session was started without a jobId
+    // — e.g. someone called agentStart without a server-side AgentJob row).
+    // We can't PATCH without a target; log the drop so it's visible in the
+    // wire log when debugging.
+    logLine(sessionId, "patch-drop", { tag, reason: "no-target" });
+    return;
+  }
+  const startedAt = Date.now();
+  const url = `${session.apiBaseUrl}/api/desktop-jobs/${session.jobId}`;
+  void fetch(url, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.apiToken}`,
+    },
+    body: JSON.stringify(body),
+  })
+    .then((res) => {
+      if (!res.ok) {
+        logLine(sessionId, "patch", {
+          tag,
+          ok: false,
+          status: res.status,
+          ms: Date.now() - startedAt,
+        });
+      }
+    })
+    .catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn("planbooq.wirePatch.failed", { sessionId, tag, error: msg });
+      logLine(sessionId, "patch", {
+        tag,
+        ok: false,
+        error: msg,
+        ms: Date.now() - startedAt,
+      });
+    });
+}
+
+function flushAppend(session: Session, sessionId: string): void {
+  if (session.appendTimer) {
+    clearTimeout(session.appendTimer);
+    session.appendTimer = null;
+  }
+  if (session.appendBuffer.length === 0) return;
+  const text = session.appendBuffer;
+  session.appendBuffer = "";
+  sendPatch(session, sessionId, { appendOutput: text }, "append");
+}
+
+function enqueueAppend(session: Session, sessionId: string, chunk: string): void {
+  session.appendBuffer += chunk;
+  if (session.appendTimer) return;
+  session.appendTimer = setTimeout(() => {
+    flushAppend(session, sessionId);
+  }, APPEND_FLUSH_MS);
+}
+
+function patchTerminal(session: Session, sessionId: string, code: number): void {
+  if (session.terminalSent) return;
+  session.terminalSent = true;
+  if (session.appendTimer) {
+    clearTimeout(session.appendTimer);
+    session.appendTimer = null;
+  }
+  const pending = session.appendBuffer;
+  session.appendBuffer = "";
+  const exitWire = serializeWire({ kind: "exit", code });
+  // Classification mirrors the renderer's previous logic (which now lives
+  // here): user-Stop → CANCELED → ticket → todo; non-zero/OS-kill → FAILED
+  // → ticket → blocked (human notices); zero → SUCCEEDED.
+  const status: "SUCCEEDED" | "FAILED" | "CANCELED" = session.userStopped
+    ? "CANCELED"
+    : code === 0
+      ? "SUCCEEDED"
+      : "FAILED";
+  sendPatch(
+    session,
+    sessionId,
+    { appendOutput: pending + exitWire, status, exitCode: code },
+    "terminal",
+  );
+}
+
+function patchUserMessage(session: Session, sessionId: string, text: string): void {
+  // User messages aren't on the buffered coalesce path — the renderer
+  // sends them one at a time, and they need to land in conversational
+  // order with the agent's reply. Send immediately as its own PATCH.
+  sendPatch(session, sessionId, { appendOutput: serializeWire({ kind: "user", text }) }, "user");
 }
 
 function emit(payload: Record<string, unknown>): void {
@@ -533,21 +676,46 @@ function spawnClaude(
       // stdout lines tell us where the gap is.
       logLine(sessionId, "stdout", line);
       emit({ type: "agent", sessionId, line });
+      // Persist from main — see the wire-PATCH section above for the
+      // rationale. The renderer is a viewer; main is the persistence
+      // authority.
+      const s = sessions.get(sessionId);
+      if (s) enqueueAppend(s, sessionId, serializeWire({ kind: "agent", line }));
     }
   });
   proc.stderr?.on("data", (b: Buffer) => {
     const s = b.toString();
     logLine(sessionId, "stderr", s);
     emit({ type: "stderr", sessionId, line: s });
+    const session = sessions.get(sessionId);
+    if (session) enqueueAppend(session, sessionId, serializeWire({ kind: "stderr", line: s }));
   });
   proc.on("error", (err) => {
     log.error("claude spawn error", err);
     logLine(sessionId, "spawn-error", { error: err.message });
     emit({ type: "stderr", sessionId, line: `[spawn error] ${err.message}\n` });
+    // Treat a spawn error as a terminal failure on the server side too —
+    // without this the row stays RUNNING forever (no exit fires because
+    // the child never started).
+    const session = sessions.get(sessionId);
+    if (session) {
+      enqueueAppend(
+        session,
+        sessionId,
+        serializeWire({ kind: "stderr", line: `[spawn error] ${err.message}\n` }),
+      );
+      patchTerminal(session, sessionId, 1);
+    }
   });
   proc.on("exit", (code) => {
     const s = sessions.get(sessionId);
-    if (s) clearHeartbeat(s);
+    if (s) {
+      clearHeartbeat(s);
+      // Atomic terminal PATCH: pending append + exit wire + status + exitCode
+      // in a single request. Do this BEFORE deleting the session so we still
+      // have jobId/apiBaseUrl/apiToken.
+      patchTerminal(s, sessionId, code ?? 0);
+    }
     sessions.delete(sessionId);
     logLine(sessionId, "exit", { code: code ?? 0 });
     closeLogStream(sessionId);
@@ -687,6 +855,10 @@ export function registerAgentIpc(): void {
         apiBaseUrl: null,
         apiToken: null,
         heartbeatTimer: null,
+        appendBuffer: "",
+        appendTimer: null,
+        userStopped: false,
+        terminalSent: false,
       });
       if (input.jobId && input.ticket?.apiBaseUrl && input.ticket?.apiToken) {
         attachHeartbeatTarget(
@@ -699,6 +871,12 @@ export function registerAgentIpc(): void {
       const preamble =
         "Before doing anything else, read `PLANBOOQ.md` in the worktree root — it contains the ticket context, the `./.planbooq/pbq` CLI, and the exact shipping/error flow you must follow. Apply its rules for the entire session.\n\n";
       proc.stdin?.write(userMessage(preamble + firstMessage));
+      // Persist the first prompt as a wire {kind:"user"} event. The renderer
+      // used to do this; main does it now so persistence doesn't depend on
+      // the renderer being mounted. The preamble is system-side scaffolding;
+      // record only the human-authored prompt.
+      const session = sessions.get(sessionId);
+      if (session) patchUserMessage(session, sessionId, firstMessage);
 
       return { ok: true, sessionId, worktreePath: wtPath };
     },
@@ -733,6 +911,10 @@ export function registerAgentIpc(): void {
         apiBaseUrl: null,
         apiToken: null,
         heartbeatTimer: null,
+        appendBuffer: "",
+        appendTimer: null,
+        userStopped: false,
+        terminalSent: false,
       });
       if (input.jobId && input.ticket?.apiBaseUrl && input.ticket?.apiToken) {
         attachHeartbeatTarget(
@@ -743,6 +925,8 @@ export function registerAgentIpc(): void {
         );
       }
       proc.stdin?.write(userMessage(input.message));
+      const session = sessions.get(sessionId);
+      if (session) patchUserMessage(session, sessionId, input.message);
       return { ok: true, sessionId };
     },
   );
@@ -753,6 +937,7 @@ export function registerAgentIpc(): void {
       const s = sessions.get(input.sessionId);
       if (!s) return { ok: false, error: "session not found" };
       s.proc.stdin?.write(userMessage(input.message));
+      patchUserMessage(s, input.sessionId, input.message);
       return { ok: true };
     },
   );
@@ -761,9 +946,15 @@ export function registerAgentIpc(): void {
     const s = sessions.get(input.sessionId);
     if (!s) return { ok: false, error: "session not found" };
     logLine(input.sessionId, "stop", { source: "user" });
+    // Mark BEFORE kill so the imminent `exit` event is classified CANCELED
+    // (user intent → ticket → todo) instead of FAILED (crash → blocked).
+    // The exit handler reads userStopped during patchTerminal.
+    s.userStopped = true;
     clearHeartbeat(s);
     s.proc.kill();
-    sessions.delete(input.sessionId);
+    // Don't delete the session entry here — the `exit` handler does that
+    // after patchTerminal runs. Deleting now would orphan the terminal
+    // PATCH's access to jobId/apiBaseUrl/apiToken.
     return { ok: true };
   });
 

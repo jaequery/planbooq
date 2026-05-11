@@ -387,11 +387,6 @@ async function materializeAttachmentsAndRewrite(
   return { text: rewritten, items };
 }
 
-function serializeWire(ev: WireEvent): string {
-  const stamped = ev.at ? ev : { ...ev, at: Date.now() };
-  return `${JSON.stringify(stamped)}\n`;
-}
-
 /**
  * Compact summary used for completed assistant messages: strips fenced code
  * blocks, then returns the first sentence(s) up to maxChars. Lets a long
@@ -1008,8 +1003,9 @@ function DesktopPanel({
         if (body.ok && body.data) {
           setJobId(body.data.jobId);
           jobIdRef.current = body.data.jobId;
-          // Persist the user turn as the first wire event.
-          patchJob({ appendOutput: serializeWire({ kind: "user", text: message }) });
+          // The user-prompt wire event is persisted by Electron main (see
+          // apps/desktop/src/lib/agent.ts → patchUserMessage). Doing it
+          // here too would duplicate the {kind:"user"} line on the wire.
         }
       } catch {
         // tolerate — local session still works, but won't survive refresh
@@ -1141,7 +1137,9 @@ function DesktopPanel({
       ...m,
       { id: crypto.randomUUID(), role: "user", text: message, createdAt: Date.now() },
     ]);
-    patchJob({ appendOutput: serializeWire({ kind: "user", text: message }) });
+    // The user-prompt wire event is persisted by Electron main's
+    // `planbooq:agent:send` handler (see apps/desktop/src/lib/agent.ts →
+    // patchUserMessage). The renderer only updates the optimistic UI here.
     setInput("");
     // Materialize attachments into the existing worktree before sending so
     // the agent can `Read` them as local files instead of curling an
