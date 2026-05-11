@@ -855,6 +855,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           workspaceId={initialData.project.workspaceId}
           backlogStatusId={backlogStatusId}
           currentUserId={currentUserId}
+          defaultWorkflowTemplateId={initialData.project.defaultWorkflowTemplateId ?? null}
           onOptimisticInsert={insertOptimisticTicket}
           onOptimisticReplace={replaceOptimisticTicket}
           onOptimisticRollback={rollbackOptimisticTicket}

@@ -1,9 +1,11 @@
 "use client";
 
-import { ImageIcon, Loader2, X } from "lucide-react";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { Check, ImageIcon, Loader2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { quickCreateTicket } from "@/actions/ticket";
+import { listWorkflowTemplates } from "@/actions/workflow";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Ticket, TicketWithRelations } from "@/lib/types";
 
 type Props = {
@@ -11,9 +13,17 @@ type Props = {
   workspaceId: string;
   backlogStatusId: string | null;
   currentUserId: string;
+  defaultWorkflowTemplateId: string | null;
   onOptimisticInsert: (ticket: TicketWithRelations) => void;
   onOptimisticReplace: (tempId: string, real: Ticket) => void;
   onOptimisticRollback: (tempId: string) => void;
+};
+
+type WorkflowTemplateRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  stepCount: number;
 };
 
 const ACCEPTED_MIME_TYPES = "image/png,image/jpeg,image/webp,image/gif";
@@ -45,6 +55,38 @@ function makeTempId(): string {
 }
 
 const AUTO_EXECUTE_STORAGE_KEY = "pbq.autoExecute";
+const AUTO_RUN_IDS_STORAGE_KEY = "pbq.autoRunWorkflowIds";
+
+// Tri-state migration of the legacy global auto-run flag:
+//   - "true" / null  → default-on (caller seeds with all known template ids)
+//   - "false"        → default-off (caller seeds with [])
+function readLegacyAutoExecute(): boolean {
+  try {
+    return window.localStorage.getItem(AUTO_EXECUTE_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function readAutoRunIds(): string[] | null {
+  try {
+    const raw = window.localStorage.getItem(AUTO_RUN_IDS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed.filter((x): x is string => typeof x === "string");
+  } catch {
+    return null;
+  }
+}
+
+function writeAutoRunIds(ids: string[]): void {
+  try {
+    window.localStorage.setItem(AUTO_RUN_IDS_STORAGE_KEY, JSON.stringify(ids));
+  } catch {
+    // ignore
+  }
+}
 
 function describeError(error: string): string {
   if (error === "no_key") {
@@ -62,6 +104,7 @@ export function ChatOrb({
   workspaceId,
   backlogStatusId,
   currentUserId,
+  defaultWorkflowTemplateId,
   onOptimisticInsert,
   onOptimisticReplace,
   onOptimisticRollback,
@@ -74,16 +117,70 @@ export function ChatOrb({
   const uploadCounterRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const [autoExecute, setAutoExecute] = useState(true);
+  const [autoRunIds, setAutoRunIds] = useState<Set<string>>(() => new Set());
+  const [templates, setTemplates] = useState<WorkflowTemplateRow[] | null>(null);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Tracks whether we've reconciled the auto-run allowlist with the
+  // server-side templates list at least once. Until then we keep whatever
+  // localStorage held (or an empty set), but never persist back.
+  const seededRef = useRef(false);
   const isActive = isFocused || prompt.length > 0 || pending || attachments.length > 0;
 
+  // Effective auto-run for THIS project: only fires when the project's default
+  // workflow template is in the user's allowlist. Per-ticket workflow
+  // overrides aren't exposed at create-time, so the project default is the
+  // honest decision point.
+  const effectiveAutoExecute =
+    defaultWorkflowTemplateId !== null && autoRunIds.has(defaultWorkflowTemplateId);
+  const selectedCount = autoRunIds.size;
+
+  // Load the persisted allowlist on mount.
   useEffect(() => {
+    const stored = readAutoRunIds();
+    if (stored) setAutoRunIds(new Set(stored));
+  }, []);
+
+  const loadTemplates = useCallback(async () => {
+    setTemplatesLoading(true);
     try {
-      const stored = window.localStorage.getItem(AUTO_EXECUTE_STORAGE_KEY);
-      if (stored === "false") setAutoExecute(false);
-    } catch {
-      // ignore
+      const res = await listWorkflowTemplates({ workspaceId });
+      if (!res.ok) {
+        toast.error(`Could not load workflows: ${res.error}`);
+        return;
+      }
+      setTemplates(res.templates);
+      // First-ever load: migrate the legacy global flag into per-workflow
+      // selections so existing users keep their effective on/off behavior.
+      if (!seededRef.current) {
+        seededRef.current = true;
+        const existing = readAutoRunIds();
+        if (existing === null) {
+          const seed = readLegacyAutoExecute() ? res.templates.map((t) => t.id) : [];
+          setAutoRunIds(new Set(seed));
+          writeAutoRunIds(seed);
+        }
+      }
+    } finally {
+      setTemplatesLoading(false);
     }
+  }, [workspaceId]);
+
+  // Eagerly load templates once on mount so the legacy-flag migration runs
+  // before the user's first ticket submit (otherwise the very first create
+  // after upgrade would see an empty allowlist and silently lose auto-run).
+  useEffect(() => {
+    void loadTemplates();
+  }, [loadTemplates]);
+
+  const toggleWorkflowAutoRun = useCallback((id: string): void => {
+    setAutoRunIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      writeAutoRunIds([...next]);
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -100,18 +197,6 @@ export function ChatOrb({
     window.addEventListener("keydown", handle);
     return () => window.removeEventListener("keydown", handle);
   }, []);
-
-  const toggleAutoExecute = (): void => {
-    setAutoExecute((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem(AUTO_EXECUTE_STORAGE_KEY, next ? "true" : "false");
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  };
 
   useEffect(() => {
     return () => {
@@ -261,7 +346,7 @@ export function ChatOrb({
     setPrompt("");
     const snapshotAttachments = attachments;
     setAttachments([]);
-    const submittedAutoExecute = autoExecute;
+    const submittedAutoExecute = effectiveAutoExecute;
 
     startTransition(async () => {
       const result = await quickCreateTicket({
@@ -390,33 +475,115 @@ export function ChatOrb({
             >
               <ImageIcon className="h-3.5 w-3.5" aria-hidden />
             </button>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={autoExecute}
-              onClick={toggleAutoExecute}
-              disabled={pending}
-              className="inline-flex flex-shrink-0 items-center gap-1.5 self-center rounded-full px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-              title={
-                autoExecute
-                  ? "Auto-run: on — ticket runs immediately after creation"
-                  : "Auto-run: off — ticket lands in Backlog as a draft"
-              }
-            >
-              <span
-                className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors ${
-                  autoExecute ? "bg-primary" : "bg-muted"
-                }`}
-                aria-hidden
-              >
-                <span
-                  className={`inline-block h-2.5 w-2.5 transform rounded-full bg-background shadow transition-transform ${
-                    autoExecute ? "translate-x-3" : "translate-x-0.5"
-                  }`}
-                />
-              </span>
-              <span>Auto-run</span>
-            </button>
+            <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-expanded={pickerOpen}
+                  disabled={pending}
+                  className="inline-flex flex-shrink-0 items-center gap-1.5 self-center rounded-full px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                  title={
+                    effectiveAutoExecute
+                      ? "Auto-run: on for this project — ticket runs immediately after creation"
+                      : selectedCount > 0
+                        ? "Auto-run: off for this project — selected workflows don't include this project's default"
+                        : "Auto-run: off — ticket lands in Backlog as a draft"
+                  }
+                >
+                  <span
+                    className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors ${
+                      effectiveAutoExecute ? "bg-primary" : "bg-muted"
+                    }`}
+                    aria-hidden
+                  >
+                    <span
+                      className={`inline-block h-2.5 w-2.5 transform rounded-full bg-background shadow transition-transform ${
+                        effectiveAutoExecute ? "translate-x-3" : "translate-x-0.5"
+                      }`}
+                    />
+                  </span>
+                  <span>
+                    Auto-run
+                    {selectedCount > 0 ? (
+                      <span className="ml-1 text-[10px] tabular-nums">({selectedCount})</span>
+                    ) : null}
+                  </span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" sideOffset={8} className="w-72 p-0">
+                <div className="border-b border-border/70 px-3 py-2">
+                  <div className="font-medium text-[12px]">Auto-run workflows</div>
+                  <p className="text-[11px] text-muted-foreground">
+                    New tickets auto-execute only when the project's default workflow is selected.
+                  </p>
+                </div>
+                <div className="max-h-64 overflow-y-auto py-1">
+                  {templatesLoading && templates === null ? (
+                    <div className="flex items-center gap-2 px-3 py-2 text-[12px] text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                      Loading workflows…
+                    </div>
+                  ) : templates && templates.length > 0 ? (
+                    templates.map((t) => {
+                      const selected = autoRunIds.has(t.id);
+                      const isDefault = t.id === defaultWorkflowTemplateId;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          role="menuitemcheckbox"
+                          aria-checked={selected}
+                          onClick={() => toggleWorkflowAutoRun(t.id)}
+                          className="flex w-full items-start gap-2 px-3 py-2 text-left text-[12px] transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none"
+                        >
+                          <span
+                            className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors ${
+                              selected
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-background"
+                            }`}
+                            aria-hidden
+                          >
+                            {selected ? <Check className="h-3 w-3" aria-hidden /> : null}
+                          </span>
+                          <span className="flex min-w-0 flex-1 flex-col">
+                            <span className="flex items-center gap-1.5">
+                              <span className="truncate font-medium">{t.name}</span>
+                              {isDefault ? (
+                                <span className="rounded bg-muted px-1 py-px text-[9px] uppercase tracking-wide text-muted-foreground">
+                                  default
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {t.stepCount} {t.stepCount === 1 ? "step" : "steps"}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="px-3 py-3 text-[12px] text-muted-foreground">
+                      No workflows yet.{" "}
+                      <a
+                        href="/settings/workflows"
+                        className="underline underline-offset-2 hover:text-foreground"
+                      >
+                        Create one
+                      </a>{" "}
+                      in Settings.
+                    </div>
+                  )}
+                </div>
+                {templates && templates.length > 0 && defaultWorkflowTemplateId === null ? (
+                  <div className="border-t border-border/70 px-3 py-2 text-[11px] text-muted-foreground">
+                    This project has no default workflow, so auto-run can't fire. Set one in project
+                    settings.
+                  </div>
+                ) : null}
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
       </div>
