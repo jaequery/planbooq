@@ -585,6 +585,10 @@ function DesktopPanel({
   const [input, setInput] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Tracks whether we've performed the one-shot scroll-to-bottom for this
+  // ticket's hydrated history. Reset on ticket switch so a freshly opened
+  // ticket lands at its most recent message instead of the top.
+  const didInitialScrollRef = useRef(false);
   const currentAssistantId = useRef<string | null>(null);
   const jobIdRef = useRef<string | null>(null);
   jobIdRef.current = jobId;
@@ -643,6 +647,7 @@ function DesktopPanel({
     setBusy(false);
     currentAssistantId.current = null;
     messagesRef.current = [];
+    didInitialScrollRef.current = false;
 
     void (async () => {
       try {
@@ -890,8 +895,24 @@ function DesktopPanel({
     });
   }, []);
 
+  // Auto-scroll the chat to the bottom on message changes. The first non-empty
+  // change for a ticket is the hydration drop — also scroll on a double rAF so
+  // we land at the bottom after Markdown layout AND any post-mount reflow from
+  // the dialog open animation finish, which can otherwise leave scrollHeight
+  // stale at the moment of the effect (the symptom: opening a ticket with
+  // existing history shows the top of the conversation).
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    const el = scrollRef.current;
+    if (!el || messages.length === 0) return;
+    const scrollToBottom = () => {
+      const cur = scrollRef.current;
+      if (cur) cur.scrollTo({ top: cur.scrollHeight });
+    };
+    scrollToBottom();
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true;
+      requestAnimationFrame(() => requestAnimationFrame(scrollToBottom));
+    }
   }, [messages]);
 
   const pickRepo = async (): Promise<string | null> => {
