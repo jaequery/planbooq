@@ -86,6 +86,18 @@ export default function Home(): React.ReactElement {
         </ol>
       </section>
 
+      <section id="socal" className="mx-auto max-w-5xl px-6 pb-24">
+        <div className="mx-auto max-w-2xl text-center">
+          <h2 className="font-mono text-3xl font-semibold tracking-tight sm:text-4xl">
+            Built across Southern California
+          </h2>
+          <p className="mt-6 text-base text-muted-foreground sm:text-lg">
+            Designed and shipped from the coast.
+          </p>
+        </div>
+        <SoCalMap />
+      </section>
+
       <section className="px-6 pb-24">
         <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
           <h2 className="font-mono text-3xl font-semibold tracking-tight sm:text-4xl">
@@ -118,6 +130,50 @@ function Card({ title, body }: { title: string; body: string }): React.ReactElem
     <div className="rounded-xl border border-border/60 bg-card p-6">
       <h3 className="text-base font-semibold tracking-tight">{title}</h3>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
+    </div>
+  );
+}
+
+type Marker = { name: string; x: number; y: number };
+
+const SOCAL_MARKERS: ReadonlyArray<Marker> = [
+  { name: "Santa Barbara", x: 8, y: 22 },
+  { name: "Burbank", x: 30, y: 32 },
+  { name: "Pasadena", x: 36, y: 34 },
+  { name: "Santa Monica", x: 24, y: 42 },
+  { name: "Los Angeles", x: 32, y: 42 },
+  { name: "Long Beach", x: 34, y: 54 },
+  { name: "Anaheim", x: 42, y: 50 },
+  { name: "Irvine", x: 48, y: 58 },
+  { name: "San Diego", x: 68, y: 80 },
+];
+
+const PULSE_PERIOD_S = 2.4;
+
+function SoCalMap(): React.ReactElement {
+  const step = PULSE_PERIOD_S / SOCAL_MARKERS.length;
+  return (
+    <div
+      role="img"
+      aria-label="Southern California map"
+      className="relative mx-auto mt-10 aspect-[5/3] w-full max-w-3xl overflow-hidden rounded-xl border border-border/60 bg-card"
+    >
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,oklch(0.97_0_0)_0%,transparent_55%),radial-gradient(circle_at_70%_75%,oklch(0.97_0_0)_0%,transparent_50%)] dark:bg-[radial-gradient(circle_at_30%_40%,oklch(0.269_0_0)_0%,transparent_55%),radial-gradient(circle_at_70%_75%,oklch(0.269_0_0)_0%,transparent_50%)]"
+      />
+      {SOCAL_MARKERS.map((m, i) => (
+        <span
+          key={m.name}
+          className="socal-marker absolute size-2 rounded-full bg-foreground"
+          style={{
+            left: `${m.x}%`,
+            top: `${m.y}%`,
+            animationDelay: `${(i * step).toFixed(3)}s`,
+          }}
+          title={m.name}
+        />
+      ))}
     </div>
   );
 }
