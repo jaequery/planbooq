@@ -475,20 +475,38 @@ async function deriveStepCompletion(args: {
   // ran to completion — the only reliable signal for `unknown`-kind steps
   // (e.g. "Plan") whose names don't match a regex bucket.
   let succeededPrompts: string[] = [];
+  let completedStepNames = new Set<string>();
   if (args.steps.length > 0) {
-    const succeeded = await prisma.agentJob.findMany({
-      where: {
-        ticketId: args.ticketId,
-        status: "SUCCEEDED",
-        prompt: { contains: "[Workflow" },
-      },
-      select: { prompt: true },
-      orderBy: { createdAt: "asc" },
-    });
+    const [succeeded, completedActivities] = await Promise.all([
+      prisma.agentJob.findMany({
+        where: {
+          ticketId: args.ticketId,
+          status: "SUCCEEDED",
+          prompt: { contains: "[Workflow" },
+        },
+        select: { prompt: true },
+        orderBy: { createdAt: "asc" },
+      }),
+      // STEP_COMPLETED activity rows are written by persistTurnEndSuccess
+      // (mirror-agent-job.ts) when a workflow-step turn ends, even while the
+      // CLI process stays alive — so they fire for steps like "Plan" that
+      // finish without the AgentJob ever transitioning to SUCCEEDED.
+      prisma.ticketActivity.findMany({
+        where: { ticketId: args.ticketId, kind: "STEP_COMPLETED" },
+        select: { payload: true },
+      }),
+    ]);
     succeededPrompts = succeeded.map((j) => j.prompt);
+    for (const a of completedActivities) {
+      const name = (a.payload as { name?: unknown } | null)?.name;
+      if (typeof name === "string" && name.trim()) {
+        completedStepNames.add(name.trim().toLowerCase());
+      }
+    }
   }
   function stepRanSuccessfully(name: string): boolean {
     const lower = name.toLowerCase();
+    if (completedStepNames.has(lower)) return true;
     // Match `[Workflow: name]` or `[Workflow 2/3: name]`. Compare names
     // case-insensitively because the dispatcher preserves user casing.
     return succeededPrompts.some((p) => {
