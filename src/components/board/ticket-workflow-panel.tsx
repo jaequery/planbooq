@@ -50,11 +50,13 @@ export function TicketWorkflowPanel({
   ticketId,
   workspaceId,
   projectId,
+  onReady,
 }: {
   ticketId: string;
   workspaceId: string;
   projectId: string;
-}): React.ReactElement {
+  onReady?: () => void;
+}): React.ReactElement | null {
   const [wf, setWf] = useState<WorkflowState | null>(null);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [hasLocalPath, setHasLocalPath] = useState<boolean>(false);
@@ -167,6 +169,7 @@ export function TicketWorkflowPanel({
         pendingStepsRef.current = [];
       }
     }
+    onReady?.();
     const t = await listWorkflowTemplates({ workspaceId });
     if (t.ok) setTemplates(t.templates);
   }
@@ -357,7 +360,10 @@ export function TicketWorkflowPanel({
   }
 
   if (!wf) {
-    return <p className="text-sm text-muted-foreground">Loading workflow…</p>;
+    // Parent (TicketAgentPanel) renders the unified loading indicator while
+    // workflow data is in flight. Rendering anything here would compete with
+    // it and flash a half-loaded panel.
+    return null;
   }
 
   const enabledCount = wf.steps.filter((s) => s.enabled).length;

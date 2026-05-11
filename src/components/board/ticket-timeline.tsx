@@ -424,30 +424,32 @@ export function TicketTimeline({
         </ul>
       )}
 
-      <div className="space-y-2 pt-2">
-        <ImageUploadTextarea
-          workspaceId={workspaceId}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          onUploadError={(message) => toast.error(`Image upload failed: ${message}`)}
-          placeholder="Leave a comment…"
-          rows={3}
-          maxLength={10_000}
-          aria-label="New comment"
-          className="text-[13px]"
-        />
-        <div className="flex items-center justify-end">
-          <Button type="button" size="sm" onClick={submit} disabled={!canSubmit}>
-            {isSubmitting ? "Posting…" : "Comment"}
-          </Button>
+      {loaded ? (
+        <div className="space-y-2 pt-2">
+          <ImageUploadTextarea
+            workspaceId={workspaceId}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                submit();
+              }
+            }}
+            onUploadError={(message) => toast.error(`Image upload failed: ${message}`)}
+            placeholder="Leave a comment…"
+            rows={3}
+            maxLength={10_000}
+            aria-label="New comment"
+            className="text-[13px]"
+          />
+          <div className="flex items-center justify-end">
+            <Button type="button" size="sm" onClick={submit} disabled={!canSubmit}>
+              {isSubmitting ? "Posting…" : "Comment"}
+            </Button>
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
