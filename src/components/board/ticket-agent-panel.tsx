@@ -604,11 +604,22 @@ function DesktopPanel({
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  // Chat list has zero auto-scroll. Manual sticky-bottom (#141) and
-  // flex-col-reverse (this PR, earlier attempt) both produced visible
-  // up/down jumps whenever a bubble's height changed mid-stream. The user
-  // controls the viewport — nothing in this component sets scrollTop,
-  // observes resize, or scrolls anything into view.
+  // Sticky-bottom chat scroll using a bottom sentinel + IntersectionObserver.
+  // This is the standard pattern in Slack/Linear/Discord:
+  //   - On first hydration, scroll the sentinel into view (one-shot).
+  //   - The observer tracks whether the sentinel is visible — i.e. whether
+  //     the user is at the bottom of the chat.
+  //   - When messages change, scroll the sentinel into view ONLY if the
+  //     user is already at the bottom. If they've scrolled up to read
+  //     history, leave their position alone.
+  // IntersectionObserver fires asynchronously after layout settles, so
+  // height changes (loader spinner toggling, Markdown layout, "thinking…"
+  // appearing) don't race with the scroll calculation the way the
+  // useLayoutEffect + ResizeObserver approach did.
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const atBottomRef = useRef(true);
+  const didInitialScrollRef = useRef(false);
   const currentAssistantId = useRef<string | null>(null);
   const jobIdRef = useRef<string | null>(null);
   jobIdRef.current = jobId;
@@ -675,6 +686,8 @@ function DesktopPanel({
     setBusy(false);
     currentAssistantId.current = null;
     messagesRef.current = [];
+    didInitialScrollRef.current = false;
+    atBottomRef.current = true;
 
     void (async () => {
       try {
@@ -932,6 +945,42 @@ function DesktopPanel({
       }
     });
   }, []);
+
+  // Watch a bottom sentinel via IntersectionObserver to track "is the user
+  // at the bottom of the chat?". Runs only when the scroll container exists
+  // (messages.length > 0); the observer is torn down and rebuilt if the
+  // sentinel/scroller pair gets recreated.
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    const bottom = bottomRef.current;
+    if (!scroller || !bottom || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry) atBottomRef.current = entry.isIntersecting;
+      },
+      { root: scroller, threshold: 0 },
+    );
+    io.observe(bottom);
+    return () => io.disconnect();
+  }, [messages.length > 0]);
+
+  // Sticky-bottom: scroll the sentinel into view on first hydration (so
+  // opening a ticket lands on the newest message) and again on subsequent
+  // message changes ONLY if the user is currently at the bottom. Anyone
+  // who has scrolled up to read history is left alone.
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const bottom = bottomRef.current;
+    if (!bottom) return;
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true;
+      atBottomRef.current = true;
+      bottom.scrollIntoView({ block: "end" });
+      return;
+    }
+    if (atBottomRef.current) bottom.scrollIntoView({ block: "end" });
+  }, [messages]);
 
   const pickRepo = async (): Promise<string | null> => {
     const bridge = getDesktopBridge();
@@ -1271,12 +1320,10 @@ function DesktopPanel({
   return (
     <div className="flex flex-col gap-3">
       {messages.length > 0 && (
-        <div className="max-h-[420px] overflow-y-auto rounded-lg bg-muted/20 p-3">
-          {/* No programmatic scrolling anywhere in this component. column-reverse
-              was tried as a "pin to bottom" trick but still produced visible
-              jumps whenever a bubble's height changed (spinner toggling,
-              Markdown settling, "thinking…" appearing). User controls the
-              viewport — we render top-down and never touch scrollTop. */}
+        <div
+          ref={scrollerRef}
+          className="max-h-[420px] overflow-y-auto rounded-lg bg-muted/20 p-3"
+        >
           <div className="flex flex-col gap-3">
             {messages.map((m, i) => {
               const isStreaming = busy && m.role === "assistant" && i === messages.length - 1;
@@ -1321,6 +1368,8 @@ function DesktopPanel({
                   <Loader2 className="inline size-3 animate-spin" /> thinking…
                 </div>
               )}
+            {/* Sentinel for IntersectionObserver-based sticky-bottom. */}
+            <div ref={bottomRef} aria-hidden className="h-px" />
           </div>
         </div>
       )}

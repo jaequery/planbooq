@@ -144,8 +144,20 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         });
         return;
       }
-      if (event.name === "project.created" || event.name === "project.updated") {
+      if (event.name === "project.created") {
+        // New project → sidebar/nav lists need to learn about it. Full refresh
+        // is acceptable here because it's a rare event.
         router.refresh();
+        return;
+      }
+      if (event.name === "project.updated") {
+        // Intentionally skipped. project.updated fires every time anything
+        // touches the project row (including activity bumps from chat
+        // streaming), and a full router.refresh() on each event caused the
+        // open ticket dialog to visibly churn / remount its chat scroll
+        // container. The fields we'd want to live-update (name, color) are
+        // not displayed on the board itself frequently enough to justify
+        // the cost; reopen the project to pick up renames.
         return;
       }
       if (event.name === "project.deleted") {
