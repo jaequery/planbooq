@@ -25,6 +25,14 @@ type Registration = {
   ticketId: string;
 };
 
+// Heartbeats live in Electron main (apps/desktop/src/lib/agent.ts), not in
+// the renderer. Main is the actual spawner of the `claude` child and
+// therefore the authority on "is this session alive" — the renderer is one
+// IPC hop removed and can unmount on page refresh while the child keeps
+// running. Pushing from main keeps `AgentJob.updatedAt` fresh across
+// renderer remounts and dialog closes, which is what the server reaper
+// needs to distinguish a dead bridge from a long tool call.
+
 type WireEvent =
   | { kind: "agent"; line: string }
   | { kind: "stderr"; line: string }

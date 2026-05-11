@@ -28,6 +28,11 @@ type DesktopBridge = {
       apiToken: string;
     };
     attachments?: Array<{ id: string; ext: string; base64: string }>;
+    /** AgentJob id, created server-side BEFORE calling agentStart. When
+     *  present alongside ticket.apiBaseUrl + apiToken, Electron main starts
+     *  HTTP heartbeats every 30s so the server reaper knows the bridge is
+     *  alive even when the renderer isn't actively pushing wire events. */
+    jobId?: string;
   }) => Promise<{
     ok: boolean;
     error?: string;
@@ -45,6 +50,7 @@ type DesktopBridge = {
       apiBaseUrl: string;
       apiToken: string;
     };
+    jobId?: string;
   }) => Promise<{ ok: boolean; error?: string; sessionId?: string }>;
   agentSend: (input: { sessionId: string; message: string }) => Promise<{
     ok: boolean;

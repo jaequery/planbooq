@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { publishWorkspaceEvent } from "@/server/ably";
-import { auth } from "@/server/auth";
+import { resolveCaller } from "@/server/api-auth";
 import { prisma } from "@/server/db";
 import { maybeLinkPrUrlFromText } from "@/server/services/link-pr-url";
 import { mirrorAppendOutput, mirrorJobTerminal } from "@/server/services/mirror-agent-job";
@@ -18,6 +18,12 @@ const PatchSchema = z
     error: z.string().optional(),
     worktreePath: z.string().optional().nullable(),
     claudeSessionId: z.string().optional().nullable(),
+    // Bridge heartbeat — the renderer pushes this every 30s while a session
+    // is alive, so `updatedAt` reflects bridge-confirmed liveness rather than
+    // just "the wire stream produced an event recently." Mutually exclusive
+    // with the other fields: a heartbeat PATCH bumps `updatedAt` and exits;
+    // no mirror, no reconcile, no Ably publish. See agent-session-manager.ts.
+    heartbeat: z.literal(true).optional(),
   })
   .strict();
 
@@ -25,11 +31,17 @@ export async function PATCH(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const session = await auth();
-  if (!session?.user?.id) {
+  // resolveCaller accepts both NextAuth session cookies (renderer/browser
+  // path) AND Bearer `pbq_live_…` api keys (Electron main heartbeat path).
+  // Electron main doesn't share cookies with the renderer, so it
+  // authenticates via the same workspace-scoped token it already uses for
+  // the in-worktree `pbq` CLI. The job-ownership check below is unchanged —
+  // both auth paths must resolve to the user who owns the AgentJob.
+  const caller = await resolveCaller(req);
+  if (!caller) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
-  const userId = session.user.id;
+  const userId = caller.userId;
   const { id } = await ctx.params;
 
   let json: unknown;
@@ -46,6 +58,20 @@ export async function PATCH(
   const job = await prisma.agentJob.findUnique({ where: { id } });
   if (!job || job.source !== "DESKTOP" || job.userId !== userId) {
     return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  }
+
+  // Heartbeat fast-path. The renderer fires these every 30s while a session
+  // is alive. Bumping `updatedAt` is the only side-effect — no mirror, no
+  // ticket reconcile, no Ably fanout. Raw SQL because Prisma's `update`
+  // optimizes empty `data: {}` to a no-op; we explicitly want the
+  // `@updatedAt`-equivalent bump to happen.
+  if (parsed.data.heartbeat && parsed.data.status === undefined) {
+    // Ignore heartbeats for jobs that are already terminal — a stale renderer
+    // (post-reload, pre-unregister) could keep pinging a FAILED row otherwise.
+    if (job.status === "RUNNING") {
+      await prisma.$executeRaw`UPDATE "AgentJob" SET "updatedAt" = NOW() WHERE id = ${id}`;
+    }
+    return NextResponse.json({ ok: true });
   }
 
   const data: Record<string, unknown> = {};
