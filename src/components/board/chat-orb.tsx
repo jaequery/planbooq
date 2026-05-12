@@ -1,10 +1,11 @@
 "use client";
 
-import { Check, ChevronDown, ImageIcon, Loader2, X } from "lucide-react";
+import { Check, ChevronDown, ImageIcon, Loader2, Settings2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { quickCreateTicket } from "@/actions/ticket";
 import { listWorkflowTemplates } from "@/actions/workflow";
+import { WorkflowManagerDialog } from "@/components/board/workflow-manager-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Ticket, TicketWithRelations } from "@/lib/types";
 
@@ -121,6 +122,7 @@ export function ChatOrb({
   const [templates, setTemplates] = useState<WorkflowTemplateRow[] | null>(null);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [managerOpen, setManagerOpen] = useState(false);
   // Tracks whether we've reconciled the auto-run allowlist with the
   // server-side templates list at least once. Until then we keep whatever
   // localStorage held (or an empty set), but never persist back.
@@ -598,11 +600,33 @@ export function ChatOrb({
                       project settings.
                     </div>
                   ) : null}
+                  <div className="border-t border-border/70 p-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPickerOpen(false);
+                        setManagerOpen(true);
+                      }}
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus:bg-muted/60 focus:text-foreground focus:outline-none"
+                    >
+                      <Settings2 className="h-3 w-3" aria-hidden />
+                      Manage workflows
+                    </button>
+                  </div>
                 </PopoverContent>
               </Popover>
             </div>
           </div>
         </div>
+        <WorkflowManagerDialog
+          open={managerOpen}
+          onOpenChange={setManagerOpen}
+          workspaceId={workspaceId}
+          defaultWorkflowTemplateId={defaultWorkflowTemplateId}
+          onMutated={() => {
+            void loadTemplates();
+          }}
+        />
       </div>
     </div>
   );
