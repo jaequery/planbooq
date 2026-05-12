@@ -8,10 +8,7 @@ import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { getPrStatusForUser, parseGitHubPrUrl } from "@/server/services/github-pr";
 import { mirrorJobTerminal } from "@/server/services/mirror-agent-job";
-import {
-  moveTicketToStatusKey,
-  reconcileBuildingTicket,
-} from "@/server/services/ticket-status";
+import { moveTicketToStatusKey, reconcileBuildingTicket } from "@/server/services/ticket-status";
 
 type Ok<T> = T extends Record<string, never> ? { ok: true } : { ok: true } & T;
 type Err = { ok: false; error: string };
@@ -24,9 +21,7 @@ async function requireUserId(): Promise<{ ok: true; userId: string } | Err> {
   return { ok: true, userId: session.user.id };
 }
 
-async function requireMember(
-  workspaceId: string,
-): Promise<{ ok: true; userId: string } | Err> {
+async function requireMember(workspaceId: string): Promise<{ ok: true; userId: string } | Err> {
   const u = await requireUserId();
   if (!u.ok) return u;
   const m = await prisma.member.findFirst({
@@ -42,9 +37,7 @@ const PromptSchema = z.string().min(1);
 
 // ---------- Templates ----------
 
-export async function listWorkflowTemplates(input: {
-  workspaceId: string;
-}): Promise<
+export async function listWorkflowTemplates(input: { workspaceId: string }): Promise<
   Result<{
     templates: Array<{
       id: string;
@@ -85,7 +78,13 @@ export async function getWorkflowTemplate(templateId: string): Promise<
       id: string;
       name: string;
       description: string | null;
-      steps: Array<{ id: string; name: string; prompt: string; position: number; enabled: boolean }>;
+      steps: Array<{
+        id: string;
+        name: string;
+        prompt: string;
+        position: number;
+        enabled: boolean;
+      }>;
     };
   }>
 > {
@@ -298,8 +297,7 @@ export async function setProjectDefaultWorkflow(input: {
   if (!ctx.ok) return ctx;
   if (input.templateId) {
     const t = await loadTemplate(input.templateId);
-    if (!t || t.workspaceId !== proj.workspaceId)
-      return { ok: false, error: "template_not_found" };
+    if (!t || t.workspaceId !== proj.workspaceId) return { ok: false, error: "template_not_found" };
   }
   await prisma.project.update({
     where: { id: input.projectId },
@@ -345,7 +343,11 @@ const SYSTEM_DEFAULT_WORKFLOW_STEPS: Array<{ name: string; prompt: string }> = [
 async function ensureSystemDefaultWorkflow(
   workspaceId: string,
   projectId: string,
-): Promise<{ id: string; name: string; steps: Array<{ id: string; name: string; prompt: string; position: number; enabled: boolean }> } | null> {
+): Promise<{
+  id: string;
+  name: string;
+  steps: Array<{ id: string; name: string; prompt: string; position: number; enabled: boolean }>;
+} | null> {
   const existing = await prisma.workflowTemplate.findFirst({
     where: { workspaceId, isGlobal: true },
     orderBy: { createdAt: "asc" },
@@ -479,7 +481,7 @@ async function deriveStepCompletion(args: {
   //   - SUCCEEDED AgentJob whose prompt starts with `[Workflow N/M: <name>]`
   //   - STEP_COMPLETED TicketActivity rows (per-name)
   let succeededPrompts: string[] = [];
-  let completedStepNames = new Set<string>();
+  const completedStepNames = new Set<string>();
   const succeededStepRunNames = new Set<string>();
   if (args.steps.length > 0) {
     const [succeeded, completedActivities, succeededStepRuns] = await Promise.all([
@@ -533,7 +535,9 @@ async function deriveStepCompletion(args: {
       const head = p.slice(0, 200).toLowerCase();
       return (
         head.includes(`[workflow: ${lower}]`) ||
-        new RegExp(`\\[workflow\\s+\\d+/\\d+:\\s*${lower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]`).test(head)
+        new RegExp(
+          `\\[workflow\\s+\\d+/\\d+:\\s*${lower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]`,
+        ).test(head)
       );
     });
   }
@@ -596,8 +600,7 @@ async function reconcileTicketAgentState(
   });
   const now = Date.now();
   const isLive =
-    lastJob?.status === "RUNNING" &&
-    now - lastJob.updatedAt.getTime() < AGENT_STALE_MS;
+    lastJob?.status === "RUNNING" && now - lastJob.updatedAt.getTime() < AGENT_STALE_MS;
 
   if (isLive) return { live: true };
 
@@ -846,9 +849,7 @@ export async function getTicketWorkflow(ticketId: string): Promise<
   };
 }
 
-export async function enableTicketWorkflowOverride(
-  ticketId: string,
-): Promise<Result<Empty>> {
+export async function enableTicketWorkflowOverride(ticketId: string): Promise<Result<Empty>> {
   const ticket = await loadTicket(ticketId);
   if (!ticket) return { ok: false, error: "not_found" };
   const ctx = await requireMember(ticket.workspaceId);
@@ -927,9 +928,7 @@ export async function setTicketWorkflowFromTemplate(input: {
   return { ok: true };
 }
 
-export async function disableTicketWorkflowOverride(
-  ticketId: string,
-): Promise<Result<Empty>> {
+export async function disableTicketWorkflowOverride(ticketId: string): Promise<Result<Empty>> {
   const ticket = await loadTicket(ticketId);
   if (!ticket) return { ok: false, error: "not_found" };
   const ctx = await requireMember(ticket.workspaceId);
@@ -1030,6 +1029,45 @@ export async function reorderTicketSteps(input: {
   return { ok: true };
 }
 
+/**
+ * Materializes a workflow draft built in the new-ticket dialog (client-side,
+ * before the ticket existed) as a ticket-scoped override. Wipes any existing
+ * override and rewrites it in one transaction so reads are never spliced.
+ *
+ * Pass an empty `steps` array to clear the override entirely (the ticket
+ * falls back to the project's default template on next read).
+ */
+export async function replaceTicketWorkflowSteps(input: {
+  ticketId: string;
+  steps: Array<{ name: string; prompt: string; enabled?: boolean }>;
+}): Promise<Result<Empty>> {
+  const ticket = await loadTicket(input.ticketId);
+  if (!ticket) return { ok: false, error: "not_found" };
+  const ctx = await requireMember(ticket.workspaceId);
+  if (!ctx.ok) return ctx;
+  const cleaned = input.steps.map((s) => ({
+    name: NameSchema.parse(s.name),
+    prompt: PromptSchema.parse(s.prompt),
+    enabled: s.enabled ?? true,
+  }));
+  await prisma.$transaction(async (tx) => {
+    await tx.workflowStep.deleteMany({ where: { ticketId: input.ticketId } });
+    if (cleaned.length > 0) {
+      await tx.workflowStep.createMany({
+        data: cleaned.map((s, i) => ({
+          ticketId: input.ticketId,
+          name: s.name,
+          prompt: s.prompt,
+          enabled: s.enabled,
+          position: (i + 1) * 1024,
+        })),
+      });
+    }
+  });
+  revalidatePath("/");
+  return { ok: true };
+}
+
 // ---------- Run trigger (audit-only) ----------
 
 /**
@@ -1103,14 +1141,15 @@ export async function triggerWorkflowRun(
   // rows mirror exactly what the panel queued. Falling back to the workflow
   // definition keeps the legacy audit-only call site (no steps passed)
   // working.
-  const recorded = opts?.steps && opts.steps.length > 0
-    ? opts.steps.map((s) => ({ name: s.name, prompt: s.prompt }))
-    : (() => {
-        const enabled = wf.steps.filter((s) => s.enabled);
-        return enabled.length === 0
-          ? [{ name: "build", prompt: "Default build (no workflow steps configured)." }]
-          : enabled.map((s) => ({ name: s.name, prompt: s.prompt }));
-      })();
+  const recorded =
+    opts?.steps && opts.steps.length > 0
+      ? opts.steps.map((s) => ({ name: s.name, prompt: s.prompt }))
+      : (() => {
+          const enabled = wf.steps.filter((s) => s.enabled);
+          return enabled.length === 0
+            ? [{ name: "build", prompt: "Default build (no workflow steps configured)." }]
+            : enabled.map((s) => ({ name: s.name, prompt: s.prompt }));
+        })();
 
   const now = new Date();
   // Record the run as RUNNING with PENDING stepRuns. Marking everything

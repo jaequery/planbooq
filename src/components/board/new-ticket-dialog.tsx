@@ -2,11 +2,16 @@
 
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { Plus } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { createTicket } from "@/actions/ticket";
+import { replaceTicketWorkflowSteps } from "@/actions/workflow";
+import {
+  TicketCreateWorkflowPanel,
+  type TicketCreateWorkflowPanelHandle,
+} from "@/components/board/ticket-create-workflow-panel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,6 +53,7 @@ export function NewTicketDialog({
 }: Props): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const workflowRef = useRef<TicketCreateWorkflowPanelHandle | null>(null);
   const form = useForm<FormValues>({
     resolver: standardSchemaResolver(Schema),
     defaultValues: { title: "", description: "" },
@@ -68,6 +74,21 @@ export function NewTicketDialog({
           toast.error(`Could not create ticket: ${result.error}`);
         }
         return;
+      }
+      // If the user customised the workflow in the panel, persist that draft
+      // as a ticket-scoped override now that the ticket exists. Untouched
+      // drafts fall through to the project default via `getTicketWorkflow`,
+      // so we skip the write entirely. Failure here is non-fatal — the ticket
+      // is already created.
+      const draft = workflowRef.current?.getDraft();
+      if (draft?.dirty) {
+        const wfRes = await replaceTicketWorkflowSteps({
+          ticketId: result.data.id,
+          steps: draft.steps,
+        });
+        if (!wfRes.ok) {
+          toast.error(`Ticket created, but workflow could not be saved: ${wfRes.error}`);
+        }
       }
       onCreated(result.data);
       toast.success("Ticket created");
@@ -131,6 +152,11 @@ export function NewTicketDialog({
               onUploadError={(message) => toast.error(`Image upload failed: ${message}`)}
             />
           </div>
+          <TicketCreateWorkflowPanel
+            ref={workflowRef}
+            workspaceId={workspaceId}
+            projectId={projectId}
+          />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>
               Cancel
