@@ -92,7 +92,11 @@ type Session = {
 const sessions = new Map<string, Session>();
 
 const HEARTBEAT_MS = 30_000;
-const APPEND_FLUSH_MS = 250;
+// Coalesce wire output into one PATCH/s per session. The renderer gets live
+// frames over IPC/SSE directly from the broker, so DB durability doesn't need
+// sub-second granularity — and shorter intervals just inflate PATCH volume
+// (and Ably fanout) on busy sessions.
+const APPEND_FLUSH_MS = 1_000;
 
 // =============================================================================
 // Event fanout — every SSE subscriber gets every event. Filtering by

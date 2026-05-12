@@ -1,3 +1,4 @@
+import type { AgentJob } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { publishWorkspaceEvent } from "@/server/ably";
@@ -55,10 +56,43 @@ export async function PATCH(
     return NextResponse.json({ ok: false, error: "validation_error" }, { status: 400 });
   }
 
-  const job = await prisma.agentJob.findUnique({ where: { id } });
-  if (!job || job.source !== "DESKTOP" || job.userId !== userId) {
+  // Skip the multi-MB `output` and `prompt` TEXT columns on the hot streaming
+  // path. Reading them on every chunk PATCH was the source of quadratic IO —
+  // each append re-read the entire (growing) output blob. Mirror functions
+  // don't read `output` either; on terminal we re-fetch it once for the
+  // mirrorJobTerminal finalOutput parameter.
+  const jobRow = await prisma.agentJob.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      agentId: true,
+      ticketId: true,
+      workspaceId: true,
+      userId: true,
+      source: true,
+      kind: true,
+      status: true,
+      exitCode: true,
+      error: true,
+      worktreePath: true,
+      claudeSessionId: true,
+      workflowStepRunId: true,
+      outcome: true,
+      outcomeReason: true,
+      sourceJobId: true,
+      continuationAttempt: true,
+      startedAt: true,
+      finishedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+  if (!jobRow || jobRow.source !== "DESKTOP" || jobRow.userId !== userId) {
     return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   }
+  // Reconstruct an AgentJob-shaped object for mirror callees. They never read
+  // the omitted columns; the empty strings just satisfy the TS contract.
+  const job: AgentJob = { ...jobRow, output: "", prompt: "" };
 
   // Heartbeat fast-path. The renderer fires these every 30s while a session
   // is alive. Bumping `updatedAt` is the only side-effect — no mirror, no
@@ -74,28 +108,40 @@ export async function PATCH(
     return NextResponse.json({ ok: true });
   }
 
-  const data: Record<string, unknown> = {};
+  // Append-only path: single roundtrip, server-side concat. No read of the
+  // existing blob — fixes the read-modify-write quadratic IO that pinned
+  // PATCH latency to ~1s mid-session.
+  if (parsed.data.appendOutput) {
+    await prisma.$executeRaw`
+      UPDATE "AgentJob"
+         SET "output" = "output" || ${parsed.data.appendOutput},
+             "updatedAt" = NOW()
+       WHERE id = ${id}
+    `;
+  }
+
+  // Status-mutation path (terminal events, worktree/session-id stamps). Runs
+  // as a separate query so the hot append path stays single-roundtrip.
+  const statusData: Record<string, unknown> = {};
   if (parsed.data.status) {
-    data.status = parsed.data.status;
+    statusData.status = parsed.data.status;
     if (
       parsed.data.status === "SUCCEEDED" ||
       parsed.data.status === "FAILED" ||
       parsed.data.status === "CANCELED"
     ) {
-      data.finishedAt = new Date();
+      statusData.finishedAt = new Date();
     }
   }
-  if (typeof parsed.data.exitCode === "number") data.exitCode = parsed.data.exitCode;
-  if (parsed.data.error) data.error = parsed.data.error;
-  if (parsed.data.appendOutput) {
-    data.output = `${job.output}${parsed.data.appendOutput}`;
-  }
-  if (parsed.data.worktreePath !== undefined) data.worktreePath = parsed.data.worktreePath;
+  if (typeof parsed.data.exitCode === "number") statusData.exitCode = parsed.data.exitCode;
+  if (parsed.data.error) statusData.error = parsed.data.error;
+  if (parsed.data.worktreePath !== undefined) statusData.worktreePath = parsed.data.worktreePath;
   if (parsed.data.claudeSessionId !== undefined) {
-    data.claudeSessionId = parsed.data.claudeSessionId;
+    statusData.claudeSessionId = parsed.data.claudeSessionId;
   }
-
-  await prisma.agentJob.update({ where: { id }, data, select: { id: true } });
+  if (Object.keys(statusData).length > 0) {
+    await prisma.agentJob.update({ where: { id }, data: statusData, select: { id: true } });
+  }
 
   // Mirror this update into the new Conversation/Message surface so the
   // chat-style thread populates alongside the legacy AgentJob.output blob.
@@ -108,20 +154,31 @@ export async function PATCH(
     parsed.data.status === "FAILED" ||
     parsed.data.status === "CANCELED"
   ) {
-    const finalOutput = parsed.data.appendOutput
-      ? `${job.output}${parsed.data.appendOutput}`
-      : job.output;
-    void mirrorJobTerminal({ job, status: parsed.data.status, finalOutput });
+    // Read the now-final blob once on terminal. We skipped it on the hot path
+    // above so this is the only place the full output gets pulled across.
+    void prisma.agentJob
+      .findUnique({ where: { id }, select: { output: true } })
+      .then((row) => {
+        void mirrorJobTerminal({
+          job,
+          status: parsed.data.status as "SUCCEEDED" | "FAILED" | "CANCELED",
+          finalOutput: row?.output ?? "",
+        });
+      })
+      .catch(() => undefined);
   }
 
   // Desktop chat output is free-form — the agent will frequently announce a
   // newly-created PR in the chat stream (e.g. "Opened https://github.com/.../pull/42")
-  // without the post-tool-use hook ever firing on this path. Scan every
-  // append for a PR URL and link the ticket if it isn't already linked.
-  if (parsed.data.appendOutput && job.ticketId) {
-    void maybeLinkPrUrlFromText(job.ticketId, parsed.data.appendOutput).catch(
-      () => undefined,
-    );
+  // without the post-tool-use hook ever firing on this path. Cheap substring
+  // check first so we don't run regex + DB lookup on every wire chunk; PRs
+  // are mentioned exactly once per session.
+  if (
+    parsed.data.appendOutput &&
+    job.ticketId &&
+    parsed.data.appendOutput.includes("github.com/")
+  ) {
+    void maybeLinkPrUrlFromText(job.ticketId, parsed.data.appendOutput).catch(() => undefined);
   }
 
   // Fanout for cross-tab/cross-client liveness.
