@@ -15,183 +15,437 @@ export const metadata = {
 };
 
 const APP_HREF = "/welcome";
-const CTA_LABEL = "Open the app";
+const APP_LABEL = "Open the app";
 const DOWNLOAD_HREF = "/api/download/mac";
-const DOWNLOAD_LABEL = "Download Now";
+const DOWNLOAD_LABEL = "Download for Mac";
+
+const INK = "#0B0E12";
+const SURFACE = "#11151B";
+const SURFACE_HI = "#161B22";
+const HAIRLINE = "rgba(255,255,255,0.08)";
+const HAIRLINE_STRONG = "rgba(255,255,255,0.14)";
+const TEXT = "#ECEEF2";
+const TEXT_MUTED = "rgba(236,238,242,0.62)";
+const TEXT_FAINT = "rgba(236,238,242,0.42)";
+const ACCENT = "#7BD389";
+const ACCENT_INK = "#08110A";
 
 export default function Home(): React.ReactElement {
   return (
     <main
-      className={`${serif.variable} min-h-screen bg-[#F4ECD8] text-[#1F2A1E] antialiased`}
-      style={{ colorScheme: "light" }}
+      className={`${serif.variable} relative min-h-screen overflow-x-hidden antialiased`}
+      style={{ backgroundColor: INK, color: TEXT, colorScheme: "dark" }}
     >
-      <div className="mx-auto max-w-6xl px-6 pt-10 pb-24 sm:px-8 sm:pt-14">
-        <Wordmark />
-
+      <BackgroundGrid />
+      <Header />
+      <div className="relative mx-auto max-w-6xl px-6 sm:px-8">
         <Hero />
-
+        <ProductPreview />
         <Pillars />
-
         <HowItWorks />
-
-        <SoCalMap />
-
+        <Quote />
         <BottomCTA />
       </div>
+      <Footer />
     </main>
+  );
+}
+
+function BackgroundGrid(): React.ReactElement {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-x-0 top-0 -z-0 h-[860px]"
+      style={{
+        background:
+          "radial-gradient(ellipse 80% 60% at 50% -10%, rgba(123,211,137,0.10), transparent 60%), radial-gradient(ellipse 60% 40% at 50% 12%, rgba(123,211,137,0.05), transparent 70%)",
+        maskImage: "linear-gradient(to bottom, black 60%, transparent 100%)",
+      }}
+    />
+  );
+}
+
+function Header(): React.ReactElement {
+  return (
+    <header
+      className="sticky top-0 z-40 backdrop-blur-md"
+      style={{
+        backgroundColor: "rgba(11,14,18,0.62)",
+        borderBottom: `1px solid ${HAIRLINE}`,
+      }}
+    >
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6 sm:px-8">
+        <div className="flex items-center gap-2">
+          <Wordmark />
+        </div>
+        <nav className="hidden items-center gap-7 sm:flex">
+          <NavLink href="#product">Product</NavLink>
+          <NavLink href="#how">How it works</NavLink>
+          <NavLink href="#why">Why Planbooq</NavLink>
+        </nav>
+        <div className="flex items-center gap-2">
+          <Link
+            href={APP_HREF}
+            className="hidden h-9 items-center rounded-lg px-3 text-[13px] font-medium transition sm:inline-flex"
+            style={{ color: TEXT_MUTED }}
+          >
+            {APP_LABEL}
+          </Link>
+          <Link
+            href={DOWNLOAD_HREF}
+            className="inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-[13px] font-semibold transition hover:brightness-95"
+            style={{ backgroundColor: ACCENT, color: ACCENT_INK }}
+          >
+            Download
+          </Link>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function NavLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <a href={href} className="text-[13px] transition" style={{ color: TEXT_MUTED }}>
+      {children}
+    </a>
   );
 }
 
 function Wordmark(): React.ReactElement {
   return (
-    <div className="flex justify-center">
-      <div className="font-[var(--font-landing-serif)] text-base tracking-[0.18em] text-[#1F2A1E]/70 uppercase">
-        Planbooq
-      </div>
-    </div>
+    <Link href="/" className="flex items-center gap-2">
+      <span
+        aria-hidden="true"
+        className="inline-flex h-6 w-6 items-center justify-center rounded-md"
+        style={{
+          backgroundColor: ACCENT,
+          color: ACCENT_INK,
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35)",
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+          <rect x="1.5" y="1.5" width="4" height="11" rx="1.2" fill="currentColor" />
+          <rect x="8.5" y="1.5" width="4" height="7" rx="1.2" fill="currentColor" opacity="0.65" />
+        </svg>
+      </span>
+      <span className="text-[15px] font-semibold tracking-tight">Planbooq</span>
+    </Link>
   );
 }
 
-type Marker = { name: string; x: number; y: number };
-
-const SOCAL_MARKERS: ReadonlyArray<Marker> = [
-  { name: "Santa Barbara", x: 8, y: 22 },
-  { name: "Burbank", x: 30, y: 32 },
-  { name: "Pasadena", x: 36, y: 34 },
-  { name: "Santa Monica", x: 24, y: 42 },
-  { name: "Los Angeles", x: 32, y: 42 },
-  { name: "Long Beach", x: 34, y: 54 },
-  { name: "Anaheim", x: 42, y: 50 },
-  { name: "Irvine", x: 48, y: 58 },
-  { name: "San Diego", x: 68, y: 80 },
-];
-
-const PULSE_PERIOD_S = 2.4;
-
-function SoCalMap(): React.ReactElement {
-  const step = PULSE_PERIOD_S / SOCAL_MARKERS.length;
+function Eyebrow({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
-    <section className="mt-28 sm:mt-36">
-      <div className="flex flex-col items-center text-center">
-        <h2 className="font-[var(--font-landing-serif)] text-4xl tracking-tight sm:text-5xl">
-          Built across <em className="italic text-[#3A5A40]">Southern California</em>
-        </h2>
-        <p className="mt-5 max-w-md text-balance text-[15px] leading-relaxed text-[#1F2A1E]/70">
-          Designed and shipped from the coast.
-        </p>
-      </div>
-      <div
-        role="img"
-        aria-label="Southern California map with city markers"
-        className="relative mx-auto mt-14 aspect-[5/3] w-full max-w-3xl overflow-hidden rounded-[28px] border border-[#1F2A1E]/10 bg-[#EDE2C6] shadow-[0_1px_0_rgba(0,0,0,0.04),0_18px_44px_-22px_rgba(31,42,30,0.25)]"
-      >
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(201,215,203,0.45)_0%,transparent_55%),radial-gradient(circle_at_70%_75%,rgba(201,215,203,0.35)_0%,transparent_50%)]"
-        />
-        {SOCAL_MARKERS.map((m, i) => (
-          <span
-            key={m.name}
-            className="socal-marker absolute size-2 rounded-full bg-[#2F4A2C]"
-            style={{
-              left: `${m.x}%`,
-              top: `${m.y}%`,
-              animationDelay: `${(i * step).toFixed(3)}s`,
-            }}
-            title={m.name}
-          />
-        ))}
-      </div>
-    </section>
+    <span
+      className="inline-flex items-center gap-2 rounded-full border px-3 py-1 font-mono text-[11px] tracking-[0.16em] uppercase"
+      style={{ borderColor: HAIRLINE_STRONG, color: TEXT_MUTED }}
+    >
+      <span
+        aria-hidden="true"
+        className="inline-block h-1.5 w-1.5 rounded-full"
+        style={{ backgroundColor: ACCENT, boxShadow: "0 0 12px rgba(123,211,137,0.6)" }}
+      />
+      {children}
+    </span>
   );
 }
 
 function Hero(): React.ReactElement {
   return (
-    <section className="mt-12 flex flex-col items-center text-center sm:mt-16">
-      <h1 className="font-[var(--font-landing-serif)] max-w-3xl text-balance text-5xl leading-[1.05] tracking-tight sm:text-7xl">
-        Ship <strong className="font-semibold text-[#3A5A40]">while it builds</strong>.
+    <section className="flex flex-col items-center pt-20 pb-10 text-center sm:pt-28 sm:pb-14">
+      <Eyebrow>Parallel AI · Vibe coding kanban</Eyebrow>
+      <h1
+        className="font-[var(--font-landing-serif)] mt-6 max-w-4xl text-balance text-5xl leading-[1.02] tracking-tight sm:text-7xl"
+        style={{ color: TEXT }}
+      >
+        Ship{" "}
+        <em className="italic" style={{ color: ACCENT }}>
+          while it builds
+        </em>
+        .
       </h1>
-      <p className="mt-7 max-w-xl text-balance text-base leading-relaxed text-[#1F2A1E]/75 sm:text-lg">
-        The cockpit for vibe coders running ten tickets at once. Drop tickets, watch parallel AI
-        workers run them through, never wait on a single agent. The offspring of Cursor, Linear, and
-        Notion — built ground-up for velocity.
+      <p
+        className="mt-7 max-w-xl text-balance text-base leading-relaxed sm:text-[17px]"
+        style={{ color: TEXT_MUTED }}
+      >
+        The cockpit for vibe coders running ten tickets at once. Drop tickets, fan them out across
+        parallel AI workers, never wait on a single agent.
       </p>
-      <div className="mt-9 flex flex-col items-center gap-5">
-        <Link
-          href={DOWNLOAD_HREF}
-          aria-label={DOWNLOAD_LABEL}
-          className="group inline-flex h-14 items-center gap-3 rounded-full bg-[#2F4A2C] px-10 text-base font-semibold tracking-wide text-[#F4ECD8] shadow-[0_2px_0_rgba(0,0,0,0.04),0_20px_40px_-12px_rgba(31,42,30,0.45)] ring-1 ring-[#1F2A1E]/10 transition will-change-transform hover:-translate-y-0.5 hover:bg-[#243B22] hover:shadow-[0_2px_0_rgba(0,0,0,0.04),0_28px_50px_-14px_rgba(31,42,30,0.55)] focus-visible:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4A2C] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F4ECD8] sm:h-16 sm:px-12 sm:text-lg"
-        >
-          <DownloadGlyph />
-          {DOWNLOAD_LABEL}
-        </Link>
+      <div className="mt-9 flex flex-col items-center gap-4">
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link
-            href={APP_HREF}
-            className="inline-flex h-11 items-center rounded-full border border-[#1F2A1E]/20 bg-[#F4ECD8] px-6 text-sm font-medium text-[#1F2A1E] transition hover:border-[#1F2A1E]/40 hover:bg-[#EDE2C6]"
+            href={DOWNLOAD_HREF}
+            className="group inline-flex h-12 items-center gap-2.5 rounded-xl px-6 text-[15px] font-semibold transition hover:brightness-95"
+            style={{
+              backgroundColor: ACCENT,
+              color: ACCENT_INK,
+              boxShadow:
+                "0 1px 0 rgba(255,255,255,0.25) inset, 0 12px 32px -16px rgba(123,211,137,0.55)",
+            }}
+            aria-label={DOWNLOAD_LABEL}
           >
-            {CTA_LABEL}
+            <AppleGlyph />
+            {DOWNLOAD_LABEL}
           </Link>
-          <a
-            href="#how"
-            className="inline-flex h-11 items-center rounded-full border border-[#1F2A1E]/20 bg-[#F4ECD8] px-6 text-sm font-medium text-[#1F2A1E] transition hover:border-[#1F2A1E]/40 hover:bg-[#EDE2C6]"
+          <Link
+            href={APP_HREF}
+            className="inline-flex h-12 items-center rounded-xl border px-5 text-[15px] font-medium transition"
+            style={{
+              borderColor: HAIRLINE_STRONG,
+              color: TEXT,
+              backgroundColor: "rgba(255,255,255,0.02)",
+            }}
           >
-            See how it works
-          </a>
+            {APP_LABEL}
+            <span aria-hidden="true" className="ml-2 opacity-60">
+              ↗
+            </span>
+          </Link>
+        </div>
+        <p
+          className="mt-1 font-mono text-[11px] tracking-[0.16em] uppercase"
+          style={{ color: TEXT_FAINT }}
+        >
+          Mac · BYOK · Runs on your GitHub repos
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function AppleGlyph(): React.ReactElement {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className="transition-transform group-hover:-translate-y-0.5"
+    >
+      <path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.6-2.987 1.52-.12-1.12.42-2.28 1.06-3.02.71-.81 1.94-1.4 3.104-1.58zM20.5 17.36c-.55 1.27-.81 1.84-1.52 2.96-1 1.57-2.4 3.52-4.14 3.54-1.55.02-1.95-1.01-4.05-1-2.1.01-2.54 1.02-4.1 1-1.74-.02-3.06-1.78-4.06-3.35C.97 18.5-.2 13.79.34 11.05c.79-4 4.07-5.62 6.13-5.62 1.81 0 3.41 1.22 4.6 1.22 1.17 0 3.06-1.22 5.16-1.04.88.04 3.36.36 4.95 2.73-.13.08-2.95 1.72-2.93 5.12.03 4.05 3.54 5.41 3.58 5.43-.03.09-.55 1.93-1.83 4.47z" />
+    </svg>
+  );
+}
+
+function ProductPreview(): React.ReactElement {
+  return (
+    <section id="product" className="mt-12 sm:mt-16">
+      <div
+        className="relative overflow-hidden rounded-2xl"
+        style={{
+          backgroundColor: SURFACE,
+          border: `1px solid ${HAIRLINE}`,
+          boxShadow:
+            "inset 0 1px 0 rgba(255,255,255,0.05), 0 30px 80px -40px rgba(0,0,0,0.6), 0 0 0 1px rgba(123,211,137,0.04)",
+        }}
+      >
+        <div
+          className="flex items-center gap-2 border-b px-4 py-3"
+          style={{ borderColor: HAIRLINE }}
+        >
+          <span
+            aria-hidden="true"
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: "#3a3f49" }}
+          />
+          <span
+            aria-hidden="true"
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: "#3a3f49" }}
+          />
+          <span
+            aria-hidden="true"
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: "#3a3f49" }}
+          />
+          <span
+            className="ml-3 font-mono text-[11px] tracking-[0.14em] uppercase"
+            style={{ color: TEXT_FAINT }}
+          >
+            planbooq · acme · main board
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4 sm:gap-4 sm:p-6">
+          <KanbanColumn name="Backlog" count={4}>
+            <TicketCard title="Tighten onboarding copy" />
+            <TicketCard title="API key rotation flow" />
+          </KanbanColumn>
+          <KanbanColumn name="Building" count={3} active>
+            <TicketCard title="Redesign landing page" running variants={4} />
+            <TicketCard title="Worktree GC job" running variants={2} />
+          </KanbanColumn>
+          <KanbanColumn name="Review" count={2}>
+            <TicketCard title="Cmd-K palette polish" pr="#168" />
+          </KanbanColumn>
+          <KanbanColumn name="Done" count={12} dim>
+            <TicketCard title="Workspace switcher" done />
+            <TicketCard title="Ably token refresh" done />
+          </KanbanColumn>
         </div>
       </div>
     </section>
   );
 }
 
-function DownloadGlyph(): React.ReactElement {
+function KanbanColumn({
+  name,
+  count,
+  active,
+  dim,
+  children,
+}: {
+  name: string;
+  count: number;
+  active?: boolean;
+  dim?: boolean;
+  children: React.ReactNode;
+}): React.ReactElement {
   return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="transition-transform group-hover:translate-y-0.5"
-      aria-hidden="true"
+    <div
+      className="flex flex-col gap-2 rounded-xl p-3"
+      style={{
+        backgroundColor: active ? "rgba(123,211,137,0.05)" : "rgba(255,255,255,0.015)",
+        border: `1px solid ${active ? "rgba(123,211,137,0.18)" : HAIRLINE}`,
+        opacity: dim ? 0.72 : 1,
+      }}
     >
-      <path d="M12 3v12" />
-      <path d="m6 11 6 6 6-6" />
-      <path d="M4 21h16" />
-    </svg>
+      <div className="flex items-center justify-between">
+        <span
+          className="font-mono text-[10.5px] tracking-[0.18em] uppercase"
+          style={{ color: active ? ACCENT : TEXT_FAINT }}
+        >
+          {name}
+        </span>
+        <span className="font-mono text-[10.5px]" style={{ color: TEXT_FAINT }}>
+          {count}
+        </span>
+      </div>
+      <div className="flex flex-col gap-2">{children}</div>
+    </div>
+  );
+}
+
+function TicketCard({
+  title,
+  running,
+  variants,
+  pr,
+  done,
+}: {
+  title: string;
+  running?: boolean;
+  variants?: number;
+  pr?: string;
+  done?: boolean;
+}): React.ReactElement {
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-lg p-3"
+      style={{
+        backgroundColor: SURFACE_HI,
+        border: `1px solid ${HAIRLINE}`,
+      }}
+    >
+      <div className="text-[12.5px] leading-tight" style={{ color: done ? TEXT_MUTED : TEXT }}>
+        {title}
+      </div>
+      <div className="flex items-center gap-1.5">
+        {running ? (
+          <>
+            <span
+              className="inline-flex items-center gap-1 rounded font-mono text-[9.5px] tracking-wider uppercase"
+              style={{ color: ACCENT }}
+            >
+              <span
+                aria-hidden="true"
+                className="ticket-pulse inline-block h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: ACCENT }}
+              />
+              live
+            </span>
+            {variants ? (
+              <span className="ml-auto flex items-center gap-0.5">
+                {Array.from({ length: variants }).map((_, i) => (
+                  <span
+                    key={i}
+                    aria-hidden="true"
+                    className="inline-block h-1 rounded-full"
+                    style={{
+                      width: 12,
+                      backgroundColor: i < variants - 1 ? ACCENT : "rgba(123,211,137,0.35)",
+                    }}
+                  />
+                ))}
+              </span>
+            ) : null}
+          </>
+        ) : pr ? (
+          <span className="font-mono text-[10px] tracking-wider" style={{ color: TEXT_FAINT }}>
+            PR {pr}
+          </span>
+        ) : done ? (
+          <span
+            className="font-mono text-[10px] tracking-wider uppercase"
+            style={{ color: TEXT_FAINT }}
+          >
+            shipped
+          </span>
+        ) : (
+          <span
+            className="font-mono text-[10px] tracking-wider uppercase"
+            style={{ color: TEXT_FAINT }}
+          >
+            queued
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 
 function Pillars(): React.ReactElement {
   return (
-    <section className="mt-24 sm:mt-32">
-      <div className="flex flex-col items-center text-center">
-        <h2 className="font-[var(--font-landing-serif)] text-4xl tracking-tight sm:text-5xl">
-          Built for throughput.
+    <section id="why" className="mt-32 sm:mt-40">
+      <div className="flex flex-col items-start">
+        <Eyebrow>Why Planbooq</Eyebrow>
+        <h2
+          className="font-[var(--font-landing-serif)] mt-5 max-w-2xl text-balance text-4xl leading-tight tracking-tight sm:text-5xl"
+          style={{ color: TEXT }}
+        >
+          The bottleneck moved.{" "}
+          <em className="italic" style={{ color: ACCENT }}>
+            Writing isn't slow.
+          </em>{" "}
+          Deciding is.
         </h2>
+        <p className="mt-5 max-w-xl text-[15px] leading-relaxed" style={{ color: TEXT_MUTED }}>
+          Sequential prompt-and-iterate is broken once AI writes faster than you read. Planbooq fans
+          out every ticket to N workers in parallel and lets you pick the winner — instead of
+          re-prompting the same draft toward "fine."
+        </p>
       </div>
-      <div className="mt-12 grid gap-5 sm:grid-cols-3">
+      <div className="mt-12 grid gap-4 sm:grid-cols-3">
         <Tile
-          tone="olive"
-          eyebrow="01"
+          num="01"
           title="Run ten in parallel."
-          body="Drop a backlog of tickets and they all start at once — each in its own isolated worktree. Your wall-clock collapses to whatever the slowest worker takes."
+          body="Each ticket spawns N AI workers in isolated worktrees. Your wall-clock collapses to the slowest worker, not the longest queue."
         />
         <Tile
-          tone="forest"
-          eyebrow="02"
-          title="Tokens that ship, not stall."
-          body="Parallel generation replaces serial re-prompts. Every token spent moves a ticket forward instead of nudging the same draft toward 'fine.'"
+          num="02"
+          title="Pick, don't prompt."
+          body="Every variant lands as a live preview URL plus screenshots. Hot-or-not the winner in seconds. Remix on the roadmap."
         />
         <Tile
-          tone="sky"
-          eyebrow="03"
-          title="One surface for the whole loop."
-          body="Cursor's AI muscle, Linear's ticket discipline, Notion's calm visual order — collapsed into one fast desktop cockpit, keyboard-first end to end."
+          num="03"
+          title="One surface for the loop."
+          body="Cursor's AI, Linear's discipline, Notion's calm. Keyboard-first desktop cockpit. Your repo, your keys, your taste."
         />
       </div>
     </section>
@@ -199,149 +453,68 @@ function Pillars(): React.ReactElement {
 }
 
 function Tile({
-  tone,
-  eyebrow,
+  num,
   title,
   body,
 }: {
-  tone: "olive" | "forest" | "sky";
-  eyebrow: string;
+  num: string;
   title: string;
   body: string;
 }): React.ReactElement {
-  const palette = {
-    olive: {
-      bg: "#6E7340",
-      ink: "#F4ECD8",
-      mute: "rgba(244,236,216,0.78)",
-    },
-    forest: {
-      bg: "#2F4A2C",
-      ink: "#F4ECD8",
-      mute: "rgba(244,236,216,0.78)",
-    },
-    sky: {
-      bg: "#C9D7CB",
-      ink: "#1F2A1E",
-      mute: "rgba(31,42,30,0.7)",
-    },
-  }[tone];
-
   return (
     <article
-      className="relative flex aspect-[5/6] flex-col justify-between overflow-hidden rounded-3xl p-7 sm:aspect-[4/5]"
-      style={{ backgroundColor: palette.bg, color: palette.ink }}
+      className="relative flex flex-col rounded-2xl p-7"
+      style={{
+        backgroundColor: SURFACE,
+        border: `1px solid ${HAIRLINE}`,
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+      }}
     >
-      <TileGlyph tone={tone} />
-      <div className="relative z-10">
-        <div
-          className="font-[var(--font-landing-serif)] text-xs tracking-[0.22em] uppercase"
-          style={{ color: palette.mute }}
-        >
-          {eyebrow}
-        </div>
-        <h3 className="font-[var(--font-landing-serif)] mt-2 text-2xl leading-tight tracking-tight sm:text-3xl">
-          {title}
-        </h3>
-      </div>
-      <p
-        className="relative z-10 mt-6 text-sm leading-relaxed sm:text-[15px]"
-        style={{ color: palette.mute }}
+      <span className="font-mono text-[11px] tracking-[0.22em] uppercase" style={{ color: ACCENT }}>
+        {num}
+      </span>
+      <h3
+        className="font-[var(--font-landing-serif)] mt-3 text-2xl leading-tight tracking-tight sm:text-[28px]"
+        style={{ color: TEXT }}
       >
+        {title}
+      </h3>
+      <p className="mt-3 text-[14.5px] leading-relaxed" style={{ color: TEXT_MUTED }}>
         {body}
       </p>
     </article>
   );
 }
 
-function TileGlyph({ tone }: { tone: "olive" | "forest" | "sky" }): React.ReactElement {
-  if (tone === "olive") {
-    return (
-      <svg
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-25"
-        width="220"
-        height="220"
-        viewBox="0 0 220 220"
-        aria-hidden="true"
-      >
-        {Array.from({ length: 4 }).map((_, i) => (
-          <rect
-            key={i}
-            x={20 + i * 12}
-            y={20 + i * 12}
-            width={180 - i * 24}
-            height={180 - i * 24}
-            rx="14"
-            fill="none"
-            stroke="#F4ECD8"
-            strokeWidth="1.4"
-          />
-        ))}
-      </svg>
-    );
-  }
-  if (tone === "forest") {
-    return (
-      <svg
-        className="absolute right-6 bottom-6 opacity-30"
-        width="160"
-        height="160"
-        viewBox="0 0 160 160"
-        aria-hidden="true"
-      >
-        <circle cx="80" cy="80" r="50" fill="none" stroke="#F4ECD8" strokeWidth="1.5" />
-        <circle cx="80" cy="80" r="30" fill="none" stroke="#F4ECD8" strokeWidth="1.5" />
-        <circle cx="80" cy="80" r="10" fill="#F4ECD8" />
-        <line x1="80" y1="10" x2="80" y2="150" stroke="#F4ECD8" strokeWidth="0.8" />
-        <line x1="10" y1="80" x2="150" y2="80" stroke="#F4ECD8" strokeWidth="0.8" />
-      </svg>
-    );
-  }
-  return (
-    <svg
-      className="absolute right-4 -bottom-2 opacity-60"
-      width="200"
-      height="160"
-      viewBox="0 0 200 160"
-      aria-hidden="true"
-    >
-      <path
-        d="M0,140 C40,120 70,135 110,118 C150,100 180,118 200,108 L200,160 L0,160 Z"
-        fill="#1F2A1E"
-        opacity="0.18"
-      />
-      <path
-        d="M0,150 C40,138 80,148 120,138 C160,128 180,140 200,134 L200,160 L0,160 Z"
-        fill="#1F2A1E"
-        opacity="0.25"
-      />
-    </svg>
-  );
-}
-
 function HowItWorks(): React.ReactElement {
   return (
-    <section id="how" className="mt-28 sm:mt-36">
-      <div className="flex flex-col items-center text-center">
-        <h2 className="font-[var(--font-landing-serif)] text-4xl tracking-tight sm:text-5xl">
-          How Planbooq works
+    <section id="how" className="mt-32 sm:mt-40">
+      <div className="flex flex-col items-start">
+        <Eyebrow>How it works</Eyebrow>
+        <h2
+          className="font-[var(--font-landing-serif)] mt-5 max-w-2xl text-balance text-4xl leading-tight tracking-tight sm:text-5xl"
+          style={{ color: TEXT }}
+        >
+          Four steps.{" "}
+          <em className="italic" style={{ color: ACCENT }}>
+            Zero waiting.
+          </em>
         </h2>
-        <p className="mt-5 max-w-md text-balance text-[15px] leading-relaxed text-[#1F2A1E]/70">
-          Four steps, zero waiting. Drop a ticket and move to the next one — workers run in parallel
-          behind you.
-        </p>
       </div>
-      <ol className="mt-14 grid gap-x-10 gap-y-12 sm:grid-cols-2 lg:grid-cols-4">
+      <ol
+        className="mt-12 grid gap-px overflow-hidden rounded-2xl sm:grid-cols-2 lg:grid-cols-4"
+        style={{ backgroundColor: HAIRLINE, border: `1px solid ${HAIRLINE}` }}
+      >
         <Step
           n={1}
           title="Drop a ticket"
-          body="Describe what you want and move on. The cmd-K palette keeps your hands on the keyboard."
+          body="Describe what you want and move on. Cmd-K palette keeps your hands on the keyboard."
           glyph={<StepDrop />}
         />
         <Step
           n={2}
           title="Fan out"
-          body="Workers spin up in parallel — each its own branch and worktree. Queue the next ticket; you do not wait."
+          body="N workers spin up in parallel — each in its own branch and worktree. You queue the next ticket."
           glyph={<StepFanOut />}
         />
         <Step
@@ -373,15 +546,34 @@ function Step({
   glyph: React.ReactNode;
 }): React.ReactElement {
   return (
-    <li className="flex flex-col items-start">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#E8DFC4] text-[#2F4A2C]">
+    <li className="flex flex-col gap-4 p-7" style={{ backgroundColor: SURFACE }}>
+      <div
+        className="flex h-10 w-10 items-center justify-center rounded-lg"
+        style={{
+          backgroundColor: "rgba(123,211,137,0.10)",
+          color: ACCENT,
+          border: `1px solid rgba(123,211,137,0.22)`,
+        }}
+      >
         {glyph}
       </div>
-      <div className="font-[var(--font-landing-serif)] mt-4 text-xs tracking-[0.22em] text-[#1F2A1E]/55 uppercase">
-        Step 0{n}
+      <div>
+        <span
+          className="font-mono text-[11px] tracking-[0.22em] uppercase"
+          style={{ color: TEXT_FAINT }}
+        >
+          Step 0{n}
+        </span>
+        <h3
+          className="font-[var(--font-landing-serif)] mt-1.5 text-xl tracking-tight"
+          style={{ color: TEXT }}
+        >
+          {title}
+        </h3>
+        <p className="mt-2 text-[13.5px] leading-relaxed" style={{ color: TEXT_MUTED }}>
+          {body}
+        </p>
       </div>
-      <h3 className="font-[var(--font-landing-serif)] mt-1 text-xl tracking-tight">{title}</h3>
-      <p className="mt-2 text-[14px] leading-relaxed text-[#1F2A1E]/70">{body}</p>
     </li>
   );
 }
@@ -389,8 +581,8 @@ function Step({
 function StepDrop(): React.ReactElement {
   return (
     <svg
-      width="26"
-      height="26"
+      width="20"
+      height="20"
       viewBox="0 0 26 26"
       fill="none"
       stroke="currentColor"
@@ -409,8 +601,8 @@ function StepDrop(): React.ReactElement {
 function StepFanOut(): React.ReactElement {
   return (
     <svg
-      width="26"
-      height="26"
+      width="20"
+      height="20"
       viewBox="0 0 26 26"
       fill="none"
       stroke="currentColor"
@@ -433,8 +625,8 @@ function StepFanOut(): React.ReactElement {
 function StepCompare(): React.ReactElement {
   return (
     <svg
-      width="26"
-      height="26"
+      width="20"
+      height="20"
       viewBox="0 0 26 26"
       fill="none"
       stroke="currentColor"
@@ -453,8 +645,8 @@ function StepCompare(): React.ReactElement {
 function StepPick(): React.ReactElement {
   return (
     <svg
-      width="26"
-      height="26"
+      width="20"
+      height="20"
       viewBox="0 0 26 26"
       fill="none"
       stroke="currentColor"
@@ -468,31 +660,109 @@ function StepPick(): React.ReactElement {
   );
 }
 
+function Quote(): React.ReactElement {
+  return (
+    <section className="mt-32 sm:mt-40">
+      <div
+        className="relative mx-auto max-w-4xl rounded-2xl p-10 sm:p-14"
+        style={{
+          backgroundColor: SURFACE,
+          border: `1px solid ${HAIRLINE}`,
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+        }}
+      >
+        <svg
+          aria-hidden="true"
+          width="40"
+          height="32"
+          viewBox="0 0 40 32"
+          className="opacity-30"
+          style={{ color: ACCENT }}
+        >
+          <path
+            fill="currentColor"
+            d="M8 0C3.6 0 0 3.6 0 8v12c0 6.6 5.4 12 12 12v-8c-2.2 0-4-1.8-4-4h4V8H8zm20 0c-4.4 0-8 3.6-8 8v12c0 6.6 5.4 12 12 12v-8c-2.2 0-4-1.8-4-4h4V8h-4z"
+          />
+        </svg>
+        <blockquote
+          className="font-[var(--font-landing-serif)] mt-6 text-[28px] leading-snug tracking-tight sm:text-4xl"
+          style={{ color: TEXT }}
+        >
+          The point of AI was supposed to be that humans stop waiting. Planbooq is the first tool
+          where I actually don't.
+        </blockquote>
+        <footer
+          className="mt-8 flex items-center gap-3 font-mono text-[11px] tracking-[0.18em] uppercase"
+          style={{ color: TEXT_FAINT }}
+        >
+          <span
+            aria-hidden="true"
+            className="inline-block h-px w-8"
+            style={{ backgroundColor: HAIRLINE_STRONG }}
+          />
+          A vibe coder, beta cohort
+        </footer>
+      </div>
+    </section>
+  );
+}
+
 function BottomCTA(): React.ReactElement {
   return (
-    <section className="mt-28 sm:mt-36">
-      <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
-        <h2 className="font-[var(--font-landing-serif)] text-4xl leading-tight tracking-tight sm:text-6xl">
+    <section className="mt-32 mb-24 sm:mt-40">
+      <div
+        className="relative overflow-hidden rounded-3xl p-10 text-center sm:p-16"
+        style={{
+          background:
+            "radial-gradient(ellipse 60% 80% at 50% 0%, rgba(123,211,137,0.10), transparent 70%), linear-gradient(180deg, #11151B 0%, #0E1217 100%)",
+          border: `1px solid ${HAIRLINE}`,
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)",
+        }}
+      >
+        <h2
+          className="font-[var(--font-landing-serif)] mx-auto max-w-3xl text-balance text-4xl leading-tight tracking-tight sm:text-6xl"
+          style={{ color: TEXT }}
+        >
           Stop watching agents.{" "}
-          <strong className="font-semibold text-[#3A5A40]">Start shipping</strong>.
+          <em className="italic" style={{ color: ACCENT }}>
+            Start shipping.
+          </em>
         </h2>
-        <p className="mt-5 max-w-xl text-balance text-[15px] leading-relaxed text-[#1F2A1E]/70">
+        <p
+          className="mx-auto mt-6 max-w-xl text-balance text-[15px] leading-relaxed"
+          style={{ color: TEXT_MUTED }}
+        >
           Real-time multiplayer kanban, full keyboard nav, GitHub-wired tickets, BYOK so unit
           economics stay yours. One surface, ten things in flight, none of them blocking you.
         </p>
 
         <PromptBar />
 
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+        <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href={DOWNLOAD_HREF}
+            className="group inline-flex h-12 items-center gap-2.5 rounded-xl px-6 text-[15px] font-semibold transition hover:brightness-95"
+            style={{
+              backgroundColor: ACCENT,
+              color: ACCENT_INK,
+              boxShadow:
+                "0 1px 0 rgba(255,255,255,0.25) inset, 0 12px 32px -16px rgba(123,211,137,0.55)",
+            }}
+          >
+            <AppleGlyph />
+            {DOWNLOAD_LABEL}
+          </Link>
           <Link
             href={APP_HREF}
-            className="inline-flex h-11 items-center rounded-full bg-[#1F2A1E] px-6 text-sm font-medium text-[#F4ECD8] transition hover:bg-[#2F4A2C]"
+            className="inline-flex h-12 items-center rounded-xl border px-5 text-[15px] font-medium transition"
+            style={{
+              borderColor: HAIRLINE_STRONG,
+              color: TEXT,
+              backgroundColor: "rgba(255,255,255,0.02)",
+            }}
           >
-            {CTA_LABEL}
+            {APP_LABEL}
           </Link>
-          <span className="text-xs tracking-[0.16em] text-[#1F2A1E]/55 uppercase">
-            Runs on top of your GitHub repos
-          </span>
         </div>
       </div>
     </section>
@@ -501,16 +771,24 @@ function BottomCTA(): React.ReactElement {
 
 function PromptBar(): React.ReactElement {
   return (
-    <div className="mt-12 w-full max-w-2xl">
-      <div className="rounded-2xl border border-[#1F2A1E]/12 bg-white/70 p-3 shadow-[0_1px_0_rgba(0,0,0,0.03),0_18px_44px_-22px_rgba(31,42,30,0.25)] backdrop-blur">
-        <div className="flex items-center gap-3 rounded-xl bg-white px-4 py-3">
+    <div className="mx-auto mt-10 w-full max-w-2xl">
+      <div
+        className="rounded-2xl p-2.5"
+        style={{
+          backgroundColor: "rgba(255,255,255,0.02)",
+          border: `1px solid ${HAIRLINE_STRONG}`,
+        }}
+      >
+        <div
+          className="flex items-center gap-3 rounded-xl px-4 py-3"
+          style={{ backgroundColor: SURFACE_HI }}
+        >
           <svg
-            width="18"
-            height="18"
+            width="16"
+            height="16"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="#1F2A1E"
-            strokeOpacity="0.5"
+            stroke={TEXT_FAINT}
             strokeWidth="1.8"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -519,18 +797,52 @@ function PromptBar(): React.ReactElement {
             <circle cx="11" cy="11" r="7" />
             <path d="m20 20-3.5-3.5" />
           </svg>
-          <span className="flex-1 text-left text-[15px] text-[#1F2A1E]/55">
+          <span className="flex-1 text-left text-[14px]" style={{ color: TEXT_FAINT }}>
             Add a ticket — "Hero section, friendlier, swap CTA copy…"
           </span>
-          <span className="rounded-md border border-[#1F2A1E]/15 px-1.5 py-0.5 font-mono text-[11px] text-[#1F2A1E]/55">
+          <span
+            className="rounded-md border px-1.5 py-0.5 font-mono text-[10.5px]"
+            style={{ borderColor: HAIRLINE_STRONG, color: TEXT_FAINT }}
+          >
             ⌘K
           </span>
         </div>
-        <div className="mt-2 flex items-center justify-between px-2 pt-1 pb-1 text-[11px] tracking-[0.16em] text-[#1F2A1E]/45 uppercase">
+        <div
+          className="mt-2 flex items-center justify-between px-2 pt-1 pb-1 font-mono text-[10px] tracking-[0.18em] uppercase"
+          style={{ color: TEXT_FAINT }}
+        >
           <span>Runs in parallel</span>
           <span>You move on</span>
         </div>
       </div>
     </div>
+  );
+}
+
+function Footer(): React.ReactElement {
+  return (
+    <footer className="mt-10 border-t" style={{ borderColor: HAIRLINE }}>
+      <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-6 py-10 sm:flex-row sm:items-center sm:px-8">
+        <div className="flex items-center gap-3">
+          <Wordmark />
+          <span
+            className="font-mono text-[11px] tracking-[0.16em] uppercase"
+            style={{ color: TEXT_FAINT }}
+          >
+            Made in Southern California
+          </span>
+        </div>
+        <div
+          className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px]"
+          style={{ color: TEXT_MUTED }}
+        >
+          <a href="https://github.com/planbooq">GitHub</a>
+          <a href="/welcome">App</a>
+          <a href="#how">How it works</a>
+          <a href="#why">Why</a>
+          <span style={{ color: TEXT_FAINT }}>© Planbooq 2026</span>
+        </div>
+      </div>
+    </footer>
   );
 }
