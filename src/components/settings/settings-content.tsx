@@ -80,10 +80,10 @@ export async function SettingsContent(): Promise<React.ReactElement | null> {
     <Suspense fallback={null}>
       <SettingsTabs
         appearance={
-          <section className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <h2 className="text-base font-semibold">Appearance</h2>
-              <p className="text-sm text-muted-foreground">
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-col gap-0.5">
+              <h2 className="text-sm font-semibold">Appearance</h2>
+              <p className="text-xs text-muted-foreground">
                 Choose how Planbooq looks. System follows your device setting.
               </p>
             </div>

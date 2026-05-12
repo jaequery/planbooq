@@ -155,12 +155,12 @@ export function SettingsTabs({
       value={active}
       onValueChange={onValueChange}
       orientation="vertical"
-      className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row md:gap-6"
+      className="flex min-h-0 flex-1 flex-col gap-3 md:flex-row md:gap-5"
     >
-      <aside className="flex flex-col gap-3 md:w-56 md:shrink-0">
+      <aside className="flex flex-col gap-2.5 md:w-48 md:shrink-0">
         <div className="relative">
           <Search
-            className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+            className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground"
             aria-hidden
           />
           <input
@@ -170,19 +170,19 @@ export function SettingsTabs({
             placeholder="Search settings"
             aria-label="Search settings"
             className={cn(
-              "h-8 w-full rounded-md border bg-background pl-8 pr-2 text-sm",
+              "h-7 w-full rounded-md border bg-background pl-7 pr-2 text-[13px]",
               "placeholder:text-muted-foreground",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             )}
           />
         </div>
-        <TabsPrimitive.List aria-label="Settings sections" className="flex flex-col gap-3">
+        <TabsPrimitive.List aria-label="Settings sections" className="flex flex-col gap-2.5">
           {visibleGroups.length === 0 ? (
             <p className="px-1 py-2 text-xs text-muted-foreground">No matches.</p>
           ) : (
             visibleGroups.map((g) => (
-              <div key={g.id} className="flex flex-col gap-1">
-                <div className="px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <div key={g.id} className="flex flex-col gap-0.5">
+                <div className="px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                   {g.label}
                 </div>
                 {g.tabs.map((t) => (
@@ -190,7 +190,7 @@ export function SettingsTabs({
                     key={t.value}
                     value={t.value}
                     className={cn(
-                      "inline-flex h-8 w-full items-center rounded-md px-2 text-left text-sm font-medium text-muted-foreground transition-colors",
+                      "inline-flex h-7 w-full items-center rounded-md px-2 text-left text-[13px] font-medium text-muted-foreground transition-colors",
                       "hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       "data-[state=active]:bg-muted data-[state=active]:text-foreground",
                     )}

@@ -108,16 +108,16 @@ export function WorkflowsClient({ workspaceId, initialTemplates }: Props): React
   }
 
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-base font-semibold">Workflows</h2>
-        <p className="max-w-prose text-sm text-muted-foreground">
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-col gap-0.5">
+        <h2 className="text-sm font-semibold">Workflows</h2>
+        <p className="max-w-prose text-xs text-muted-foreground">
           Reusable lists of AI instructions. Apply one to a project or ticket and each step runs in
           order.
         </p>
       </div>
-      <div className="grid gap-6 md:grid-cols-[200px_1fr]">
-        <aside className="flex flex-col gap-3">
+      <div className="grid gap-5 md:grid-cols-[180px_1fr]">
+        <aside className="flex flex-col gap-2.5">
           <div className="flex flex-col gap-0.5">
             {templates.length === 0 && (
               <div className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
@@ -129,14 +129,14 @@ export function WorkflowsClient({ workspaceId, initialTemplates }: Props): React
                 key={t.id}
                 type="button"
                 onClick={() => setActiveId(t.id)}
-                className={`flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
+                className={`flex items-center justify-between gap-2 rounded-md px-2 py-1 text-left text-[13px] transition-colors ${
                   activeId === t.id
                     ? "bg-muted text-foreground"
                     : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                 }`}
               >
                 <span className="truncate">{t.name}</span>
-                <span className="shrink-0 text-xs text-muted-foreground/70">{t.stepCount}</span>
+                <span className="shrink-0 text-[11px] text-muted-foreground/70">{t.stepCount}</span>
               </button>
             ))}
           </div>
@@ -211,30 +211,36 @@ function TemplateEditor({
 
   return (
     <section className="flex flex-col divide-y rounded-md border bg-card">
-      <div className="grid gap-4 p-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="wf-name">Name</Label>
+      <div className="grid gap-3 p-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="wf-name" className="text-xs">
+            Name
+          </Label>
           <Input
             id="wf-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             onBlur={saveMeta}
+            className="h-8 text-[13px]"
           />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="wf-desc">Description</Label>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="wf-desc" className="text-xs">
+            Description
+          </Label>
           <Input
             id="wf-desc"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={saveMeta}
             placeholder="What this workflow is for"
+            className="h-8 text-[13px]"
           />
         </div>
       </div>
 
-      <div className="flex items-center justify-between px-4 py-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="flex items-center justify-between px-3 py-1.5">
+        <h3 className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
           Steps
         </h3>
         <Button
@@ -242,14 +248,14 @@ function TemplateEditor({
           size="sm"
           onClick={onDelete}
           disabled={pending}
-          className="-mr-2 h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-destructive"
+          className="-mr-2 h-6 gap-1.5 px-2 text-[11px] text-muted-foreground hover:text-destructive"
         >
-          <Trash2 className="size-3.5" />
+          <Trash2 className="size-3" />
           Delete template
         </Button>
       </div>
 
-      <div className="px-4 py-2">
+      <div className="px-3 py-1.5">
         <StepList
           steps={template.steps}
           onAdd={async (name, prompt) => {
@@ -380,11 +386,7 @@ export function StepList({
         {adding ? (
           <>
             <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground/40">
-              {pending ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Plus className="size-3.5" />
-              )}
+              {pending ? <Loader2 className="size-3 animate-spin" /> : <Plus className="size-3" />}
             </span>
             <input
               ref={addInputRef}
@@ -401,7 +403,7 @@ export function StepList({
               }}
               onBlur={addStep}
               placeholder="Step name"
-              className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50"
+              className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/50"
             />
           </>
         ) : (
@@ -411,9 +413,9 @@ export function StepList({
             size="sm"
             onClick={() => setAdding(true)}
             disabled={pending}
-            className="-ml-1 h-7 gap-1.5 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+            className="-ml-1 h-6 gap-1.5 px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
           >
-            <Plus className="size-3.5" />
+            <Plus className="size-3" />
             Add Step
           </Button>
         )}
@@ -460,7 +462,7 @@ function StepRow({
     <li
       ref={setNodeRef}
       style={style}
-      className="group flex flex-col border-b border-border/40 py-1 last:border-b-0"
+      className="group flex flex-col border-b border-border/40 py-0.5 last:border-b-0"
     >
       <div className="flex items-center gap-2">
         <button
@@ -470,26 +472,26 @@ function StepRow({
           aria-label="Drag to reorder"
           className="-ml-1 flex size-5 shrink-0 cursor-grab items-center justify-center text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
         >
-          <GripVertical className="size-3.5" />
+          <GripVertical className="size-3" />
         </button>
         <input
           type="checkbox"
           checked={step.enabled}
           onChange={(e) => onUpdate({ enabled: e.target.checked })}
           aria-label={step.enabled ? "Disable step" : "Enable step"}
-          className="size-3.5 shrink-0 cursor-pointer accent-foreground"
+          className="size-3 shrink-0 cursor-pointer accent-foreground"
         />
         <span
-          className="flex w-5 shrink-0 items-center justify-end text-[11px] tabular-nums text-muted-foreground/60"
+          className="flex w-5 shrink-0 items-center justify-end text-[10px] tabular-nums text-muted-foreground/60"
           aria-label={`Step ${status}`}
           title={
             status === "completed" ? "Completed" : status === "running" ? "Running" : "Pending"
           }
         >
           {status === "completed" ? (
-            <Check className="size-3.5 text-emerald-500/80" aria-hidden />
+            <Check className="size-3 text-emerald-500/80" aria-hidden />
           ) : status === "running" ? (
-            <Loader2 className="size-3.5 animate-spin text-foreground/70" aria-hidden />
+            <Loader2 className="size-3 animate-spin text-foreground/70" aria-hidden />
           ) : (
             <>{index + 1}.</>
           )}
@@ -511,7 +513,7 @@ function StepRow({
               nameRef.current?.blur();
             }
           }}
-          className={`flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50 ${
+          className={`flex-1 bg-transparent py-1 text-[13px] outline-none placeholder:text-muted-foreground/50 ${
             step.enabled ? "" : "text-muted-foreground line-through"
           }`}
         />
@@ -523,7 +525,7 @@ function StepRow({
           title={expanded ? "Hide instructions" : "Show instructions"}
           className="text-muted-foreground/40 transition-colors hover:text-foreground"
         >
-          {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
         </button>
         {onRun && (
           <button
@@ -533,7 +535,7 @@ function StepRow({
             title="Run this step"
             className="text-muted-foreground/40 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
           >
-            <Play className="size-3.5" />
+            <Play className="size-3" />
           </button>
         )}
         <button
@@ -542,7 +544,7 @@ function StepRow({
           aria-label="Delete step"
           className="text-muted-foreground/40 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
         >
-          <Trash2 className="size-3.5" />
+          <Trash2 className="size-3" />
         </button>
       </div>
       <div
