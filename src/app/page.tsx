@@ -11,13 +11,11 @@ const serif = Instrument_Serif({
 export const metadata = {
   title: "Planbooq — ship while it builds",
   description:
-    "The cockpit for vibe coders running ten tickets at once. Drop tickets, fan them out across parallel AI workers, ship without waiting on a single agent.",
+    "A kanban for vibe coders. Drop tickets, let AI agents run them in isolated worktrees, and ship — without babysitting one terminal at a time.",
 };
 
-const APP_HREF = "/welcome";
-const CTA_LABEL = "Open the app";
 const DOWNLOAD_HREF = "/api/download/mac";
-const DOWNLOAD_LABEL = "Download Now";
+const APP_HREF = "/welcome";
 
 export default function Home(): React.ReactElement {
   return (
@@ -25,121 +23,60 @@ export default function Home(): React.ReactElement {
       className={`${serif.variable} min-h-screen bg-[#F4ECD8] text-[#1F2A1E] antialiased`}
       style={{ colorScheme: "light" }}
     >
-      <div className="mx-auto max-w-6xl px-6 pt-10 pb-24 sm:px-8 sm:pt-14">
-        <Wordmark />
-
+      <TopNav />
+      <div className="mx-auto max-w-6xl px-6 pb-20 sm:px-8">
         <Hero />
-
+        <BoardMock />
         <Pillars />
-
         <HowItWorks />
-
-        <SoCalMap />
-
         <BottomCTA />
       </div>
+      <Footer />
     </main>
   );
 }
 
-function Wordmark(): React.ReactElement {
+function TopNav(): React.ReactElement {
   return (
-    <div className="flex justify-center">
+    <div className="mx-auto flex max-w-6xl items-center justify-between px-6 pt-7 pb-2 sm:px-8 sm:pt-10">
       <div className="font-[var(--font-landing-serif)] text-base tracking-[0.18em] text-[#1F2A1E]/70 uppercase">
         Planbooq
       </div>
-    </div>
-  );
-}
-
-type Marker = { name: string; x: number; y: number };
-
-const SOCAL_MARKERS: ReadonlyArray<Marker> = [
-  { name: "Santa Barbara", x: 8, y: 22 },
-  { name: "Burbank", x: 30, y: 32 },
-  { name: "Pasadena", x: 36, y: 34 },
-  { name: "Santa Monica", x: 24, y: 42 },
-  { name: "Los Angeles", x: 32, y: 42 },
-  { name: "Long Beach", x: 34, y: 54 },
-  { name: "Anaheim", x: 42, y: 50 },
-  { name: "Irvine", x: 48, y: 58 },
-  { name: "San Diego", x: 68, y: 80 },
-];
-
-const PULSE_PERIOD_S = 2.4;
-
-function SoCalMap(): React.ReactElement {
-  const step = PULSE_PERIOD_S / SOCAL_MARKERS.length;
-  return (
-    <section className="mt-28 sm:mt-36">
-      <div className="flex flex-col items-center text-center">
-        <h2 className="font-[var(--font-landing-serif)] text-4xl tracking-tight sm:text-5xl">
-          Built across <em className="italic text-[#3A5A40]">Southern California</em>
-        </h2>
-        <p className="mt-5 max-w-md text-balance text-[15px] leading-relaxed text-[#1F2A1E]/70">
-          Designed and shipped from the coast.
-        </p>
-      </div>
-      <div
-        role="img"
-        aria-label="Southern California map with city markers"
-        className="relative mx-auto mt-14 aspect-[5/3] w-full max-w-3xl overflow-hidden rounded-[28px] border border-[#1F2A1E]/10 bg-[#EDE2C6] shadow-[0_1px_0_rgba(0,0,0,0.04),0_18px_44px_-22px_rgba(31,42,30,0.25)]"
+      <Link
+        href={APP_HREF}
+        className="text-[13px] font-medium tracking-wide text-[#1F2A1E]/60 transition hover:text-[#1F2A1E]"
       >
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(201,215,203,0.45)_0%,transparent_55%),radial-gradient(circle_at_70%_75%,rgba(201,215,203,0.35)_0%,transparent_50%)]"
-        />
-        {SOCAL_MARKERS.map((m, i) => (
-          <span
-            key={m.name}
-            className="socal-marker absolute size-2 rounded-full bg-[#2F4A2C]"
-            style={{
-              left: `${m.x}%`,
-              top: `${m.y}%`,
-              animationDelay: `${(i * step).toFixed(3)}s`,
-            }}
-            title={m.name}
-          />
-        ))}
-      </div>
-    </section>
+        Open the app <span aria-hidden="true">→</span>
+      </Link>
+    </div>
   );
 }
 
 function Hero(): React.ReactElement {
   return (
-    <section className="mt-12 flex flex-col items-center text-center sm:mt-16">
-      <h1 className="font-[var(--font-landing-serif)] max-w-3xl text-balance text-5xl leading-[1.05] tracking-tight sm:text-7xl">
-        Ship <strong className="font-semibold text-[#3A5A40]">while it builds</strong>.
+    <section className="mt-16 flex flex-col items-center text-center sm:mt-24">
+      <h1 className="font-[var(--font-landing-serif)] max-w-3xl text-balance text-6xl leading-[1.02] tracking-tight sm:text-[88px]">
+        Ship <em className="italic text-[#3A5A40]">while it builds</em>.
       </h1>
-      <p className="mt-7 max-w-xl text-balance text-base leading-relaxed text-[#1F2A1E]/75 sm:text-lg">
-        The cockpit for vibe coders running ten tickets at once. Drop tickets, watch parallel AI
-        workers run them through, never wait on a single agent. The offspring of Cursor, Linear, and
-        Notion — built ground-up for velocity.
+      <p className="mt-8 max-w-xl text-balance text-[17px] leading-relaxed text-[#1F2A1E]/75 sm:text-lg">
+        Drop a ticket. An AI agent runs it on its own branch and worktree. Queue the next one
+        instead of waiting on the last.
       </p>
-      <div className="mt-9 flex flex-col items-center gap-5">
+      <div className="mt-10 flex flex-col items-center gap-4">
         <Link
           href={DOWNLOAD_HREF}
-          aria-label={DOWNLOAD_LABEL}
+          aria-label="Download Planbooq for Mac"
           className="group inline-flex h-14 items-center gap-3 rounded-full bg-[#2F4A2C] px-10 text-base font-semibold tracking-wide text-[#F4ECD8] shadow-[0_2px_0_rgba(0,0,0,0.04),0_20px_40px_-12px_rgba(31,42,30,0.45)] ring-1 ring-[#1F2A1E]/10 transition will-change-transform hover:-translate-y-0.5 hover:bg-[#243B22] hover:shadow-[0_2px_0_rgba(0,0,0,0.04),0_28px_50px_-14px_rgba(31,42,30,0.55)] focus-visible:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4A2C] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F4ECD8] sm:h-16 sm:px-12 sm:text-lg"
         >
           <DownloadGlyph />
-          {DOWNLOAD_LABEL}
+          Download for Mac
         </Link>
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <Link
-            href={APP_HREF}
-            className="inline-flex h-11 items-center rounded-full border border-[#1F2A1E]/20 bg-[#F4ECD8] px-6 text-sm font-medium text-[#1F2A1E] transition hover:border-[#1F2A1E]/40 hover:bg-[#EDE2C6]"
-          >
-            {CTA_LABEL}
-          </Link>
-          <a
-            href="#how"
-            className="inline-flex h-11 items-center rounded-full border border-[#1F2A1E]/20 bg-[#F4ECD8] px-6 text-sm font-medium text-[#1F2A1E] transition hover:border-[#1F2A1E]/40 hover:bg-[#EDE2C6]"
-          >
-            See how it works
-          </a>
-        </div>
+        <a
+          href="#how"
+          className="text-[12px] tracking-[0.12em] text-[#1F2A1E]/50 uppercase underline-offset-4 transition hover:text-[#1F2A1E] hover:underline"
+        >
+          See how it works
+        </a>
       </div>
     </section>
   );
@@ -166,32 +103,196 @@ function DownloadGlyph(): React.ReactElement {
   );
 }
 
+function BoardMock(): React.ReactElement {
+  return (
+    <div
+      className="relative mt-16 sm:mt-20"
+      role="img"
+      aria-label="Planbooq board with AI agents running multiple tickets in parallel"
+    >
+      <div
+        aria-hidden="true"
+        className="-inset-x-4 absolute inset-y-0 -z-10 rounded-[36px] bg-[#EDE2C6]/60 blur-2xl"
+      />
+      <div className="overflow-hidden rounded-[24px] border border-[#1F2A1E]/12 bg-[#FBF6E3] shadow-[0_1px_0_rgba(0,0,0,0.04),0_36px_90px_-30px_rgba(31,42,30,0.38)]">
+        <div className="flex items-center gap-1.5 border-[#1F2A1E]/8 border-b bg-[#F4ECD8] px-4 py-2.5">
+          <span className="size-2.5 rounded-full bg-[#1F2A1E]/15" aria-hidden="true" />
+          <span className="size-2.5 rounded-full bg-[#1F2A1E]/15" aria-hidden="true" />
+          <span className="size-2.5 rounded-full bg-[#1F2A1E]/15" aria-hidden="true" />
+          <span className="ml-3 font-mono text-[11px] tracking-tight text-[#1F2A1E]/45">
+            planbooq · acme-app · main
+          </span>
+          <span className="ml-auto font-mono text-[10px] tracking-[0.14em] text-[#2F4A2C]/65 uppercase">
+            <span className="board-worker-dot mr-1.5 inline-block size-1.5 rounded-full bg-[#2F4A2C] align-middle" />
+            4 agents running
+          </span>
+        </div>
+        <div className="grid grid-cols-5 gap-2 p-3 sm:gap-3 sm:p-5">
+          <Column title="Backlog" count={12}>
+            <Card label="design" tone="olive" />
+            <Card label="bug" tone="rust" />
+            <Card label="copy" tone="sand" />
+          </Column>
+          <Column title="Todo" count={5}>
+            <Card label="ui" tone="olive" />
+            <Card label="api" tone="forest" />
+          </Column>
+          <Column title="Building" count={4} active>
+            <BuildingCard label="hero" />
+            <BuildingCard label="checkout" />
+            <BuildingCard label="auth" />
+            <BuildingCard label="docs" />
+          </Column>
+          <Column title="Review" count={2}>
+            <ReviewCard label="hero" />
+            <ReviewCard label="checkout" />
+          </Column>
+          <Column title="Done" count={28}>
+            <Card label="ship" tone="forest" muted />
+            <Card label="ship" tone="forest" muted />
+            <Card label="ship" tone="forest" muted />
+          </Column>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Column({
+  title,
+  count,
+  active,
+  children,
+}: {
+  title: string;
+  count: number;
+  active?: boolean;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline justify-between px-1">
+        <div
+          className={`text-[10px] font-medium tracking-[0.18em] uppercase sm:text-[11px] ${
+            active ? "text-[#2F4A2C]" : "text-[#1F2A1E]/55"
+          }`}
+        >
+          {title}
+        </div>
+        <div className="text-[10px] tabular-nums text-[#1F2A1E]/40 sm:text-[11px]">{count}</div>
+      </div>
+      <div className="flex flex-col gap-2">{children}</div>
+    </div>
+  );
+}
+
+const TONE = {
+  olive: "#6E7340",
+  forest: "#2F4A2C",
+  sand: "#C8A55B",
+  rust: "#B5644A",
+} as const;
+
+function Card({
+  label,
+  tone,
+  muted,
+}: {
+  label: string;
+  tone: keyof typeof TONE;
+  muted?: boolean;
+}): React.ReactElement {
+  return (
+    <div
+      className={`rounded-lg border border-[#1F2A1E]/8 bg-white p-2 sm:p-2.5 ${
+        muted ? "opacity-60" : ""
+      }`}
+    >
+      <div className="flex items-center gap-1.5">
+        <span
+          className="size-1.5 rounded-full"
+          style={{ backgroundColor: TONE[tone] }}
+          aria-hidden="true"
+        />
+        <span className="text-[9px] tracking-[0.08em] text-[#1F2A1E]/55 uppercase sm:text-[10px]">
+          {label}
+        </span>
+      </div>
+      <div className="mt-1.5 h-1.5 w-[78%] rounded-full bg-[#1F2A1E]/10" />
+      <div className="mt-1 h-1.5 w-[55%] rounded-full bg-[#1F2A1E]/8" />
+    </div>
+  );
+}
+
+function BuildingCard({ label }: { label: string }): React.ReactElement {
+  return (
+    <div className="rounded-lg border border-[#2F4A2C]/22 bg-white p-2 ring-1 ring-[#2F4A2C]/5 sm:p-2.5">
+      <div className="flex items-center gap-1.5">
+        <span className="size-1.5 rounded-full bg-[#6E7340]" aria-hidden="true" />
+        <span className="text-[9px] tracking-[0.08em] text-[#1F2A1E]/55 uppercase sm:text-[10px]">
+          {label}
+        </span>
+      </div>
+      <div className="mt-1.5 h-1.5 w-[78%] rounded-full bg-[#1F2A1E]/10" />
+      <div className="mt-1 h-1.5 w-[55%] rounded-full bg-[#1F2A1E]/8" />
+      <div className="mt-2.5 flex items-center justify-between gap-1">
+        <div className="flex items-center gap-1" aria-hidden="true">
+          <span className="board-worker-dot size-1.5 rounded-full bg-[#2F4A2C]" />
+          <span className="font-mono text-[9px] tracking-[0.08em] text-[#2F4A2C]/75 uppercase">
+            running
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReviewCard({ label }: { label: string }): React.ReactElement {
+  return (
+    <div className="rounded-lg border border-[#C8A55B]/40 bg-white p-2 sm:p-2.5">
+      <div className="flex items-center gap-1.5">
+        <span className="size-1.5 rounded-full bg-[#C8A55B]" aria-hidden="true" />
+        <span className="text-[9px] tracking-[0.08em] text-[#1F2A1E]/55 uppercase sm:text-[10px]">
+          {label}
+        </span>
+      </div>
+      <div className="mt-1.5 h-1.5 w-[78%] rounded-full bg-[#1F2A1E]/10" />
+      <div className="mt-1 h-1.5 w-[55%] rounded-full bg-[#1F2A1E]/8" />
+      <div className="mt-2.5 flex items-center justify-between gap-1">
+        <span className="font-mono text-[9px] tracking-[0.08em] text-[#C8A55B]/85 uppercase">
+          PR open
+        </span>
+        <span className="font-mono text-[9px] tracking-tight text-[#1F2A1E]/45 tabular-nums">
+          +124 −38
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function Pillars(): React.ReactElement {
   return (
-    <section className="mt-24 sm:mt-32">
+    <section className="mt-28 sm:mt-36">
       <div className="flex flex-col items-center text-center">
         <h2 className="font-[var(--font-landing-serif)] text-4xl tracking-tight sm:text-5xl">
           Built for throughput.
         </h2>
       </div>
-      <div className="mt-12 grid gap-5 sm:grid-cols-3">
+      <div className="mt-12 grid gap-4 sm:grid-cols-3">
         <Tile
           tone="olive"
-          eyebrow="01"
           title="Run ten in parallel."
-          body="Drop a backlog of tickets and they all start at once — each in its own isolated worktree. Your wall-clock collapses to whatever the slowest worker takes."
+          body="Drop a backlog and every ticket starts at once — each in its own isolated worktree. Wall-clock collapses to whatever the slowest agent takes."
         />
         <Tile
           tone="forest"
-          eyebrow="02"
-          title="Tokens that ship, not stall."
-          body="Parallel generation replaces serial re-prompts. Every token spent moves a ticket forward instead of nudging the same draft toward 'fine.'"
+          title="Isolated by default."
+          body="Every ticket gets its own branch and worktree. Agents never step on each other, and main stays clean while they run."
         />
         <Tile
           tone="sky"
-          eyebrow="03"
-          title="One surface for the whole loop."
-          body="Cursor's AI muscle, Linear's ticket discipline, Notion's calm visual order — collapsed into one fast desktop cockpit, keyboard-first end to end."
+          title="Glance and ship."
+          body="When a ticket lands in review, the PR, diff, and CI status are right there. Look once, ship, move on."
         />
       </div>
     </section>
@@ -200,31 +301,17 @@ function Pillars(): React.ReactElement {
 
 function Tile({
   tone,
-  eyebrow,
   title,
   body,
 }: {
   tone: "olive" | "forest" | "sky";
-  eyebrow: string;
   title: string;
   body: string;
 }): React.ReactElement {
   const palette = {
-    olive: {
-      bg: "#6E7340",
-      ink: "#F4ECD8",
-      mute: "rgba(244,236,216,0.78)",
-    },
-    forest: {
-      bg: "#2F4A2C",
-      ink: "#F4ECD8",
-      mute: "rgba(244,236,216,0.78)",
-    },
-    sky: {
-      bg: "#C9D7CB",
-      ink: "#1F2A1E",
-      mute: "rgba(31,42,30,0.7)",
-    },
+    olive: { bg: "#6E7340", ink: "#F4ECD8", mute: "rgba(244,236,216,0.78)" },
+    forest: { bg: "#2F4A2C", ink: "#F4ECD8", mute: "rgba(244,236,216,0.78)" },
+    sky: { bg: "#C9D7CB", ink: "#1F2A1E", mute: "rgba(31,42,30,0.7)" },
   }[tone];
 
   return (
@@ -232,129 +319,48 @@ function Tile({
       className="relative flex aspect-[5/6] flex-col justify-between overflow-hidden rounded-3xl p-7 sm:aspect-[4/5]"
       style={{ backgroundColor: palette.bg, color: palette.ink }}
     >
-      <TileGlyph tone={tone} />
-      <div className="relative z-10">
-        <div
-          className="font-[var(--font-landing-serif)] text-xs tracking-[0.22em] uppercase"
-          style={{ color: palette.mute }}
-        >
-          {eyebrow}
-        </div>
-        <h3 className="font-[var(--font-landing-serif)] mt-2 text-2xl leading-tight tracking-tight sm:text-3xl">
-          {title}
-        </h3>
-      </div>
-      <p
-        className="relative z-10 mt-6 text-sm leading-relaxed sm:text-[15px]"
-        style={{ color: palette.mute }}
-      >
+      <h3 className="font-[var(--font-landing-serif)] text-2xl leading-tight tracking-tight sm:text-3xl">
+        {title}
+      </h3>
+      <p className="mt-6 text-[15px] leading-relaxed sm:text-base" style={{ color: palette.mute }}>
         {body}
       </p>
     </article>
   );
 }
 
-function TileGlyph({ tone }: { tone: "olive" | "forest" | "sky" }): React.ReactElement {
-  if (tone === "olive") {
-    return (
-      <svg
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-25"
-        width="220"
-        height="220"
-        viewBox="0 0 220 220"
-        aria-hidden="true"
-      >
-        {Array.from({ length: 4 }).map((_, i) => (
-          <rect
-            key={i}
-            x={20 + i * 12}
-            y={20 + i * 12}
-            width={180 - i * 24}
-            height={180 - i * 24}
-            rx="14"
-            fill="none"
-            stroke="#F4ECD8"
-            strokeWidth="1.4"
-          />
-        ))}
-      </svg>
-    );
-  }
-  if (tone === "forest") {
-    return (
-      <svg
-        className="absolute right-6 bottom-6 opacity-30"
-        width="160"
-        height="160"
-        viewBox="0 0 160 160"
-        aria-hidden="true"
-      >
-        <circle cx="80" cy="80" r="50" fill="none" stroke="#F4ECD8" strokeWidth="1.5" />
-        <circle cx="80" cy="80" r="30" fill="none" stroke="#F4ECD8" strokeWidth="1.5" />
-        <circle cx="80" cy="80" r="10" fill="#F4ECD8" />
-        <line x1="80" y1="10" x2="80" y2="150" stroke="#F4ECD8" strokeWidth="0.8" />
-        <line x1="10" y1="80" x2="150" y2="80" stroke="#F4ECD8" strokeWidth="0.8" />
-      </svg>
-    );
-  }
-  return (
-    <svg
-      className="absolute right-4 -bottom-2 opacity-60"
-      width="200"
-      height="160"
-      viewBox="0 0 200 160"
-      aria-hidden="true"
-    >
-      <path
-        d="M0,140 C40,120 70,135 110,118 C150,100 180,118 200,108 L200,160 L0,160 Z"
-        fill="#1F2A1E"
-        opacity="0.18"
-      />
-      <path
-        d="M0,150 C40,138 80,148 120,138 C160,128 180,140 200,134 L200,160 L0,160 Z"
-        fill="#1F2A1E"
-        opacity="0.25"
-      />
-    </svg>
-  );
-}
-
 function HowItWorks(): React.ReactElement {
   return (
-    <section id="how" className="mt-28 sm:mt-36">
+    <section id="how" className="mt-28 scroll-mt-20 sm:mt-36">
       <div className="flex flex-col items-center text-center">
         <h2 className="font-[var(--font-landing-serif)] text-4xl tracking-tight sm:text-5xl">
-          How Planbooq works
+          Four steps. Zero waiting.
         </h2>
-        <p className="mt-5 max-w-md text-balance text-[15px] leading-relaxed text-[#1F2A1E]/70">
-          Four steps, zero waiting. Drop a ticket and move to the next one — workers run in parallel
-          behind you.
-        </p>
       </div>
       <ol className="mt-14 grid gap-x-10 gap-y-12 sm:grid-cols-2 lg:grid-cols-4">
         <Step
           n={1}
           title="Drop a ticket"
-          body="Describe what you want and move on. The cmd-K palette keeps your hands on the keyboard."
+          body="Describe what you want. ⌘K palette keeps hands on the keyboard."
           glyph={<StepDrop />}
         />
         <Step
           n={2}
-          title="Fan out"
-          body="Workers spin up in parallel — each its own branch and worktree. Queue the next ticket; you do not wait."
+          title="Agent runs"
+          body="The ticket spins up its own branch and worktree. Queue the next ticket instead of waiting."
           glyph={<StepFanOut />}
         />
         <Step
           n={3}
-          title="Glance & decide"
-          body="Live preview URLs and auto-screenshots. Seconds of attention per ticket, not minutes of re-prompts."
+          title="Glance"
+          body="Diff, PR, and CI status flow back to the card. Look once and decide — no re-prompt loop."
           glyph={<StepCompare />}
         />
         <Step
           n={4}
           title="Ship"
-          body="One click opens the PR and clears the lane. Merge auto-completes the ticket back to the board."
-          glyph={<StepPick />}
+          body="One click opens the PR. Merge auto-completes the ticket back to the board."
+          glyph={<StepShip />}
         />
       </ol>
     </section>
@@ -377,11 +383,11 @@ function Step({
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#E8DFC4] text-[#2F4A2C]">
         {glyph}
       </div>
-      <div className="font-[var(--font-landing-serif)] mt-4 text-xs tracking-[0.22em] text-[#1F2A1E]/55 uppercase">
-        Step 0{n}
+      <div className="mt-4 font-mono text-[11px] tracking-tight text-[#1F2A1E]/45 tabular-nums">
+        0{n}
       </div>
-      <h3 className="font-[var(--font-landing-serif)] mt-1 text-xl tracking-tight">{title}</h3>
-      <p className="mt-2 text-[14px] leading-relaxed text-[#1F2A1E]/70">{body}</p>
+      <h3 className="font-[var(--font-landing-serif)] mt-0.5 text-2xl tracking-tight">{title}</h3>
+      <p className="mt-2 text-[15px] leading-relaxed text-[#1F2A1E]/70">{body}</p>
     </li>
   );
 }
@@ -450,7 +456,7 @@ function StepCompare(): React.ReactElement {
   );
 }
 
-function StepPick(): React.ReactElement {
+function StepShip(): React.ReactElement {
   return (
     <svg
       width="26"
@@ -472,65 +478,44 @@ function BottomCTA(): React.ReactElement {
   return (
     <section className="mt-28 sm:mt-36">
       <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
-        <h2 className="font-[var(--font-landing-serif)] text-4xl leading-tight tracking-tight sm:text-6xl">
-          Stop watching agents.{" "}
-          <strong className="font-semibold text-[#3A5A40]">Start shipping</strong>.
+        <h2 className="font-[var(--font-landing-serif)] text-5xl leading-[1.05] tracking-tight sm:text-6xl">
+          Stop watching agents. <em className="italic text-[#3A5A40]">Start shipping</em>.
         </h2>
-        <p className="mt-5 max-w-xl text-balance text-[15px] leading-relaxed text-[#1F2A1E]/70">
-          Real-time multiplayer kanban, full keyboard nav, GitHub-wired tickets, BYOK so unit
-          economics stay yours. One surface, ten things in flight, none of them blocking you.
+        <p className="mt-6 max-w-xl text-balance text-[15px] leading-relaxed text-[#1F2A1E]/70">
+          Real-time multiplayer kanban. Full keyboard nav. GitHub-wired tickets. BYOK so unit
+          economics stay yours.
         </p>
-
-        <PromptBar />
-
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <Link
-            href={APP_HREF}
-            className="inline-flex h-11 items-center rounded-full bg-[#1F2A1E] px-6 text-sm font-medium text-[#F4ECD8] transition hover:bg-[#2F4A2C]"
-          >
-            {CTA_LABEL}
-          </Link>
-          <span className="text-xs tracking-[0.16em] text-[#1F2A1E]/55 uppercase">
-            Runs on top of your GitHub repos
-          </span>
-        </div>
+        <Link
+          href={DOWNLOAD_HREF}
+          aria-label="Download Planbooq for Mac"
+          className="group mt-10 inline-flex h-14 items-center gap-3 rounded-full bg-[#2F4A2C] px-10 text-base font-semibold tracking-wide text-[#F4ECD8] shadow-[0_2px_0_rgba(0,0,0,0.04),0_20px_40px_-12px_rgba(31,42,30,0.45)] ring-1 ring-[#1F2A1E]/10 transition will-change-transform hover:-translate-y-0.5 hover:bg-[#243B22] focus-visible:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F4A2C] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F4ECD8] sm:h-16 sm:px-12 sm:text-lg"
+        >
+          <DownloadGlyph />
+          Download for Mac
+        </Link>
+        <span className="mt-5 font-mono text-[11px] tracking-[0.16em] text-[#1F2A1E]/45 uppercase">
+          Runs on top of your GitHub repos
+        </span>
       </div>
     </section>
   );
 }
 
-function PromptBar(): React.ReactElement {
+function Footer(): React.ReactElement {
   return (
-    <div className="mt-12 w-full max-w-2xl">
-      <div className="rounded-2xl border border-[#1F2A1E]/12 bg-white/70 p-3 shadow-[0_1px_0_rgba(0,0,0,0.03),0_18px_44px_-22px_rgba(31,42,30,0.25)] backdrop-blur">
-        <div className="flex items-center gap-3 rounded-xl bg-white px-4 py-3">
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#1F2A1E"
-            strokeOpacity="0.5"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="11" cy="11" r="7" />
-            <path d="m20 20-3.5-3.5" />
-          </svg>
-          <span className="flex-1 text-left text-[15px] text-[#1F2A1E]/55">
-            Add a ticket — "Hero section, friendlier, swap CTA copy…"
-          </span>
-          <span className="rounded-md border border-[#1F2A1E]/15 px-1.5 py-0.5 font-mono text-[11px] text-[#1F2A1E]/55">
-            ⌘K
-          </span>
+    <footer className="border-[#1F2A1E]/10 border-t">
+      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-6 py-8 text-[12px] text-[#1F2A1E]/55 sm:flex-row sm:px-8">
+        <div className="font-[var(--font-landing-serif)] tracking-[0.16em] uppercase">
+          © Planbooq
         </div>
-        <div className="mt-2 flex items-center justify-between px-2 pt-1 pb-1 text-[11px] tracking-[0.16em] text-[#1F2A1E]/45 uppercase">
-          <span>Runs in parallel</span>
-          <span>You move on</span>
-        </div>
+        <div className="tracking-[0.14em] uppercase">Made in Southern California</div>
+        <Link
+          href={APP_HREF}
+          className="tracking-[0.14em] uppercase transition hover:text-[#1F2A1E]"
+        >
+          Open the app →
+        </Link>
       </div>
-    </div>
+    </footer>
   );
 }

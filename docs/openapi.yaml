@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: |
     REST surface for Planbooq tickets, projects, workspaces, and labels.
-    Companion to `docs/api.md`. Variants are reserved for v1.1.
+    Companion to `docs/api.md`.
 servers:
   - url: http://localhost:3636/api/v1
     description: Local dev

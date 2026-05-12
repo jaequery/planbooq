@@ -4,23 +4,21 @@
 
 ## Overview
 
-Planbooq is a desktop kanban built ground-up for velocity. It is the visual surface vibe coders use to drop tickets, fan them out across parallel AI workers, and ship — without ever waiting on a single agent.
+Planbooq is a desktop kanban built ground-up for velocity. It is the visual surface vibe coders use to drop tickets, run them through AI agents in their own worktrees, and ship — without babysitting one terminal at a time.
 
-The bottleneck of vibe coding is not writing code. It is *throughput* — how many useful changes you can land per hour. Sequential prompt-and-iterate kills that throughput; you stare at one terminal while nine others sit idle. Planbooq pumps every ticket through the same lane in parallel, so the time you used to spend waiting becomes time spent reviewing the next thing.
+The bottleneck of vibe coding is not writing code. It is *throughput* — how many useful changes you can land per hour. Sequential prompt-and-iterate kills that throughput; you stare at one terminal while nine others sit idle. Planbooq pushes every ticket through its own lane, so the time you used to spend waiting becomes time spent reviewing the next thing.
 
 Think of it as the offspring of **Cursor + Linear + Notion**, collapsed into one fast desktop surface — the AI productivity of Cursor, the ticket discipline of Linear, the calm visual order of Notion — built ground-up for velocity.
 
 ## Features
 
 - **Multi-task throughput** — run dozens of tickets in parallel; no more babysitting a single agent
-- **Parallel AI workers per ticket** — N variants generate at once in isolated worktrees, so wall-clock per ticket drops to whatever the slowest worker takes
-- **Token-efficient by default** — generate once, in parallel, instead of burning tokens on serial re-prompts
-- **Live preview URLs & screenshots** — review and decide in one click, never re-run the loop
+- **Isolated worktrees per ticket** — every ticket runs on its own branch and worktree, so tickets never step on each other
 - **Real-time multiplayer kanban** — simultaneous editing, live status, no stale board
 - **Full keyboard navigation & cmd-K palette** — every action in milliseconds, never reach for the mouse
 - **GitHub-wired tickets** — branches, PRs, CI status flow back to the board; merged PR auto-completes the ticket
-- **BYOK (bring your own Anthropic key)** — fan-out is cheap when you control the meter; no vendor lock-in
-- **Customizable statuses, worker count, and automation** — per-workspace configuration
+- **BYOK (bring your own Anthropic key)** — you control the meter; no vendor lock-in
+- **Customizable statuses and automation** — per-workspace configuration
 
 ## Getting Started
 
@@ -50,11 +48,11 @@ The first sign-in creates a default `Untitled` project. Add more from the sideba
 | ----------- | ------- |
 | `backlog`   | Captured, not yet committed to. |
 | `todo`      | Scoped and ready. Queued for a worker. |
-| `building`  | Workers running in parallel. |
+| `building`  | Agent is running on the ticket. |
 | `review`    | Output ready. Waiting on you to glance and ship. |
 | `completed` | Merged and deployed. |
 
-Statuses and worker count are customizable per workspace.
+Statuses are customizable per workspace.
 
 ## Tech Stack
 

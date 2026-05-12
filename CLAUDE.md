@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Planbooq is a SaaS kanban platform for vibe coding in the age of parallel AI code generation. Its core thesis: **the bottleneck has moved from writing code to deciding on AI-generated output**. Sequential prompt-and-iterate is broken. Planbooq fixes it by spawning N AI variants per ticket in parallel, surfacing each as a live preview URL + screenshots, and letting the user pick the winner hot-or-not style instead of re-prompting.
+Planbooq is a SaaS kanban platform for vibe coding in the age of parallel AI code generation. Its core thesis: **the bottleneck has moved from writing code to running, reviewing, and shipping AI-generated output**. One terminal at a time is broken. Planbooq fixes it by giving every ticket its own branch, worktree, and AI agent session, so a single human can keep many tickets moving at once instead of babysitting one.
 
-It is positioned to replace the current vibe coding stack (Lovable + Cursor + Linear) with a single surface optimized for fast review/decide/redirect rather than for writing or tracking.
+It is positioned to replace the current vibe coding stack (Lovable + Cursor + Linear) with a single surface optimized for running many tickets and shipping them, not for writing one at a time.
 
 See `README.md` for the full pitch and the default workflow (`backlog` → `todo` → `building` → `review` → `completed`).
 
@@ -14,12 +14,10 @@ See `README.md` for the full pitch and the default workflow (`backlog` → `todo
 
 When reasoning about features or architecture, keep these concepts central:
 
-- **Ticket = parallel job.** A ticket is not a unit of work assigned to one worker. It is a prompt that fans out to N isolated AI workers, each producing a candidate result.
-- **Variants are first-class.** Every ticket has a 1-to-many relationship with variants. Each variant has its own branch, worktree, preview URL, screenshots, and diff.
-- **Pick, don't prompt.** The primary user action is choosing among finished variants. Re-prompting exists but is the fallback, not the default.
-- **Remix is v2 but inevitable.** Users will want to combine elements across variants ("hero from #2, footer from #3"). Design data models so this is additive, not a rewrite.
-- **BYOK is the unit-economics answer.** Variant fan-out multiplies AI compute cost. Bring-your-own-key is the default monetization strategy; hosted compute is a premium tier.
-- **Taste learning compounds.** Which variants get picked is the most valuable proprietary signal. Capture it from day one.
+- **One ticket, one worker.** A ticket runs through a single AI agent session in its own branch and worktree. Throughput comes from running many tickets in parallel, not from fanning a single ticket out.
+- **Tickets are GitHub-shaped.** A ticket has a branch, optionally a PR, and CI status flowing back to the board. Merge auto-completes the ticket.
+- **Review = glance + ship.** When a ticket lands in `review`, the user's job is to look at the diff/PR and either ship or send it back. The UI optimizes for the glance.
+- **BYOK is the default.** Bring-your-own-key keeps unit economics user-controlled; hosted compute is a premium tier.
 
 ## Tech Stack
 
@@ -63,11 +61,3 @@ When reasoning about features or architecture, keep these concepts central:
   (`src/server/auth.ts`) provisions a personal workspace with default
   statuses (`src/lib/default-statuses.ts`) and an "Untitled" project.
 
-## Variants (planned, not implemented)
-
-The README pitches parallel AI variants per ticket; the schema does
-not model `Variant` yet. The REST spec reserves the route shape
-(`/v1/tickets/{id}/variants`, `/v1/variants/{id}/pick`) so the
-eventual data model lands without breaking v1. Worker orchestration
-(worktree spawning, preview URLs, screenshot capture, Claude Code
-integration) is TBD — design before exposing.

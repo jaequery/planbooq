@@ -38,8 +38,8 @@ const SIDE_TICKETS: SeedTicket[] = [
 const SEED_TICKETS: SeedTicket[] = [
   {
     statusKey: "backlog",
-    title: "Wire up parallel variants for ticket A",
-    description: "Spawn 3 agent variants per ticket with isolated worktrees.",
+    title: "Wire isolated git worktrees per ticket",
+    description: "Each ticket gets its own branch + worktree so the agent never touches main.",
   },
   {
     statusKey: "backlog",
@@ -47,12 +47,12 @@ const SEED_TICKETS: SeedTicket[] = [
   },
   {
     statusKey: "todo",
-    title: "Design variant-picker hot-or-not UI",
-    description: "Side-by-side previews, one-click winner select.",
+    title: "Design ticket detail dialog for review",
+    description: "Diff, screenshots, PR status — everything needed to ship in one glance.",
   },
   {
     statusKey: "todo",
-    title: "Spec live preview URL routing per variant",
+    title: "Spec live preview URL routing per ticket",
   },
   {
     statusKey: "building",
@@ -64,7 +64,7 @@ const SEED_TICKETS: SeedTicket[] = [
   },
   {
     statusKey: "review",
-    title: "Variant remix flow — combine two winners",
+    title: "GitHub PR auto-completes ticket on merge",
   },
   {
     statusKey: "review",
