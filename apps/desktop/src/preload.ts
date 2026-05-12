@@ -63,6 +63,8 @@ contextBridge.exposeInMainWorld("planbooq", {
     items: Array<{ id: string; ext: string; base64: string }>;
   }) => ipcRenderer.invoke("planbooq:files:writeAttachments", input),
   pullMain: (input: { repoPath: string }) => ipcRenderer.invoke("planbooq:git:pullMain", input),
+  removeWorktree: (input: { repoPath: string; worktreePath: string; branch?: string | null }) =>
+    ipcRenderer.invoke("planbooq:worktree:remove", input),
   onAgentEvent: (cb: (e: unknown) => void) => {
     const listener = (_: unknown, e: unknown) => cb(e);
     ipcRenderer.on("planbooq:agent:event", listener);

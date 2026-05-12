@@ -110,6 +110,14 @@ type DesktopBridge = {
   }) => Promise<
     { ok: true; branch: string; updated: boolean; output: string } | { ok: false; error: string }
   >;
+  removeWorktree?: (input: {
+    repoPath: string;
+    worktreePath: string;
+    branch?: string | null;
+  }) => Promise<
+    | { ok: true; removedWorktree: boolean; removedBranch: boolean }
+    | { ok: false; removedWorktree: false; removedBranch: false; error: string }
+  >;
 };
 
 declare global {

@@ -181,6 +181,27 @@ export async function autoCompleteTicketByPrUrl(
     return position;
   });
 
+  // Collect cleanup pointers for the desktop renderer: the most recent
+  // AgentJob that ran in a worktree for this ticket, plus the PR branch.
+  // The desktop bridge uses these to `git worktree remove` after merge.
+  // Best-effort — if either lookup fails, the event still fires without
+  // cleanup data and the worktree just lingers (current behavior).
+  const [latestJob, prRecord] = await Promise.all([
+    prisma.agentJob.findFirst({
+      where: { ticketId: ticket.id, worktreePath: { not: null } },
+      orderBy: { createdAt: "desc" },
+      select: { worktreePath: true },
+    }),
+    prisma.ticketPullRequest.findFirst({
+      where: { ticketId: ticket.id, url: prUrl },
+      select: { branch: true },
+    }),
+  ]).catch(() => [null, null] as const);
+
+  const cleanup = latestJob?.worktreePath
+    ? { worktreePath: latestJob.worktreePath, branch: prRecord?.branch ?? null }
+    : null;
+
   await publishWorkspaceEvent(ticket.workspaceId, {
     name: "ticket.moved",
     ticketId: ticket.id,
@@ -190,6 +211,7 @@ export async function autoCompleteTicketByPrUrl(
     toStatusId: completed.id,
     position: finalPosition,
     by: "github-webhook",
+    cleanup,
   });
 
   await recordStatusChangedActivity({

@@ -101,6 +101,15 @@ export type AblyChannelEvent =
       toStatusId: string;
       position: number;
       by: string;
+      // Set when moving to Completed via merge (webhook or in-app merge): the
+      // worktree path + branch from the most recent AgentJob/PR record. The
+      // desktop renderer uses these to fire the cleanup IPC. Optional so other
+      // ticket.moved publishers (manual DnD, status picker) don't have to
+      // populate them.
+      cleanup?: {
+        worktreePath: string;
+        branch: string | null;
+      } | null;
     }
   | {
       name: "ticket.updated";

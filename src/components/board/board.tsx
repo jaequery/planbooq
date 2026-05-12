@@ -265,6 +265,26 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
                 toast.error(`Auto-pull failed: ${res.error}`);
               }
             });
+            // Remove the ticket's worktree + merged branch. Best-effort:
+            // older desktop builds won't have `removeWorktree`, and the IPC
+            // tolerates missing paths / unmerged branches by reporting which
+            // pieces it cleaned up rather than throwing.
+            if (event.cleanup?.worktreePath && bridge?.removeWorktree) {
+              void bridge
+                .removeWorktree({
+                  repoPath: localPath,
+                  worktreePath: event.cleanup.worktreePath,
+                  branch: event.cleanup.branch,
+                })
+                .then((res) => {
+                  if (res.ok && res.removedWorktree) {
+                    toast.success("Removed merged worktree");
+                  } else if (!res.ok) {
+                    // Quiet: cleanup is bonus work, don't alarm the user.
+                    console.warn("worktree cleanup failed", res.error);
+                  }
+                });
+            }
           }
         }
         setStatuses((prev) => {

@@ -185,4 +185,93 @@ export function registerWorktreeIpc(): void {
     }
     return { ok: true, worktreePath: wtPath, branch: input.branch };
   });
+
+  // Remove a worktree (and optionally its branch) after the ticket completes.
+  // Best-effort: tolerates the path being gone, the worktree being unregistered,
+  // or the branch being unmerged — in each case we report what happened without
+  // throwing. Renderer treats this as fire-and-forget.
+  ipcMain.handle(
+    "planbooq:worktree:remove",
+    async (
+      _,
+      input: { repoPath: string; worktreePath: string; branch?: string | null },
+    ): Promise<{
+      ok: boolean;
+      removedWorktree: boolean;
+      removedBranch: boolean;
+      error?: string;
+    }> => {
+      if (!input?.repoPath || !input?.worktreePath) {
+        return {
+          ok: false,
+          removedWorktree: false,
+          removedBranch: false,
+          error: "missing repoPath or worktreePath",
+        };
+      }
+      if (!path.isAbsolute(input.repoPath) || !path.isAbsolute(input.worktreePath)) {
+        return {
+          ok: false,
+          removedWorktree: false,
+          removedBranch: false,
+          error: "paths must be absolute",
+        };
+      }
+      if (!(await isGitRepo(input.repoPath))) {
+        return {
+          ok: false,
+          removedWorktree: false,
+          removedBranch: false,
+          error: "repoPath is not a git repo",
+        };
+      }
+
+      let removedWorktree = false;
+      const wtStillThere = await pathExists(input.worktreePath);
+      if (wtStillThere) {
+        // --force ignores Planbooq's injected untracked files (.planbooq/,
+        // CLAUDE.local.md, PLANBOOQ.md) which would otherwise block removal.
+        const r = await run(
+          "git",
+          ["worktree", "remove", "--force", input.worktreePath],
+          input.repoPath,
+        );
+        if (r.code === 0) {
+          removedWorktree = true;
+        } else {
+          // Path exists but git refused. Most common cause: it was never a
+          // registered worktree (or the .git pointer is gone). Leave it alone.
+          log.warn(
+            "worktree:remove refused",
+            input.worktreePath,
+            lastNonEmptyLine(r.stderr) || `exit ${r.code}`,
+          );
+        }
+      } else {
+        // Path already gone — prune stale metadata so `git worktree list` is clean.
+        await run("git", ["worktree", "prune"], input.repoPath);
+        removedWorktree = true;
+      }
+
+      let removedBranch = false;
+      if (input.branch && isSafeBranch(input.branch)) {
+        // -d (safe): refuses if the branch isn't merged into HEAD or its upstream.
+        // We don't use -D because the server only asks for cleanup once the PR
+        // is actually merged; if -d refuses, the branch carries unmerged work
+        // and the user should review it manually.
+        const r = await run("git", ["branch", "-d", input.branch], input.repoPath);
+        if (r.code === 0) {
+          removedBranch = true;
+        } else {
+          log.info(
+            "worktree:remove branch retained",
+            input.branch,
+            lastNonEmptyLine(r.stderr) || `exit ${r.code}`,
+          );
+        }
+      }
+
+      return { ok: true, removedWorktree, removedBranch };
+    },
+  );
 }
