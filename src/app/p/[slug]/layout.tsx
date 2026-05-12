@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { AgentSessionManagerMount } from "@/components/agent-session-manager-mount";
+import { ProjectHeaderMenu } from "@/components/board/project-header-menu";
 import { SettingsContent } from "@/components/settings/settings-content";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { SidebarProvider } from "@/components/sidebar/sidebar-state";
@@ -104,12 +105,14 @@ export default async function ProjectLayout({
                 <SidebarToggle />
                 <span className="ml-1 text-muted-foreground/60">{membership.workspace.name}</span>
                 <span className="text-muted-foreground/40">/</span>
-                <span
-                  aria-hidden
-                  className="h-2 w-2 rounded-full"
-                  style={{ backgroundColor: project.color }}
+                <ProjectHeaderMenu
+                  workspaceId={membership.workspaceId}
+                  projectId={project.id}
+                  projectName={project.name}
+                  projectColor={project.color}
+                  projectDescription={project.description}
+                  projectLocalPath={project.localPath}
                 />
-                <span className="font-medium text-foreground">{project.name}</span>
               </div>
               <div className="flex items-center gap-1">
                 <UserMenu

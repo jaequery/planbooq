@@ -1,7 +1,8 @@
 "use client";
 
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import { MoreHorizontal, Pencil, Settings, Trash2 } from "lucide-react";
+import { ChevronDown, Pencil, Settings, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -26,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 const RenameSchema = z.object({
   name: z.string().min(1, "Name is required").max(80),
@@ -37,26 +39,25 @@ type Props = {
   workspaceId: string;
   projectId: string;
   projectName: string;
+  projectColor: string;
   projectDescription?: string | null;
   projectLocalPath?: string | null;
-  onRenamed: (name: string) => void;
-  onDeleted: () => void;
 };
 
-export function ProjectActionsMenu({
+export function ProjectHeaderMenu({
   workspaceId,
   projectId,
   projectName,
+  projectColor,
   projectDescription,
   projectLocalPath,
-  onRenamed,
-  onDeleted,
 }: Props): React.ReactElement {
+  const router = useRouter();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [deletePending, startDeleteTransition] = useTransition();
   const [renamePending, startRenameTransition] = useTransition();
+  const [deletePending, startDeleteTransition] = useTransition();
 
   const form = useForm<RenameValues>({
     resolver: standardSchemaResolver(RenameSchema),
@@ -64,9 +65,7 @@ export function ProjectActionsMenu({
   });
 
   useEffect(() => {
-    if (renameOpen) {
-      form.reset({ name: projectName });
-    }
+    if (renameOpen) form.reset({ name: projectName });
   }, [renameOpen, projectName, form]);
 
   const handleRename = form.handleSubmit((values) => {
@@ -82,7 +81,7 @@ export function ProjectActionsMenu({
       }
       setRenameOpen(false);
       toast.success("Project renamed");
-      onRenamed(result.project.name);
+      router.refresh();
     });
   });
 
@@ -95,7 +94,7 @@ export function ProjectActionsMenu({
       }
       setConfirmOpen(false);
       toast.success("Project deleted");
-      onDeleted();
+      router.push("/");
     });
   };
 
@@ -103,18 +102,37 @@ export function ProjectActionsMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label={`Actions for ${projectName}`}
-            onClick={(e) => e.preventDefault()}
-            className="opacity-0 transition-opacity duration-[120ms] ease-out group-hover/row:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+            aria-label={`${projectName} project menu`}
+            className={cn(
+              "group/proj-menu inline-flex h-7 items-center gap-1.5 rounded-md px-1.5 text-[13px] font-medium text-foreground transition-colors",
+              "hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "data-[state=open]:bg-muted",
+            )}
           >
-            <MoreHorizontal className="h-3.5 w-3.5" />
-          </Button>
+            <span
+              aria-hidden
+              className="h-2 w-2 rounded-full"
+              style={{ backgroundColor: projectColor }}
+            />
+            <span className="truncate">{projectName}</span>
+            <ChevronDown
+              aria-hidden
+              className="h-3 w-3 text-muted-foreground/70 transition-transform group-data-[state=open]/proj-menu:rotate-180"
+            />
+          </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" sideOffset={4} className="w-44">
+        <DropdownMenuContent align="start" sideOffset={4} className="w-48">
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+              setSettingsOpen(true);
+            }}
+          >
+            <Settings className="h-4 w-4" />
+            Project settings
+          </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={(e) => {
               e.preventDefault();
@@ -123,15 +141,6 @@ export function ProjectActionsMenu({
           >
             <Pencil className="h-4 w-4" />
             Rename
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={(e) => {
-              e.preventDefault();
-              setSettingsOpen(true);
-            }}
-          >
-            <Settings className="h-4 w-4" />
-            Settings
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -147,6 +156,15 @@ export function ProjectActionsMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
+      <ProjectSettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        workspaceId={workspaceId}
+        projectId={projectId}
+        projectDescription={projectDescription}
+        projectLocalPath={projectLocalPath}
+      />
+
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent className="sm:max-w-md">
           <form onSubmit={handleRename} className="flex flex-col gap-4">
@@ -155,9 +173,9 @@ export function ProjectActionsMenu({
               <DialogDescription>Update the display name for this project.</DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="project-rename-name">Name</Label>
+              <Label htmlFor="project-header-rename-name">Name</Label>
               <Input
-                id="project-rename-name"
+                id="project-header-rename-name"
                 autoFocus
                 disabled={renamePending}
                 {...form.register("name")}
@@ -184,15 +202,6 @@ export function ProjectActionsMenu({
           </form>
         </DialogContent>
       </Dialog>
-
-      <ProjectSettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        workspaceId={workspaceId}
-        projectId={projectId}
-        projectDescription={projectDescription}
-        projectLocalPath={projectLocalPath}
-      />
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="sm:max-w-md">
