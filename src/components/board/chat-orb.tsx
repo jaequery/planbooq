@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ImageIcon, Loader2, X } from "lucide-react";
+import { Check, ChevronDown, ImageIcon, Loader2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { quickCreateTicket } from "@/actions/ticket";
@@ -475,115 +475,132 @@ export function ChatOrb({
             >
               <ImageIcon className="h-3.5 w-3.5" aria-hidden />
             </button>
-            <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  aria-haspopup="dialog"
-                  aria-expanded={pickerOpen}
-                  disabled={pending}
-                  className="inline-flex flex-shrink-0 items-center gap-1.5 self-center rounded-full px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-                  title={
-                    effectiveAutoExecute
-                      ? "Auto-run: on for this project — ticket runs immediately after creation"
-                      : selectedCount > 0
-                        ? "Auto-run: off for this project — selected workflows don't include this project's default"
-                        : "Auto-run: off — ticket lands in Backlog as a draft"
-                  }
+            <div className="inline-flex flex-shrink-0 items-center self-center rounded-full text-muted-foreground">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={effectiveAutoExecute}
+                disabled={pending || defaultWorkflowTemplateId === null}
+                onClick={() => {
+                  if (defaultWorkflowTemplateId === null) return;
+                  toggleWorkflowAutoRun(defaultWorkflowTemplateId);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[11px] transition-colors hover:text-foreground disabled:opacity-50 disabled:hover:text-muted-foreground"
+                title={
+                  defaultWorkflowTemplateId === null
+                    ? "Set a default workflow in project settings to enable auto-run"
+                    : effectiveAutoExecute
+                      ? "Auto-run: on — click to disable"
+                      : "Auto-run: off — click to enable"
+                }
+              >
+                <span
+                  className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors ${
+                    effectiveAutoExecute ? "bg-primary" : "bg-muted"
+                  }`}
+                  aria-hidden
                 >
                   <span
-                    className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors ${
-                      effectiveAutoExecute ? "bg-primary" : "bg-muted"
+                    className={`inline-block h-2.5 w-2.5 transform rounded-full bg-background shadow transition-transform ${
+                      effectiveAutoExecute ? "translate-x-3" : "translate-x-0.5"
                     }`}
-                    aria-hidden
+                  />
+                </span>
+                <span>
+                  Auto-run
+                  {selectedCount > 0 ? (
+                    <span className="ml-1 text-[10px] tabular-nums">({selectedCount})</span>
+                  ) : null}
+                </span>
+              </button>
+              <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-expanded={pickerOpen}
+                    aria-label="Choose auto-run workflows"
+                    disabled={pending}
+                    className="inline-flex h-5 w-4 items-center justify-center rounded transition-colors hover:text-foreground disabled:opacity-50"
+                    title="Choose which workflows auto-run"
                   >
-                    <span
-                      className={`inline-block h-2.5 w-2.5 transform rounded-full bg-background shadow transition-transform ${
-                        effectiveAutoExecute ? "translate-x-3" : "translate-x-0.5"
-                      }`}
-                    />
-                  </span>
-                  <span>
-                    Auto-run
-                    {selectedCount > 0 ? (
-                      <span className="ml-1 text-[10px] tabular-nums">({selectedCount})</span>
-                    ) : null}
-                  </span>
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="end" sideOffset={8} className="w-72 p-0">
-                <div className="border-b border-border/70 px-3 py-2">
-                  <div className="font-medium text-[12px]">Auto-run workflows</div>
-                  <p className="text-[11px] text-muted-foreground">
-                    New tickets auto-execute only when the project's default workflow is selected.
-                  </p>
-                </div>
-                <div className="max-h-64 overflow-y-auto py-1">
-                  {templatesLoading && templates === null ? (
-                    <div className="flex items-center gap-2 px-3 py-2 text-[12px] text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-                      Loading workflows…
-                    </div>
-                  ) : templates && templates.length > 0 ? (
-                    templates.map((t) => {
-                      const selected = autoRunIds.has(t.id);
-                      const isDefault = t.id === defaultWorkflowTemplateId;
-                      return (
-                        <button
-                          key={t.id}
-                          type="button"
-                          role="menuitemcheckbox"
-                          aria-checked={selected}
-                          onClick={() => toggleWorkflowAutoRun(t.id)}
-                          className="flex w-full items-start gap-2 px-3 py-2 text-left text-[12px] transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none"
-                        >
-                          <span
-                            className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors ${
-                              selected
-                                ? "border-primary bg-primary text-primary-foreground"
-                                : "border-border bg-background"
-                            }`}
-                            aria-hidden
-                          >
-                            {selected ? <Check className="h-3 w-3" aria-hidden /> : null}
-                          </span>
-                          <span className="flex min-w-0 flex-1 flex-col">
-                            <span className="flex items-center gap-1.5">
-                              <span className="truncate font-medium">{t.name}</span>
-                              {isDefault ? (
-                                <span className="rounded bg-muted px-1 py-px text-[9px] uppercase tracking-wide text-muted-foreground">
-                                  default
-                                </span>
-                              ) : null}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {t.stepCount} {t.stepCount === 1 ? "step" : "steps"}
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <div className="px-3 py-3 text-[12px] text-muted-foreground">
-                      No workflows yet.{" "}
-                      <a
-                        href="/settings/workflows"
-                        className="underline underline-offset-2 hover:text-foreground"
-                      >
-                        Create one
-                      </a>{" "}
-                      in Settings.
-                    </div>
-                  )}
-                </div>
-                {templates && templates.length > 0 && defaultWorkflowTemplateId === null ? (
-                  <div className="border-t border-border/70 px-3 py-2 text-[11px] text-muted-foreground">
-                    This project has no default workflow, so auto-run can't fire. Set one in project
-                    settings.
+                    <ChevronDown className="h-3 w-3" aria-hidden />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="end" sideOffset={8} className="w-72 p-0">
+                  <div className="border-b border-border/70 px-3 py-2">
+                    <div className="font-medium text-[12px]">Auto-run workflows</div>
+                    <p className="text-[11px] text-muted-foreground">
+                      New tickets auto-execute only when the project's default workflow is selected.
+                    </p>
                   </div>
-                ) : null}
-              </PopoverContent>
-            </Popover>
+                  <div className="max-h-64 overflow-y-auto py-1">
+                    {templatesLoading && templates === null ? (
+                      <div className="flex items-center gap-2 px-3 py-2 text-[12px] text-muted-foreground">
+                        <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                        Loading workflows…
+                      </div>
+                    ) : templates && templates.length > 0 ? (
+                      templates.map((t) => {
+                        const selected = autoRunIds.has(t.id);
+                        const isDefault = t.id === defaultWorkflowTemplateId;
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            role="menuitemcheckbox"
+                            aria-checked={selected}
+                            onClick={() => toggleWorkflowAutoRun(t.id)}
+                            className="flex w-full items-start gap-2 px-3 py-2 text-left text-[12px] transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none"
+                          >
+                            <span
+                              className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors ${
+                                selected
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-border bg-background"
+                              }`}
+                              aria-hidden
+                            >
+                              {selected ? <Check className="h-3 w-3" aria-hidden /> : null}
+                            </span>
+                            <span className="flex min-w-0 flex-1 flex-col">
+                              <span className="flex items-center gap-1.5">
+                                <span className="truncate font-medium">{t.name}</span>
+                                {isDefault ? (
+                                  <span className="rounded bg-muted px-1 py-px text-[9px] uppercase tracking-wide text-muted-foreground">
+                                    default
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {t.stepCount} {t.stepCount === 1 ? "step" : "steps"}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="px-3 py-3 text-[12px] text-muted-foreground">
+                        No workflows yet.{" "}
+                        <a
+                          href="/settings/workflows"
+                          className="underline underline-offset-2 hover:text-foreground"
+                        >
+                          Create one
+                        </a>{" "}
+                        in Settings.
+                      </div>
+                    )}
+                  </div>
+                  {templates && templates.length > 0 && defaultWorkflowTemplateId === null ? (
+                    <div className="border-t border-border/70 px-3 py-2 text-[11px] text-muted-foreground">
+                      This project has no default workflow, so auto-run can't fire. Set one in
+                      project settings.
+                    </div>
+                  ) : null}
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
         </div>
       </div>
