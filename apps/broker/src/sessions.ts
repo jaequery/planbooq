@@ -82,6 +82,11 @@ type Session = {
   apiBaseUrl: string | null;
   apiToken: string | null;
   heartbeatTimer: ReturnType<typeof setInterval> | null;
+  // Last time we fired any PATCH (append, user-message, terminal). Used to
+  // suppress the heartbeat tick when a recent PATCH already bumped updatedAt
+  // — the heartbeat is purely an "I'm alive" updatedAt-touch, and any other
+  // PATCH does that for free.
+  lastPatchAt: number;
   appendBuffer: string;
   appendTimer: ReturnType<typeof setTimeout> | null;
   userStopped: boolean;
@@ -92,11 +97,17 @@ type Session = {
 const sessions = new Map<string, Session>();
 
 const HEARTBEAT_MS = 30_000;
-// Coalesce wire output into one PATCH/s per session. The renderer gets live
-// frames over IPC/SSE directly from the broker, so DB durability doesn't need
-// sub-second granularity — and shorter intervals just inflate PATCH volume
-// (and Ably fanout) on busy sessions.
-const APPEND_FLUSH_MS = 1_000;
+// Coalesce wire output into infrequent PATCHes per session. The renderer gets
+// live frames over IPC/SSE directly from the broker, so DB durability doesn't
+// need sub-second granularity — and shorter intervals just inflate PATCH
+// volume (and Ably fanout) on busy sessions.
+//
+// Two-trigger flush: whichever fires first.
+//   - APPEND_FLUSH_MS: slow sessions never wait longer than this for durability
+//   - APPEND_FLUSH_BYTES: chatty sessions ship blocks of output in one round
+//     trip instead of N tiny ones
+const APPEND_FLUSH_MS = 2_500;
+const APPEND_FLUSH_BYTES = 8 * 1024;
 
 // =============================================================================
 // Event fanout — every SSE subscriber gets every event. Filtering by
@@ -141,6 +152,12 @@ function startHeartbeat(s: Session, sessionId: string): void {
   const url = `${s.apiBaseUrl}/api/desktop-jobs/${jobId}`;
   const token = s.apiToken;
   const tick = (): void => {
+    // Suppress when any other PATCH already bumped updatedAt within the
+    // heartbeat window — the server-side liveness check is identical, and
+    // a chatty session would otherwise pay for both an append-stream AND
+    // a redundant heartbeat per minute.
+    if (Date.now() - s.lastPatchAt < HEARTBEAT_MS) return;
+    s.lastPatchAt = Date.now();
     void fetch(url, {
       method: "PATCH",
       headers: {
@@ -186,6 +203,7 @@ function sendPatch(
   if (!s.jobId || !s.apiBaseUrl || !s.apiToken) return;
   const jobId = s.jobId;
   const url = `${s.apiBaseUrl}/api/desktop-jobs/${jobId}`;
+  s.lastPatchAt = Date.now();
   void fetch(url, {
     method: "PATCH",
     headers: {
@@ -216,6 +234,10 @@ function flushAppend(s: Session, sessionId: string): void {
 
 function enqueueAppend(s: Session, sessionId: string, chunk: string): void {
   s.appendBuffer += chunk;
+  if (s.appendBuffer.length >= APPEND_FLUSH_BYTES) {
+    flushAppend(s, sessionId);
+    return;
+  }
   if (s.appendTimer) return;
   s.appendTimer = setTimeout(() => flushAppend(s, sessionId), APPEND_FLUSH_MS);
 }
@@ -394,6 +416,7 @@ export function startSession(params: StartParams): { sessionId: string } {
     apiBaseUrl: params.ticket?.apiBaseUrl ?? null,
     apiToken: params.ticket?.apiToken ?? null,
     heartbeatTimer: null,
+    lastPatchAt: 0,
     appendBuffer: "",
     appendTimer: null,
     userStopped: false,
@@ -431,6 +454,7 @@ export function resumeSession(params: ResumeParams): { sessionId: string } {
     apiBaseUrl: params.ticket?.apiBaseUrl ?? null,
     apiToken: params.ticket?.apiToken ?? null,
     heartbeatTimer: null,
+    lastPatchAt: 0,
     appendBuffer: "",
     appendTimer: null,
     userStopped: false,

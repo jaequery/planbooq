@@ -442,7 +442,12 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
   // existing handler picks up. Skips while tab is hidden, and fires
   // immediately on tab focus so a merge that happened off-screen lands as
   // soon as the user looks at the board.
+  //
+  // Dev only. In production the GitHub webhook (GITHUB_WEBHOOK_SECRET) is
+  // the sole signal — running this poller in prod multiplies API load by
+  // (active boards × workspaces) for no marginal benefit.
   useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
     const workspaceId = initialData.project.workspaceId;
     const interval = 8_000;
     let stopped = false;
