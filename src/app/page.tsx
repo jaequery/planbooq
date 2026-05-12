@@ -1,12 +1,5 @@
-import { Instrument_Serif } from "next/font/google";
 import Link from "next/link";
-
-const serif = Instrument_Serif({
-  subsets: ["latin"],
-  weight: "400",
-  style: ["normal"],
-  variable: "--font-landing-serif",
-});
+import { MarketingThemeToggle } from "./(marketing)/_components/theme-toggle";
 
 export const metadata = {
   title: "Planbooq — ship while it builds",
@@ -19,31 +12,21 @@ const APP_LABEL = "Open the app";
 const DOWNLOAD_HREF = "/api/download/mac";
 const DOWNLOAD_LABEL = "Download for Mac";
 
-const INK = "#0B0E12";
-const SURFACE = "#11151B";
-const SURFACE_HI = "#161B22";
-const HAIRLINE = "rgba(255,255,255,0.08)";
-const HAIRLINE_STRONG = "rgba(255,255,255,0.14)";
-const TEXT = "#ECEEF2";
-const TEXT_MUTED = "rgba(236,238,242,0.62)";
-const TEXT_FAINT = "rgba(236,238,242,0.42)";
-const ACCENT = "#7BD389";
-const ACCENT_INK = "#08110A";
-
 export default function Home(): React.ReactElement {
   return (
     <main
-      className={`${serif.variable} relative min-h-screen overflow-x-hidden antialiased`}
-      style={{ backgroundColor: INK, color: TEXT, colorScheme: "dark" }}
+      className="marketing relative min-h-screen overflow-x-hidden antialiased"
+      style={{ backgroundColor: "var(--mk-bg)", color: "var(--mk-ink)" }}
     >
       <BackgroundGrid />
       <Header />
-      <div className="relative mx-auto max-w-6xl px-6 sm:px-8">
+      <div className="relative mx-auto max-w-7xl px-6 sm:px-8">
         <Hero />
         <ProductPreview />
-        <Pillars />
+        <LogoStrip />
+        <Features />
         <HowItWorks />
-        <Quote />
+        <Testimonial />
         <BottomCTA />
       </div>
       <Footer />
@@ -55,11 +38,13 @@ function BackgroundGrid(): React.ReactElement {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-x-0 top-0 -z-0 h-[860px]"
+      className="pointer-events-none absolute inset-x-0 top-0 -z-0 h-[720px]"
       style={{
-        background:
-          "radial-gradient(ellipse 80% 60% at 50% -10%, rgba(123,211,137,0.10), transparent 60%), radial-gradient(ellipse 60% 40% at 50% 12%, rgba(123,211,137,0.05), transparent 70%)",
-        maskImage: "linear-gradient(to bottom, black 60%, transparent 100%)",
+        backgroundImage:
+          "linear-gradient(to right, var(--mk-hairline) 1px, transparent 1px), linear-gradient(to bottom, var(--mk-hairline) 1px, transparent 1px)",
+        backgroundSize: "80px 80px",
+        maskImage: "radial-gradient(ellipse 60% 50% at 50% 0%, black, transparent 70%)",
+        WebkitMaskImage: "radial-gradient(ellipse 60% 50% at 50% 0%, black, transparent 70%)",
       }}
     />
   );
@@ -70,31 +55,42 @@ function Header(): React.ReactElement {
     <header
       className="sticky top-0 z-40 backdrop-blur-md"
       style={{
-        backgroundColor: "rgba(11,14,18,0.62)",
-        borderBottom: `1px solid ${HAIRLINE}`,
+        backgroundColor: "color-mix(in srgb, var(--mk-bg) 85%, transparent)",
+        borderBottom: "1px solid var(--mk-hairline)",
       }}
     >
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6 sm:px-8">
-        <div className="flex items-center gap-2">
-          <Wordmark />
-        </div>
-        <nav className="hidden items-center gap-7 sm:flex">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6 sm:px-8">
+        <Wordmark />
+        <nav className="hidden items-center gap-7 md:flex">
           <NavLink href="#product">Product</NavLink>
-          <NavLink href="#how">How it works</NavLink>
-          <NavLink href="#why">Why Planbooq</NavLink>
+          <NavLink href="#why">Customers</NavLink>
+          <NavLink href={APP_HREF}>App</NavLink>
+          <NavLink href="#how">Docs</NavLink>
+          <NavLink href="#cta">Changelog</NavLink>
         </nav>
         <div className="flex items-center gap-2">
+          <a
+            href="https://github.com/planbooq"
+            aria-label="GitHub"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg transition"
+            style={{ color: "var(--mk-muted)" }}
+          >
+            <GitHubGlyph />
+          </a>
           <Link
             href={APP_HREF}
             className="hidden h-9 items-center rounded-lg px-3 text-[13px] font-medium transition sm:inline-flex"
-            style={{ color: TEXT_MUTED }}
+            style={{ color: "var(--mk-ink)" }}
           >
-            {APP_LABEL}
+            Sign in
           </Link>
           <Link
             href={DOWNLOAD_HREF}
             className="inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-[13px] font-semibold transition hover:brightness-95"
-            style={{ backgroundColor: ACCENT, color: ACCENT_INK }}
+            style={{
+              backgroundColor: "var(--mk-ink)",
+              color: "var(--mk-bg)",
+            }}
           >
             Download
           </Link>
@@ -112,7 +108,11 @@ function NavLink({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <a href={href} className="text-[13px] transition" style={{ color: TEXT_MUTED }}>
+    <a
+      href={href}
+      className="text-[13.5px] font-medium transition hover:opacity-80"
+      style={{ color: "var(--mk-muted)" }}
+    >
       {children}
     </a>
   );
@@ -120,74 +120,63 @@ function NavLink({
 
 function Wordmark(): React.ReactElement {
   return (
-    <Link href="/" className="flex items-center gap-2">
+    <Link href="/" className="flex items-center gap-2.5">
       <span
         aria-hidden="true"
         className="inline-flex h-6 w-6 items-center justify-center rounded-md"
-        style={{
-          backgroundColor: ACCENT,
-          color: ACCENT_INK,
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35)",
-        }}
+        style={{ backgroundColor: "var(--mk-ink)", color: "var(--mk-bg)" }}
       >
-        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+        <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">
           <rect x="1.5" y="1.5" width="4" height="11" rx="1.2" fill="currentColor" />
-          <rect x="8.5" y="1.5" width="4" height="7" rx="1.2" fill="currentColor" opacity="0.65" />
+          <rect x="8.5" y="1.5" width="4" height="7" rx="1.2" fill="currentColor" opacity="0.7" />
         </svg>
       </span>
-      <span className="text-[15px] font-semibold tracking-tight">Planbooq</span>
+      <span className="text-[15.5px] font-semibold tracking-tight">Planbooq</span>
     </Link>
-  );
-}
-
-function Eyebrow({ children }: { children: React.ReactNode }): React.ReactElement {
-  return (
-    <span
-      className="inline-flex items-center gap-2 rounded-full border px-3 py-1 font-mono text-[11px] tracking-[0.16em] uppercase"
-      style={{ borderColor: HAIRLINE_STRONG, color: TEXT_MUTED }}
-    >
-      <span
-        aria-hidden="true"
-        className="inline-block h-1.5 w-1.5 rounded-full"
-        style={{ backgroundColor: ACCENT, boxShadow: "0 0 12px rgba(123,211,137,0.6)" }}
-      />
-      {children}
-    </span>
   );
 }
 
 function Hero(): React.ReactElement {
   return (
-    <section className="flex flex-col items-center pt-20 pb-10 text-center sm:pt-28 sm:pb-14">
-      <Eyebrow>Kanban for vibe coders</Eyebrow>
-      <h1
-        className="font-[var(--font-landing-serif)] mt-6 max-w-4xl text-balance text-5xl leading-[1.02] tracking-tight sm:text-7xl"
-        style={{ color: TEXT }}
+    <section className="flex flex-col items-center pt-24 pb-12 text-center sm:pt-32 sm:pb-16">
+      <span
+        className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[12.5px] font-medium"
+        style={{
+          backgroundColor: "var(--mk-surface)",
+          border: "1px solid var(--mk-hairline)",
+          color: "var(--mk-muted)",
+        }}
       >
-        Ship{" "}
-        <em className="italic" style={{ color: ACCENT }}>
-          while it builds
-        </em>
-        .
+        <span
+          className="rounded px-1.5 py-0.5 font-mono text-[10.5px] font-semibold"
+          style={{
+            backgroundColor: "var(--mk-accent-soft)",
+            color: "var(--mk-accent)",
+          }}
+        >
+          NEW
+        </span>
+        v1.4 · Real-time multiplayer kanban
+      </span>
+      <h1
+        className="mt-6 max-w-4xl text-balance text-5xl font-[650] leading-[1.02] tracking-[-0.035em] sm:text-7xl"
+        style={{ color: "var(--mk-ink)" }}
+      >
+        Ship <span style={{ color: "var(--mk-accent)" }}>while it builds</span>.
       </h1>
       <p
-        className="mt-7 max-w-xl text-balance text-base leading-relaxed sm:text-[17px]"
-        style={{ color: TEXT_MUTED }}
+        className="mt-6 max-w-xl text-balance text-[17px] leading-relaxed sm:text-lg"
+        style={{ color: "var(--mk-muted)" }}
       >
         Drop a ticket. An AI agent runs it on its own branch and worktree. Queue the next one
         instead of waiting on the last.
       </p>
-      <div className="mt-9 flex flex-col items-center gap-4">
-        <div className="flex flex-wrap items-center justify-center gap-3">
+      <div className="mt-9 flex flex-col items-center gap-5">
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
           <Link
             href={DOWNLOAD_HREF}
-            className="group inline-flex h-12 items-center gap-2.5 rounded-xl px-6 text-[15px] font-semibold transition hover:brightness-95"
-            style={{
-              backgroundColor: ACCENT,
-              color: ACCENT_INK,
-              boxShadow:
-                "0 1px 0 rgba(255,255,255,0.25) inset, 0 12px 32px -16px rgba(123,211,137,0.55)",
-            }}
+            className="group inline-flex h-12 items-center gap-2.5 rounded-[10px] px-6 text-[15px] font-semibold transition hover:brightness-95"
+            style={{ backgroundColor: "var(--mk-ink)", color: "var(--mk-bg)" }}
             aria-label={DOWNLOAD_LABEL}
           >
             <AppleGlyph />
@@ -195,24 +184,24 @@ function Hero(): React.ReactElement {
           </Link>
           <Link
             href={APP_HREF}
-            className="inline-flex h-12 items-center rounded-xl border px-5 text-[15px] font-medium transition"
+            className="inline-flex h-12 items-center rounded-[10px] px-5 text-[15px] font-medium transition"
             style={{
-              borderColor: HAIRLINE_STRONG,
-              color: TEXT,
-              backgroundColor: "rgba(255,255,255,0.02)",
+              border: "1px solid var(--mk-hairline-strong)",
+              color: "var(--mk-ink)",
+              backgroundColor: "var(--mk-bg)",
             }}
           >
             {APP_LABEL}
             <span aria-hidden="true" className="ml-2 opacity-60">
-              ↗
+              →
             </span>
           </Link>
         </div>
         <p
-          className="mt-1 font-mono text-[11px] tracking-[0.16em] uppercase"
-          style={{ color: TEXT_FAINT }}
+          className="font-mono text-[11px] tracking-[0.08em] uppercase"
+          style={{ color: "var(--mk-faint)" }}
         >
-          Mac · BYOK · Runs on your GitHub repos
+          Mac · Bring your own key · Runs on your GitHub repos
         </p>
       </div>
     </section>
@@ -222,8 +211,8 @@ function Hero(): React.ReactElement {
 function AppleGlyph(): React.ReactElement {
   return (
     <svg
-      width="16"
-      height="16"
+      width="15"
+      height="15"
       viewBox="0 0 24 24"
       fill="currentColor"
       aria-hidden="true"
@@ -234,68 +223,80 @@ function AppleGlyph(): React.ReactElement {
   );
 }
 
+function GitHubGlyph(): React.ReactElement {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.27-1.69-1.27-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.69 1.25 3.35.96.1-.74.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.28 1.18-3.09-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.21-1.49 3.18-1.18 3.18-1.18.62 1.58.23 2.75.11 3.04.74.81 1.18 1.83 1.18 3.09 0 4.43-2.69 5.4-5.25 5.69.41.35.78 1.04.78 2.1v3.11c0 .31.21.68.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z" />
+    </svg>
+  );
+}
+
 function ProductPreview(): React.ReactElement {
   return (
-    <section id="product" className="mt-12 sm:mt-16">
+    <section id="product" className="mt-16 sm:mt-20">
       <div
         className="relative overflow-hidden rounded-2xl"
         style={{
-          backgroundColor: SURFACE,
-          border: `1px solid ${HAIRLINE}`,
+          backgroundColor: "var(--mk-bg)",
+          border: "1px solid var(--mk-hairline)",
           boxShadow:
-            "inset 0 1px 0 rgba(255,255,255,0.05), 0 30px 80px -40px rgba(0,0,0,0.6), 0 0 0 1px rgba(123,211,137,0.04)",
+            "0 1px 1px rgba(0,0,0,0.02), 0 12px 36px -16px rgba(0,0,0,0.10), 0 32px 72px -32px rgba(0,0,0,0.10)",
         }}
       >
         <div
           className="flex items-center gap-2 border-b px-4 py-3"
-          style={{ borderColor: HAIRLINE }}
+          style={{
+            borderColor: "var(--mk-hairline)",
+            backgroundColor: "var(--mk-surface)",
+          }}
         >
+          <ChromeDot />
+          <ChromeDot />
+          <ChromeDot />
           <span
-            aria-hidden="true"
-            className="inline-block h-2.5 w-2.5 rounded-full"
-            style={{ backgroundColor: "#3a3f49" }}
-          />
-          <span
-            aria-hidden="true"
-            className="inline-block h-2.5 w-2.5 rounded-full"
-            style={{ backgroundColor: "#3a3f49" }}
-          />
-          <span
-            aria-hidden="true"
-            className="inline-block h-2.5 w-2.5 rounded-full"
-            style={{ backgroundColor: "#3a3f49" }}
-          />
-          <span
-            className="ml-3 font-mono text-[11px] tracking-[0.14em] uppercase"
-            style={{ color: TEXT_FAINT }}
+            className="ml-3 inline-flex items-center gap-2 rounded-md px-2.5 py-1 font-mono text-[11px]"
+            style={{
+              border: "1px solid var(--mk-hairline)",
+              backgroundColor: "var(--mk-bg)",
+              color: "var(--mk-faint)",
+            }}
           >
-            planbooq · acme · main board
+            <span
+              aria-hidden="true"
+              className="inline-block h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: "var(--mk-accent)" }}
+            />
+            planbooq.app / acme / main board
           </span>
           <span
-            className="ml-auto inline-flex items-center gap-2 font-mono text-[10.5px] tracking-[0.16em] uppercase"
-            style={{ color: ACCENT }}
+            className="ml-auto inline-flex items-center gap-2 font-mono text-[11px] font-semibold"
+            style={{ color: "var(--mk-accent)" }}
           >
             <span
               aria-hidden="true"
               className="ticket-pulse inline-block h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: ACCENT }}
+              style={{ backgroundColor: "var(--mk-accent)" }}
             />
             4 agents running
           </span>
         </div>
-        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-5 sm:gap-4 sm:p-6">
+        <div
+          className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-5 sm:gap-4 sm:p-6"
+          style={{ backgroundColor: "var(--mk-surface)" }}
+        >
           <KanbanColumn name="Backlog" count={12}>
             <TicketCard title="Tighten onboarding copy" />
             <TicketCard title="API key rotation" />
+            <TicketCard title="Add Stripe webhook retry" />
           </KanbanColumn>
           <KanbanColumn name="Todo" count={5}>
             <TicketCard title="Worktree GC job" />
             <TicketCard title="Cmd-K palette polish" />
           </KanbanColumn>
           <KanbanColumn name="Building" count={4} active>
-            <TicketCard title="Redesign landing page" running />
-            <TicketCard title="Auth provider swap" running />
-            <TicketCard title="Hero copy refresh" running />
+            <TicketCard title="Redesign landing page" running elapsed="0:42" />
+            <TicketCard title="Auth provider swap" running elapsed="2:11" />
+            <TicketCard title="Hero copy refresh" running elapsed="0:08" />
           </KanbanColumn>
           <KanbanColumn name="Review" count={2}>
             <TicketCard title="Webhook retry policy" pr="+124 −38" />
@@ -307,6 +308,16 @@ function ProductPreview(): React.ReactElement {
         </div>
       </div>
     </section>
+  );
+}
+
+function ChromeDot(): React.ReactElement {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-block h-2.5 w-2.5 rounded-full"
+      style={{ backgroundColor: "var(--mk-hairline-strong)" }}
+    />
   );
 }
 
@@ -325,21 +336,21 @@ function KanbanColumn({
 }): React.ReactElement {
   return (
     <div
-      className="flex flex-col gap-2 rounded-xl p-3"
+      className="flex min-h-[280px] flex-col gap-2 rounded-xl p-3"
       style={{
-        backgroundColor: active ? "rgba(123,211,137,0.05)" : "rgba(255,255,255,0.015)",
-        border: `1px solid ${active ? "rgba(123,211,137,0.18)" : HAIRLINE}`,
+        backgroundColor: active ? "var(--mk-accent-soft)" : "var(--mk-bg)",
+        border: `1px solid ${active ? "color-mix(in srgb, var(--mk-accent) 30%, transparent)" : "var(--mk-hairline)"}`,
         opacity: dim ? 0.72 : 1,
       }}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between px-1 pt-0.5 pb-1">
         <span
-          className="font-mono text-[10.5px] tracking-[0.18em] uppercase"
-          style={{ color: active ? ACCENT : TEXT_FAINT }}
+          className="font-mono text-[10.5px] font-semibold tracking-[0.12em] uppercase"
+          style={{ color: active ? "var(--mk-accent)" : "var(--mk-faint)" }}
         >
           {name}
         </span>
-        <span className="font-mono text-[10.5px]" style={{ color: TEXT_FAINT }}>
+        <span className="font-mono text-[10.5px]" style={{ color: "var(--mk-faint)" }}>
           {count}
         </span>
       </div>
@@ -353,59 +364,76 @@ function TicketCard({
   running,
   pr,
   done,
+  elapsed,
 }: {
   title: string;
   running?: boolean;
   pr?: string;
   done?: boolean;
+  elapsed?: string;
 }): React.ReactElement {
   return (
     <div
-      className="flex flex-col gap-2 rounded-lg p-3"
+      className="flex flex-col gap-2 rounded-lg p-2.5"
       style={{
-        backgroundColor: SURFACE_HI,
-        border: `1px solid ${HAIRLINE}`,
+        backgroundColor: "var(--mk-bg)",
+        border: "1px solid var(--mk-hairline)",
+        boxShadow: "0 1px 1px rgba(0,0,0,0.02)",
+        opacity: done ? 0.65 : 1,
       }}
     >
-      <div className="text-[12.5px] leading-tight" style={{ color: done ? TEXT_MUTED : TEXT }}>
+      <div className="text-[12.5px] leading-tight font-medium" style={{ color: "var(--mk-ink)" }}>
         {title}
       </div>
       <div className="flex items-center justify-between gap-1.5">
         {running ? (
-          <span
-            className="inline-flex items-center gap-1 font-mono text-[9.5px] tracking-wider uppercase"
-            style={{ color: ACCENT }}
-          >
+          <>
             <span
-              aria-hidden="true"
-              className="ticket-pulse inline-block h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: ACCENT }}
-            />
-            running
-          </span>
+              className="inline-flex items-center gap-1 font-mono text-[9.5px] font-semibold tracking-wider uppercase"
+              style={{ color: "var(--mk-accent)" }}
+            >
+              <span
+                aria-hidden="true"
+                className="ticket-pulse inline-block h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: "var(--mk-accent)" }}
+              />
+              running
+            </span>
+            {elapsed ? (
+              <span
+                className="font-mono text-[9.5px] tabular-nums"
+                style={{ color: "var(--mk-faint)" }}
+              >
+                {elapsed}
+              </span>
+            ) : null}
+          </>
         ) : pr ? (
           <>
             <span
-              className="font-mono text-[9.5px] tracking-wider uppercase"
-              style={{ color: "#C8A55B" }}
+              className="font-mono text-[9.5px] font-semibold tracking-wider uppercase"
+              style={{ color: "var(--mk-warn)" }}
             >
               PR open
             </span>
-            <span className="font-mono text-[9.5px] tabular-nums" style={{ color: TEXT_FAINT }}>
+            <span
+              className="font-mono text-[9.5px] tabular-nums"
+              style={{ color: "var(--mk-faint)" }}
+            >
               {pr}
             </span>
           </>
         ) : done ? (
           <span
             className="font-mono text-[9.5px] tracking-wider uppercase"
-            style={{ color: TEXT_FAINT }}
+            style={{ color: "var(--mk-faint)" }}
           >
             shipped
           </span>
         ) : (
           <span
             className="font-mono text-[9.5px] tracking-wider uppercase"
-            style={{ color: TEXT_FAINT }}
+            style={{ color: "var(--mk-faint)" }}
           >
             queued
           </span>
@@ -415,40 +443,71 @@ function TicketCard({
   );
 }
 
-function Pillars(): React.ReactElement {
+function LogoStrip(): React.ReactElement {
+  const logos: { name: string; mark: string }[] = [
+    { name: "Vector", mark: "▲" },
+    { name: "Northwind", mark: "◆" },
+    { name: "Halftone", mark: "◐" },
+    { name: "Mesh", mark: "⬡" },
+    { name: "Wavelength", mark: "∿" },
+    { name: "Quartz", mark: "◇" },
+  ];
   return (
-    <section id="why" className="mt-32 sm:mt-40">
+    <section className="mt-20 text-center">
+      <p
+        className="font-mono text-[11px] tracking-[0.16em] uppercase"
+        style={{ color: "var(--mk-faint)" }}
+      >
+        Trusted by teams shipping with agents
+      </p>
+      <div className="mt-7 flex flex-wrap items-center justify-center gap-x-14 gap-y-4">
+        {logos.map((l) => (
+          <span
+            key={l.name}
+            className="inline-flex items-center gap-2 text-[18px] font-[650] tracking-tight"
+            style={{ color: "var(--mk-faint)", opacity: 0.7 }}
+          >
+            <span aria-hidden="true">{l.mark}</span>
+            {l.name}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Features(): React.ReactElement {
+  return (
+    <section id="why" className="mt-28 scroll-mt-20 sm:mt-36">
       <div className="flex flex-col items-start">
-        <Eyebrow>Why Planbooq</Eyebrow>
+        <SectionEyebrow>WHY PLANBOOQ</SectionEyebrow>
         <h2
-          className="font-[var(--font-landing-serif)] mt-5 max-w-2xl text-balance text-4xl leading-tight tracking-tight sm:text-5xl"
-          style={{ color: TEXT }}
+          className="mt-3 max-w-2xl text-balance text-4xl font-[650] leading-[1.08] tracking-[-0.028em] sm:text-[44px]"
+          style={{ color: "var(--mk-ink)" }}
         >
-          Built for{" "}
-          <em className="italic" style={{ color: ACCENT }}>
-            throughput
-          </em>
-          .
+          Built for throughput, not babysitting.
         </h2>
-        <p className="mt-5 max-w-xl text-[15px] leading-relaxed" style={{ color: TEXT_MUTED }}>
+        <p
+          className="mt-4 max-w-xl text-[16.5px] leading-relaxed"
+          style={{ color: "var(--mk-muted)" }}
+        >
           One terminal, one ticket at a time is the bottleneck. Planbooq gives every ticket its own
-          branch, worktree, and agent session, so you keep many tickets moving instead of
-          babysitting one.
+          branch, worktree, and agent so you keep many tickets moving at once.
         </p>
       </div>
-      <div className="mt-12 grid gap-4 sm:grid-cols-3">
-        <Tile
-          num="01"
+      <div className="mt-12 grid gap-5 sm:grid-cols-3">
+        <FeatureCard
+          icon={<IconParallel />}
           title="Run ten in parallel."
           body="Drop a backlog and every ticket starts at once — each on its own branch in its own worktree. Wall-clock collapses to whatever the slowest agent takes."
         />
-        <Tile
-          num="02"
+        <FeatureCard
+          icon={<IconShield />}
           title="Isolated by default."
           body="Branch, worktree, and agent session per ticket. Agents never step on each other, and main stays clean while they run."
         />
-        <Tile
-          num="03"
+        <FeatureCard
+          icon={<IconBolt />}
           title="Glance and ship."
           body="When a ticket lands in review, the PR, diff, and CI status are right there. Look once, ship, move on."
         />
@@ -457,81 +516,98 @@ function Pillars(): React.ReactElement {
   );
 }
 
-function Tile({
-  num,
+function FeatureCard({
+  icon,
   title,
   body,
 }: {
-  num: string;
+  icon: React.ReactNode;
   title: string;
   body: string;
 }): React.ReactElement {
   return (
     <article
-      className="relative flex flex-col rounded-2xl p-7"
+      className="flex flex-col rounded-2xl p-7"
       style={{
-        backgroundColor: SURFACE,
-        border: `1px solid ${HAIRLINE}`,
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+        backgroundColor: "var(--mk-bg)",
+        border: "1px solid var(--mk-hairline)",
       }}
     >
-      <span className="font-mono text-[11px] tracking-[0.22em] uppercase" style={{ color: ACCENT }}>
-        {num}
+      <span
+        className="inline-flex h-10 w-10 items-center justify-center rounded-[10px]"
+        style={{
+          backgroundColor: "var(--mk-surface)",
+          border: "1px solid var(--mk-hairline)",
+          color: "var(--mk-ink)",
+        }}
+      >
+        {icon}
       </span>
       <h3
-        className="font-[var(--font-landing-serif)] mt-3 text-2xl leading-tight tracking-tight sm:text-[28px]"
-        style={{ color: TEXT }}
+        className="mt-5 text-[19px] font-semibold tracking-[-0.012em]"
+        style={{ color: "var(--mk-ink)" }}
       >
         {title}
       </h3>
-      <p className="mt-3 text-[14.5px] leading-relaxed" style={{ color: TEXT_MUTED }}>
+      <p className="mt-2 text-[14.5px] leading-[1.6]" style={{ color: "var(--mk-muted)" }}>
         {body}
       </p>
     </article>
   );
 }
 
+function SectionEyebrow({ children }: { children: React.ReactNode }): React.ReactElement {
+  return (
+    <span
+      className="font-mono text-[11px] font-semibold tracking-[0.16em] uppercase"
+      style={{ color: "var(--mk-accent)" }}
+    >
+      {children}
+    </span>
+  );
+}
+
 function HowItWorks(): React.ReactElement {
   return (
-    <section id="how" className="mt-32 scroll-mt-20 sm:mt-40">
+    <section id="how" className="mt-28 scroll-mt-20 sm:mt-36">
       <div className="flex flex-col items-start">
-        <Eyebrow>How it works</Eyebrow>
+        <SectionEyebrow>HOW IT WORKS</SectionEyebrow>
         <h2
-          className="font-[var(--font-landing-serif)] mt-5 max-w-2xl text-balance text-4xl leading-tight tracking-tight sm:text-5xl"
-          style={{ color: TEXT }}
+          className="mt-3 max-w-2xl text-balance text-4xl font-[650] leading-[1.08] tracking-[-0.028em] sm:text-[44px]"
+          style={{ color: "var(--mk-ink)" }}
         >
-          Four steps.{" "}
-          <em className="italic" style={{ color: ACCENT }}>
-            Zero waiting.
-          </em>
+          Four steps. Zero waiting.
         </h2>
       </div>
       <ol
         className="mt-12 grid gap-px overflow-hidden rounded-2xl sm:grid-cols-2 lg:grid-cols-4"
-        style={{ backgroundColor: HAIRLINE, border: `1px solid ${HAIRLINE}` }}
+        style={{
+          backgroundColor: "var(--mk-hairline)",
+          border: "1px solid var(--mk-hairline)",
+        }}
       >
         <Step
           n={1}
           title="Drop a ticket"
-          body="Describe what you want and move on. ⌘K palette keeps your hands on the keyboard."
+          body="Describe what you want and move on. ⌘K keeps your hands on the keyboard."
           glyph={<StepDrop />}
         />
         <Step
           n={2}
           title="Agent runs"
-          body="The ticket spins up its own branch and worktree, and an agent runs it end-to-end. You queue the next one."
+          body="The ticket spins up its own branch and worktree, and an agent runs it end-to-end."
           glyph={<StepAgent />}
         />
         <Step
           n={3}
           title="Glance"
-          body="Diff, PR, and CI status flow back to the card. Look once and decide — no re-prompt loop."
+          body="Diff, PR, and CI status flow back to the card. Look once and decide."
           glyph={<StepGlance />}
         />
         <Step
           n={4}
           title="Ship"
-          body="One click opens the PR and clears the lane. Merge auto-completes the ticket back to the board."
+          body="One click opens the PR and clears the lane. Merge auto-completes the ticket."
           glyph={<StepShip />}
         />
       </ol>
@@ -551,31 +627,31 @@ function Step({
   glyph: React.ReactNode;
 }): React.ReactElement {
   return (
-    <li className="flex flex-col gap-4 p-7" style={{ backgroundColor: SURFACE }}>
+    <li className="flex flex-col gap-4 p-7" style={{ backgroundColor: "var(--mk-bg)" }}>
       <div
-        className="flex h-10 w-10 items-center justify-center rounded-lg"
+        className="flex h-10 w-10 items-center justify-center rounded-[10px]"
         style={{
-          backgroundColor: "rgba(123,211,137,0.10)",
-          color: ACCENT,
-          border: `1px solid rgba(123,211,137,0.22)`,
+          backgroundColor: "var(--mk-surface)",
+          border: "1px solid var(--mk-hairline)",
+          color: "var(--mk-ink)",
         }}
       >
         {glyph}
       </div>
       <div>
         <span
-          className="font-mono text-[11px] tracking-[0.22em] uppercase"
-          style={{ color: TEXT_FAINT }}
+          className="font-mono text-[11px] font-semibold tracking-[0.18em] uppercase"
+          style={{ color: "var(--mk-faint)" }}
         >
           Step 0{n}
         </span>
         <h3
-          className="font-[var(--font-landing-serif)] mt-1.5 text-xl tracking-tight"
-          style={{ color: TEXT }}
+          className="mt-1.5 text-[18px] font-semibold tracking-[-0.012em]"
+          style={{ color: "var(--mk-ink)" }}
         >
           {title}
         </h3>
-        <p className="mt-2 text-[13.5px] leading-relaxed" style={{ color: TEXT_MUTED }}>
+        <p className="mt-2 text-[14px] leading-[1.55]" style={{ color: "var(--mk-muted)" }}>
           {body}
         </p>
       </div>
@@ -586,9 +662,9 @@ function Step({
 function StepDrop(): React.ReactElement {
   return (
     <svg
-      width="20"
-      height="20"
-      viewBox="0 0 26 26"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.6"
@@ -596,9 +672,9 @@ function StepDrop(): React.ReactElement {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <rect x="3.5" y="5" width="19" height="16" rx="3" />
-      <path d="M3.5 10h19" />
-      <path d="M9 15h8" />
+      <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
+      <path d="M3.5 9.5h17" />
+      <path d="M8 14h8" />
     </svg>
   );
 }
@@ -606,9 +682,9 @@ function StepDrop(): React.ReactElement {
 function StepAgent(): React.ReactElement {
   return (
     <svg
-      width="20"
-      height="20"
-      viewBox="0 0 26 26"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.6"
@@ -616,10 +692,9 @@ function StepAgent(): React.ReactElement {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path d="M4 8h6l3-4h9" />
-      <path d="M4 13h12" />
-      <path d="M4 18h6l3 4h9" />
-      <circle cx="20" cy="13" r="2" />
+      <rect x="3" y="4" width="6" height="14" rx="1.5" />
+      <rect x="15" y="4" width="6" height="8" rx="1.5" />
+      <rect x="9" y="12" width="6" height="6" rx="1.5" />
     </svg>
   );
 }
@@ -627,9 +702,9 @@ function StepAgent(): React.ReactElement {
 function StepGlance(): React.ReactElement {
   return (
     <svg
-      width="20"
-      height="20"
-      viewBox="0 0 26 26"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.6"
@@ -637,10 +712,8 @@ function StepGlance(): React.ReactElement {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <rect x="3" y="5" width="20" height="16" rx="2" />
-      <path d="M3 10h20" />
-      <path d="M8 15h6" />
-      <path d="M8 18h10" />
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
     </svg>
   );
 }
@@ -648,9 +721,27 @@ function StepGlance(): React.ReactElement {
 function StepShip(): React.ReactElement {
   return (
     <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="4 12 10 18 20 6" />
+    </svg>
+  );
+}
+
+function IconParallel(): React.ReactElement {
+  return (
+    <svg
       width="20"
       height="20"
-      viewBox="0 0 26 26"
+      viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.6"
@@ -658,29 +749,65 @@ function StepShip(): React.ReactElement {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path d="m4 13 5 5 13-13" />
+      <rect x="3" y="4" width="6" height="16" rx="1.5" />
+      <rect x="15" y="4" width="6" height="9" rx="1.5" />
+      <rect x="9" y="13" width="6" height="7" rx="1.5" />
     </svg>
   );
 }
 
-function Quote(): React.ReactElement {
+function IconShield(): React.ReactElement {
   return (
-    <section className="mt-32 sm:mt-40">
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3 4 6v6c0 5 3.5 8.5 8 9 4.5-.5 8-4 8-9V6l-8-3z" />
+    </svg>
+  );
+}
+
+function IconBolt(): React.ReactElement {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m13 2-9 13h7l-1 7 9-13h-7l1-7z" />
+    </svg>
+  );
+}
+
+function Testimonial(): React.ReactElement {
+  return (
+    <section className="mt-28 sm:mt-36">
       <div
-        className="relative mx-auto max-w-4xl rounded-2xl p-10 sm:p-14"
+        className="relative mx-auto max-w-4xl rounded-3xl p-10 sm:p-14"
         style={{
-          backgroundColor: SURFACE,
-          border: `1px solid ${HAIRLINE}`,
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+          backgroundColor: "var(--mk-surface)",
+          border: "1px solid var(--mk-hairline)",
         }}
       >
         <svg
           aria-hidden="true"
-          width="40"
-          height="32"
+          width="36"
+          height="28"
           viewBox="0 0 40 32"
-          className="opacity-30"
-          style={{ color: ACCENT }}
+          style={{ color: "var(--mk-accent)", opacity: 0.4 }}
         >
           <path
             fill="currentColor"
@@ -688,22 +815,30 @@ function Quote(): React.ReactElement {
           />
         </svg>
         <blockquote
-          className="font-[var(--font-landing-serif)] mt-6 text-[28px] leading-snug tracking-tight sm:text-4xl"
-          style={{ color: TEXT }}
+          className="mt-6 text-balance text-[24px] leading-[1.35] font-medium tracking-[-0.018em] sm:text-[28px]"
+          style={{ color: "var(--mk-ink)" }}
         >
           The point of AI was supposed to be that humans stop waiting. Planbooq is the first tool
-          where I actually don't.
+          where I actually don't — I keep five tickets in flight and ship two a day.
         </blockquote>
-        <footer
-          className="mt-8 flex items-center gap-3 font-mono text-[11px] tracking-[0.18em] uppercase"
-          style={{ color: TEXT_FAINT }}
-        >
+        <footer className="mt-8 flex items-center gap-3">
           <span
             aria-hidden="true"
-            className="inline-block h-px w-8"
-            style={{ backgroundColor: HAIRLINE_STRONG }}
-          />
-          A vibe coder, beta cohort
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full text-[13px] font-semibold text-white"
+            style={{
+              background: "linear-gradient(135deg, #d4d4d8, #71717a)",
+            }}
+          >
+            EM
+          </span>
+          <div className="flex flex-col">
+            <span className="text-[14px] font-semibold" style={{ color: "var(--mk-ink)" }}>
+              Eliza Moreno
+            </span>
+            <span className="text-[13px]" style={{ color: "var(--mk-muted)" }}>
+              Founding engineer · Quartz
+            </span>
+          </div>
         </footer>
       </div>
     </section>
@@ -712,44 +847,40 @@ function Quote(): React.ReactElement {
 
 function BottomCTA(): React.ReactElement {
   return (
-    <section className="mt-32 mb-24 sm:mt-40">
+    <section id="cta" className="mt-28 mb-28 sm:mt-36">
       <div
         className="relative overflow-hidden rounded-3xl p-10 text-center sm:p-16"
         style={{
-          background:
-            "radial-gradient(ellipse 60% 80% at 50% 0%, rgba(123,211,137,0.10), transparent 70%), linear-gradient(180deg, #11151B 0%, #0E1217 100%)",
-          border: `1px solid ${HAIRLINE}`,
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)",
+          backgroundColor: "var(--mk-cta-bg)",
+          color: "var(--mk-cta-ink)",
+          border: "1px solid var(--mk-hairline)",
         }}
       >
-        <h2
-          className="font-[var(--font-landing-serif)] mx-auto max-w-3xl text-balance text-4xl leading-tight tracking-tight sm:text-6xl"
-          style={{ color: TEXT }}
-        >
-          Stop watching agents.{" "}
-          <em className="italic" style={{ color: ACCENT }}>
-            Start shipping.
-          </em>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[260px]"
+          style={{
+            background:
+              "radial-gradient(60% 60% at 50% 0%, color-mix(in srgb, var(--mk-accent) 22%, transparent), transparent 70%)",
+          }}
+        />
+        <h2 className="relative mx-auto max-w-3xl text-balance text-4xl font-[650] leading-[1.05] tracking-[-0.03em] sm:text-[52px]">
+          Stop watching agents. <span style={{ color: "var(--mk-accent)" }}>Start shipping.</span>
         </h2>
         <p
-          className="mx-auto mt-6 max-w-xl text-balance text-[15px] leading-relaxed"
-          style={{ color: TEXT_MUTED }}
+          className="relative mx-auto mt-5 max-w-xl text-balance text-[16.5px] leading-relaxed"
+          style={{ color: "color-mix(in srgb, var(--mk-cta-ink) 66%, transparent)" }}
         >
           Real-time multiplayer kanban. Full keyboard nav. GitHub-wired tickets. BYOK so unit
           economics stay yours.
         </p>
-
-        <PromptBar />
-
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+        <div className="relative mt-9 flex flex-wrap items-center justify-center gap-2.5">
           <Link
             href={DOWNLOAD_HREF}
-            className="group inline-flex h-12 items-center gap-2.5 rounded-xl px-6 text-[15px] font-semibold transition hover:brightness-95"
+            className="group inline-flex h-12 items-center gap-2.5 rounded-[10px] px-6 text-[15px] font-semibold transition hover:brightness-95"
             style={{
-              backgroundColor: ACCENT,
-              color: ACCENT_INK,
-              boxShadow:
-                "0 1px 0 rgba(255,255,255,0.25) inset, 0 12px 32px -16px rgba(123,211,137,0.55)",
+              backgroundColor: "var(--mk-cta-ink)",
+              color: "var(--mk-cta-bg)",
             }}
           >
             <AppleGlyph />
@@ -757,14 +888,16 @@ function BottomCTA(): React.ReactElement {
           </Link>
           <Link
             href={APP_HREF}
-            className="inline-flex h-12 items-center rounded-xl border px-5 text-[15px] font-medium transition"
+            className="inline-flex h-12 items-center rounded-[10px] px-5 text-[15px] font-medium transition"
             style={{
-              borderColor: HAIRLINE_STRONG,
-              color: TEXT,
-              backgroundColor: "rgba(255,255,255,0.02)",
+              border: "1px solid color-mix(in srgb, var(--mk-cta-ink) 18%, transparent)",
+              color: "var(--mk-cta-ink)",
             }}
           >
             {APP_LABEL}
+            <span aria-hidden="true" className="ml-2 opacity-60">
+              →
+            </span>
           </Link>
         </div>
       </div>
@@ -772,80 +905,146 @@ function BottomCTA(): React.ReactElement {
   );
 }
 
-function PromptBar(): React.ReactElement {
+function Footer(): React.ReactElement {
   return (
-    <div className="mx-auto mt-10 w-full max-w-2xl">
-      <div
-        className="rounded-2xl p-2.5"
-        style={{
-          backgroundColor: "rgba(255,255,255,0.02)",
-          border: `1px solid ${HAIRLINE_STRONG}`,
-        }}
-      >
-        <div
-          className="flex items-center gap-3 rounded-xl px-4 py-3"
-          style={{ backgroundColor: SURFACE_HI }}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={TEXT_FAINT}
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="11" cy="11" r="7" />
-            <path d="m20 20-3.5-3.5" />
-          </svg>
-          <span className="flex-1 text-left text-[14px]" style={{ color: TEXT_FAINT }}>
-            Add a ticket — "Refresh the hero copy and swap the CTA…"
-          </span>
-          <span
-            className="rounded-md border px-1.5 py-0.5 font-mono text-[10.5px]"
-            style={{ borderColor: HAIRLINE_STRONG, color: TEXT_FAINT }}
-          >
-            ⌘K
-          </span>
+    <footer
+      style={{
+        borderTop: "1px solid var(--mk-hairline)",
+        backgroundColor: "var(--mk-surface)",
+      }}
+    >
+      <div className="mx-auto max-w-7xl px-6 pt-16 pb-10 sm:px-8">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1fr_1fr]">
+          <div className="flex flex-col gap-4">
+            <Wordmark />
+            <p
+              className="max-w-[280px] text-[13.5px] leading-[1.55]"
+              style={{ color: "var(--mk-muted)" }}
+            >
+              The kanban for vibe coders. Branch, worktree, and AI agent per ticket — so you ship
+              while it builds.
+            </p>
+            <div className="flex gap-1">
+              <FooterIconLink href="https://github.com/planbooq" label="GitHub">
+                <GitHubGlyph />
+              </FooterIconLink>
+              <FooterIconLink href="#" label="X">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M18 2h3l-7 8 8 12h-6l-5-7-6 7H2l8-9L2 2h6l4 6 6-6z" />
+                </svg>
+              </FooterIconLink>
+            </div>
+          </div>
+          <FooterColumn
+            heading="Product"
+            links={[
+              { label: "Features", href: "#why" },
+              { label: "Pricing", href: "#" },
+              { label: "Changelog", href: "#" },
+              { label: "Roadmap", href: "#" },
+              { label: "Download", href: DOWNLOAD_HREF },
+            ]}
+          />
+          <FooterColumn
+            heading="Resources"
+            links={[
+              { label: "Docs", href: "#" },
+              { label: "Guides", href: "#" },
+              { label: "API", href: "/docs/api" },
+              { label: "Status", href: "#" },
+              { label: "Brand", href: "#" },
+            ]}
+          />
+          <FooterColumn
+            heading="Company"
+            links={[
+              { label: "About", href: "#" },
+              { label: "Blog", href: "#" },
+              { label: "Customers", href: "#why" },
+              { label: "Careers", href: "#" },
+              { label: "Contact", href: "#" },
+            ]}
+          />
+          <FooterColumn
+            heading="Legal"
+            links={[
+              { label: "Privacy", href: "#" },
+              { label: "Terms", href: "#" },
+              { label: "Security", href: "#" },
+              { label: "DPA", href: "#" },
+              { label: "Acceptable use", href: "#" },
+            ]}
+          />
         </div>
         <div
-          className="mt-2 flex items-center justify-between px-2 pt-1 pb-1 font-mono text-[10px] tracking-[0.18em] uppercase"
-          style={{ color: TEXT_FAINT }}
+          className="mt-14 flex flex-col items-start justify-between gap-4 pt-6 sm:flex-row sm:items-center"
+          style={{ borderTop: "1px solid var(--mk-hairline)" }}
         >
-          <span>Agent runs on its own branch</span>
-          <span>You move on</span>
+          <span className="text-[12.5px]" style={{ color: "var(--mk-faint)" }}>
+            © Planbooq 2026 · Made in Southern California
+          </span>
+          <MarketingThemeToggle />
         </div>
       </div>
+    </footer>
+  );
+}
+
+function FooterColumn({
+  heading,
+  links,
+}: {
+  heading: string;
+  links: { label: string; href: string }[];
+}): React.ReactElement {
+  return (
+    <div className="flex flex-col">
+      <h5
+        className="mb-4 font-mono text-[11px] font-semibold tracking-[0.14em] uppercase"
+        style={{ color: "var(--mk-faint)" }}
+      >
+        {heading}
+      </h5>
+      <ul className="flex flex-col gap-2.5">
+        {links.map((l) => (
+          <li key={l.label}>
+            <a
+              href={l.href}
+              className="text-[13.5px] transition hover:opacity-80"
+              style={{ color: "var(--mk-ink-2)" }}
+            >
+              {l.label}
+            </a>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
 
-function Footer(): React.ReactElement {
+function FooterIconLink({
+  href,
+  label,
+  children,
+}: {
+  href: string;
+  label: string;
+  children: React.ReactNode;
+}): React.ReactElement {
   return (
-    <footer className="mt-10 border-t" style={{ borderColor: HAIRLINE }}>
-      <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-6 py-10 sm:flex-row sm:items-center sm:px-8">
-        <div className="flex items-center gap-3">
-          <Wordmark />
-          <span
-            className="font-mono text-[11px] tracking-[0.16em] uppercase"
-            style={{ color: TEXT_FAINT }}
-          >
-            Made in Southern California
-          </span>
-        </div>
-        <div
-          className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px]"
-          style={{ color: TEXT_MUTED }}
-        >
-          <a href="https://github.com/planbooq">GitHub</a>
-          <a href="/welcome">App</a>
-          <a href="#how">How it works</a>
-          <a href="#why">Why</a>
-          <span style={{ color: TEXT_FAINT }}>© Planbooq 2026</span>
-        </div>
-      </div>
-    </footer>
+    <a
+      href={href}
+      aria-label={label}
+      className="inline-flex h-9 w-9 items-center justify-center rounded-lg transition"
+      style={{ color: "var(--mk-muted)" }}
+    >
+      {children}
+    </a>
   );
 }
