@@ -324,7 +324,10 @@ export function TicketDetailDialog({
         ].join("\n");
         window.dispatchEvent(
           new CustomEvent("planbooq:workflow-run", {
-            detail: { ticketId: ticket.id, prompts: [prompt] },
+            detail: {
+              ticketId: ticket.id,
+              steps: [{ stepRunId: null, name: "Fix merge conflicts", prompt }],
+            },
           }),
         );
         setFixState({ phase: "resolving", attempt });
