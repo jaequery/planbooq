@@ -82,9 +82,9 @@ export function UserMenu({ email, name, image, settingsContent }: Props): React.
         </DropdownMenuContent>
       </DropdownMenu>
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="flex h-[85vh] flex-col sm:max-w-5xl">
+        <DialogContent className="flex h-[85vh] flex-col gap-3 p-5 sm:max-w-5xl">
           <DialogHeader>
-            <DialogTitle>Settings</DialogTitle>
+            <DialogTitle className="text-base">Settings</DialogTitle>
             <DialogDescription className="sr-only">Workspace preferences</DialogDescription>
           </DialogHeader>
           {settingsContent}

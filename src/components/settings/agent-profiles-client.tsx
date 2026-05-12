@@ -131,45 +131,45 @@ export function AgentProfilesClient({ workspaceId, initialProfiles }: Props): Re
   };
 
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-base font-semibold">Agents</h2>
-          <p className="max-w-prose text-sm text-muted-foreground">
+        <div className="flex flex-col gap-0.5">
+          <h2 className="text-sm font-semibold">Agents</h2>
+          <p className="max-w-prose text-xs text-muted-foreground">
             AGENTS.md-style personas. Assign one or more to a ticket — each becomes a parallel
             worker when the ticket runs.
           </p>
         </div>
         <Button size="sm" onClick={onCreate} disabled={pending}>
-          <Plus className="size-4" />
+          <Plus className="size-3.5" />
           New agent
         </Button>
       </div>
 
       <div className="overflow-hidden rounded-md border">
         {profiles.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">
+          <div className="p-6 text-center text-xs text-muted-foreground">
             No agents yet. Create one to start assigning AGENTS.md personas to tickets.
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+          <table className="w-full text-[13px]">
+            <thead className="bg-muted/50 text-[10px] uppercase text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 text-left font-medium">Name</th>
-                <th className="px-3 py-2 text-left font-medium">Description</th>
-                <th className="px-3 py-2 text-left font-medium">Status</th>
-                <th className="px-3 py-2 text-left font-medium">Updated</th>
-                <th className="px-3 py-2" />
+                <th className="px-3 py-1.5 text-left font-medium">Name</th>
+                <th className="px-3 py-1.5 text-left font-medium">Description</th>
+                <th className="px-3 py-1.5 text-left font-medium">Status</th>
+                <th className="px-3 py-1.5 text-left font-medium">Updated</th>
+                <th className="px-3 py-1.5" />
               </tr>
             </thead>
             <tbody>
               {profiles.map((p) => (
                 <tr key={p.id} className="border-t">
-                  <td className="px-3 py-2 font-medium">{p.name}</td>
-                  <td className="max-w-[260px] truncate px-3 py-2 text-muted-foreground">
+                  <td className="px-3 py-1.5 font-medium">{p.name}</td>
+                  <td className="max-w-[260px] truncate px-3 py-1.5 text-muted-foreground">
                     {p.description ?? "—"}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-1.5">
                     {p.isActive ? (
                       <Badge variant="secondary">Active</Badge>
                     ) : (
@@ -178,8 +178,8 @@ export function AgentProfilesClient({ workspaceId, initialProfiles }: Props): Re
                       </Badge>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-muted-foreground">{fmt(p.updatedAt)}</td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-1.5 text-muted-foreground">{fmt(p.updatedAt)}</td>
+                  <td className="px-3 py-1.5 text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button

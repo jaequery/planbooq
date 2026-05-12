@@ -86,11 +86,11 @@ export function ApiKeysClient({
   };
 
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-base font-semibold">API keys</h2>
-          <p className="max-w-prose text-sm text-muted-foreground">
+        <div className="flex flex-col gap-0.5">
+          <h2 className="text-sm font-semibold">API keys</h2>
+          <p className="max-w-prose text-xs text-muted-foreground">
             Tokens for the {workspaceName} workspace. Used by the Planbooq Claude skill and other
             integrations — treat them like passwords.
           </p>
@@ -103,29 +103,29 @@ export function ApiKeysClient({
 
       <div className="overflow-hidden rounded-md border">
         {initialKeys.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">
+          <div className="p-6 text-center text-xs text-muted-foreground">
             No keys yet. Create one to connect the Planbooq Claude skill or any external
             integration.
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+          <table className="w-full text-[13px]">
+            <thead className="bg-muted/50 text-[10px] uppercase text-muted-foreground">
               <tr>
-                <th className="px-3 py-2 text-left font-medium">Name</th>
-                <th className="px-3 py-2 text-left font-medium">Prefix</th>
-                <th className="px-3 py-2 text-left font-medium">Created</th>
-                <th className="px-3 py-2 text-left font-medium">Last used</th>
-                <th className="px-3 py-2" />
+                <th className="px-3 py-1.5 text-left font-medium">Name</th>
+                <th className="px-3 py-1.5 text-left font-medium">Prefix</th>
+                <th className="px-3 py-1.5 text-left font-medium">Created</th>
+                <th className="px-3 py-1.5 text-left font-medium">Last used</th>
+                <th className="px-3 py-1.5" />
               </tr>
             </thead>
             <tbody>
               {initialKeys.map((k) => (
                 <tr key={k.id} className="border-t">
-                  <td className="px-3 py-2 font-medium">{k.name}</td>
-                  <td className="px-3 py-2 font-mono text-xs">{k.prefix}…</td>
-                  <td className="px-3 py-2 text-muted-foreground">{fmt(k.createdAt)}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{fmt(k.lastUsedAt)}</td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-1.5 font-medium">{k.name}</td>
+                  <td className="px-3 py-1.5 font-mono text-[11px]">{k.prefix}…</td>
+                  <td className="px-3 py-1.5 text-muted-foreground">{fmt(k.createdAt)}</td>
+                  <td className="px-3 py-1.5 text-muted-foreground">{fmt(k.lastUsedAt)}</td>
+                  <td className="px-3 py-1.5 text-right">
                     <Button
                       variant="ghost"
                       size="sm"

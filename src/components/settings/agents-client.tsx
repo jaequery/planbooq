@@ -94,44 +94,44 @@ export function AgentsClient({ workspaceId, initialAgents }: Props): React.React
   };
 
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-base font-semibold">Local agents</h2>
-          <p className="max-w-prose text-sm text-muted-foreground">
+        <div className="flex flex-col gap-0.5">
+          <h2 className="text-sm font-semibold">Local agents</h2>
+          <p className="max-w-prose text-xs text-muted-foreground">
             Pair a machine running the Planbooq agent and Claude Code. Tickets dispatched to it
             stream their output back here.
           </p>
         </div>
         <Button size="sm" onClick={startPair} disabled={pending}>
-          {pending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+          {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
           Pair new agent
         </Button>
       </div>
 
       <div className="flex flex-col gap-2 rounded-md border">
         {agents.length === 0 && (
-          <div className="p-8 text-center text-sm text-muted-foreground">
+          <div className="p-6 text-center text-xs text-muted-foreground">
             No machines paired yet. Pair one to dispatch tickets to your local Claude Code.
           </div>
         )}
         {agents.map((a) => (
           <div
             key={a.id}
-            className="flex items-center justify-between gap-4 border-b p-3 last:border-0"
+            className="flex items-center justify-between gap-4 border-b p-2.5 last:border-0"
           >
             <div className="flex flex-col">
-              <span className="text-sm font-medium">
+              <span className="text-[13px] font-medium">
                 {a.name}
-                {a.revokedAt && <span className="ml-2 text-xs text-destructive">revoked</span>}
+                {a.revokedAt && <span className="ml-2 text-[11px] text-destructive">revoked</span>}
               </span>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-[11px] text-muted-foreground">
                 {a.hostname ?? "?"} · {a.platform ?? "?"} · last seen {fmt(a.lastSeenAt)}
               </span>
             </div>
             {!a.revokedAt && (
               <Button size="sm" variant="ghost" onClick={() => onRevoke(a.id)}>
-                <Trash2 className="size-4" />
+                <Trash2 className="size-3.5" />
               </Button>
             )}
           </div>

@@ -94,14 +94,14 @@ export function ShortcutsClient({ initialShortcuts }: Props): React.ReactElement
   ];
 
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-base font-semibold">Shortcuts</h2>
-        <p className="text-sm text-muted-foreground">
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-col gap-0.5">
+        <h2 className="text-sm font-semibold">Shortcuts</h2>
+        <p className="text-xs text-muted-foreground">
           Keyboard shortcuts for jumping between projects. All chords use{" "}
-          <kbd className="rounded border px-1 text-xs">⌘</kbd> (or{" "}
-          <kbd className="rounded border px-1 text-xs">Ctrl</kbd> on Windows/Linux). Some defaults
-          override browser shortcuts (e.g. tab switching, history nav) while focused inside
+          <kbd className="rounded border px-1 text-[11px]">⌘</kbd> (or{" "}
+          <kbd className="rounded border px-1 text-[11px]">Ctrl</kbd> on Windows/Linux). Some
+          defaults override browser shortcuts (e.g. tab switching, history nav) while focused inside
           Planbooq.
         </p>
       </div>
@@ -117,9 +117,9 @@ export function ShortcutsClient({ initialShortcuts }: Props): React.ReactElement
           return (
             <div
               key={`${row.target.kind}-${row.target.kind === "jump" ? row.target.index : ""}`}
-              className="flex h-10 items-center justify-between px-3"
+              className="flex h-9 items-center justify-between px-3"
             >
-              <span className="text-sm">{row.label}</span>
+              <span className="text-[13px]">{row.label}</span>
               <button
                 type="button"
                 onClick={() => setCapturing(row.target)}
@@ -129,7 +129,7 @@ export function ShortcutsClient({ initialShortcuts }: Props): React.ReactElement
                 }}
                 disabled={pending}
                 className={cn(
-                  "inline-flex h-7 min-w-[64px] items-center justify-center rounded border px-2 text-xs",
+                  "inline-flex h-6 min-w-[60px] items-center justify-center rounded border px-2 text-[11px]",
                   "hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   isCapturing && "bg-muted text-muted-foreground",
                 )}
