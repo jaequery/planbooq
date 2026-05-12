@@ -65,7 +65,7 @@ member is not in the target workspace returns `403 forbidden`.
 ## Resources
 
 ```
-Workspace ── Project ── Ticket ── Variant (planned)
+Workspace ── Project ── Ticket
        └─── Status
        └─── Label
        └─── Member
@@ -238,8 +238,8 @@ DELETE /v1/tickets/{ticketId}
 { "id": "…", "workspaceId": "…", "projectId": "…", "statusId": "…" }
 ```
 
-Hard delete — the ticket and its variants (when implemented) are
-removed permanently. Prefer `archive` for soft-removal flows.
+Hard delete — the ticket is removed permanently. Prefer `archive`
+for soft-removal flows.
 
 ### Attachments
 
@@ -290,31 +290,6 @@ write surface; Ably is the read-stream for state changes.
 
 ---
 
-## Variants — planned (not in v0)
-
-Per `CLAUDE.md`, ticket variants are first-class. The schema does not
-yet model them; this section reserves the API shape so the eventual
-implementation lands without breaking changes to v1.
-
-Anticipated routes:
-
-```
-GET    /v1/tickets/{ticketId}/variants
-POST   /v1/tickets/{ticketId}/variants          # spawn N workers
-GET    /v1/variants/{variantId}
-PATCH  /v1/variants/{variantId}                 # status, notes
-POST   /v1/variants/{variantId}/pick            # mark as winner
-DELETE /v1/variants/{variantId}
-```
-
-Anticipated `Variant` fields: `id`, `ticketId`, `index`, `branch`,
-`worktreePath`, `previewUrl`, `screenshotUrls[]`, `diffStat`,
-`status` (`pending|running|ready|failed|picked|discarded`),
-`workerKind` (`claude-code|cursor|…`), `pickedAt`, `pickedById`,
-`createdAt`. Lock the schema in a follow-up phase before exposing.
-
----
-
 ## OpenAPI
 
 A machine-readable `openapi.yaml` derived from this document lives at
@@ -333,6 +308,3 @@ to build typed tools.
    Add `POST /v1/tickets/bulk-move` in v0 or defer?
 4. **Webhooks** — Ably covers in-app realtime, but external automations
    (Slack, Discord) typically want HTTP webhooks. v0 or v1.1?
-5. **Variant model** — lock the schema now (so v0 ships with variants)
-   or punt to v1.1? Locking now means a real design pass on
-   worker orchestration before any HTTP surface ships.

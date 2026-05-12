@@ -11,7 +11,7 @@ const serif = Instrument_Serif({
 export const metadata = {
   title: "Planbooq — ship while it builds",
   description:
-    "The cockpit for vibe coders running ten tickets at once. Drop tickets, fan them out across parallel AI workers, ship without waiting on a single agent.",
+    "A kanban for vibe coders. Drop tickets, let AI agents run them in isolated worktrees, and ship — without babysitting one terminal at a time.",
 };
 
 const APP_HREF = "/welcome";
@@ -159,7 +159,7 @@ function Eyebrow({ children }: { children: React.ReactNode }): React.ReactElemen
 function Hero(): React.ReactElement {
   return (
     <section className="flex flex-col items-center pt-20 pb-10 text-center sm:pt-28 sm:pb-14">
-      <Eyebrow>Parallel AI · Vibe coding kanban</Eyebrow>
+      <Eyebrow>Kanban for vibe coders</Eyebrow>
       <h1
         className="font-[var(--font-landing-serif)] mt-6 max-w-4xl text-balance text-5xl leading-[1.02] tracking-tight sm:text-7xl"
         style={{ color: TEXT }}
@@ -174,8 +174,8 @@ function Hero(): React.ReactElement {
         className="mt-7 max-w-xl text-balance text-base leading-relaxed sm:text-[17px]"
         style={{ color: TEXT_MUTED }}
       >
-        The cockpit for vibe coders running ten tickets at once. Drop tickets, fan them out across
-        parallel AI workers, never wait on a single agent.
+        Drop a ticket. An AI agent runs it on its own branch and worktree. Queue the next one
+        instead of waiting on the last.
       </p>
       <div className="mt-9 flex flex-col items-center gap-4">
         <div className="flex flex-wrap items-center justify-center gap-3">
@@ -271,20 +271,36 @@ function ProductPreview(): React.ReactElement {
           >
             planbooq · acme · main board
           </span>
+          <span
+            className="ml-auto inline-flex items-center gap-2 font-mono text-[10.5px] tracking-[0.16em] uppercase"
+            style={{ color: ACCENT }}
+          >
+            <span
+              aria-hidden="true"
+              className="ticket-pulse inline-block h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: ACCENT }}
+            />
+            4 agents running
+          </span>
         </div>
-        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4 sm:gap-4 sm:p-6">
-          <KanbanColumn name="Backlog" count={4}>
+        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-5 sm:gap-4 sm:p-6">
+          <KanbanColumn name="Backlog" count={12}>
             <TicketCard title="Tighten onboarding copy" />
-            <TicketCard title="API key rotation flow" />
+            <TicketCard title="API key rotation" />
           </KanbanColumn>
-          <KanbanColumn name="Building" count={3} active>
-            <TicketCard title="Redesign landing page" running variants={4} />
-            <TicketCard title="Worktree GC job" running variants={2} />
+          <KanbanColumn name="Todo" count={5}>
+            <TicketCard title="Worktree GC job" />
+            <TicketCard title="Cmd-K palette polish" />
+          </KanbanColumn>
+          <KanbanColumn name="Building" count={4} active>
+            <TicketCard title="Redesign landing page" running />
+            <TicketCard title="Auth provider swap" running />
+            <TicketCard title="Hero copy refresh" running />
           </KanbanColumn>
           <KanbanColumn name="Review" count={2}>
-            <TicketCard title="Cmd-K palette polish" pr="#168" />
+            <TicketCard title="Webhook retry policy" pr="+124 −38" />
           </KanbanColumn>
-          <KanbanColumn name="Done" count={12} dim>
+          <KanbanColumn name="Done" count={28} dim>
             <TicketCard title="Workspace switcher" done />
             <TicketCard title="Ably token refresh" done />
           </KanbanColumn>
@@ -335,13 +351,11 @@ function KanbanColumn({
 function TicketCard({
   title,
   running,
-  variants,
   pr,
   done,
 }: {
   title: string;
   running?: boolean;
-  variants?: number;
   pr?: string;
   done?: boolean;
 }): React.ReactElement {
@@ -356,50 +370,41 @@ function TicketCard({
       <div className="text-[12.5px] leading-tight" style={{ color: done ? TEXT_MUTED : TEXT }}>
         {title}
       </div>
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center justify-between gap-1.5">
         {running ? (
+          <span
+            className="inline-flex items-center gap-1 font-mono text-[9.5px] tracking-wider uppercase"
+            style={{ color: ACCENT }}
+          >
+            <span
+              aria-hidden="true"
+              className="ticket-pulse inline-block h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: ACCENT }}
+            />
+            running
+          </span>
+        ) : pr ? (
           <>
             <span
-              className="inline-flex items-center gap-1 rounded font-mono text-[9.5px] tracking-wider uppercase"
-              style={{ color: ACCENT }}
+              className="font-mono text-[9.5px] tracking-wider uppercase"
+              style={{ color: "#C8A55B" }}
             >
-              <span
-                aria-hidden="true"
-                className="ticket-pulse inline-block h-1.5 w-1.5 rounded-full"
-                style={{ backgroundColor: ACCENT }}
-              />
-              live
+              PR open
             </span>
-            {variants ? (
-              <span className="ml-auto flex items-center gap-0.5">
-                {Array.from({ length: variants }).map((_, i) => (
-                  <span
-                    key={i}
-                    aria-hidden="true"
-                    className="inline-block h-1 rounded-full"
-                    style={{
-                      width: 12,
-                      backgroundColor: i < variants - 1 ? ACCENT : "rgba(123,211,137,0.35)",
-                    }}
-                  />
-                ))}
-              </span>
-            ) : null}
+            <span className="font-mono text-[9.5px] tabular-nums" style={{ color: TEXT_FAINT }}>
+              {pr}
+            </span>
           </>
-        ) : pr ? (
-          <span className="font-mono text-[10px] tracking-wider" style={{ color: TEXT_FAINT }}>
-            PR {pr}
-          </span>
         ) : done ? (
           <span
-            className="font-mono text-[10px] tracking-wider uppercase"
+            className="font-mono text-[9.5px] tracking-wider uppercase"
             style={{ color: TEXT_FAINT }}
           >
             shipped
           </span>
         ) : (
           <span
-            className="font-mono text-[10px] tracking-wider uppercase"
+            className="font-mono text-[9.5px] tracking-wider uppercase"
             style={{ color: TEXT_FAINT }}
           >
             queued
@@ -419,33 +424,33 @@ function Pillars(): React.ReactElement {
           className="font-[var(--font-landing-serif)] mt-5 max-w-2xl text-balance text-4xl leading-tight tracking-tight sm:text-5xl"
           style={{ color: TEXT }}
         >
-          The bottleneck moved.{" "}
+          Built for{" "}
           <em className="italic" style={{ color: ACCENT }}>
-            Writing isn't slow.
-          </em>{" "}
-          Deciding is.
+            throughput
+          </em>
+          .
         </h2>
         <p className="mt-5 max-w-xl text-[15px] leading-relaxed" style={{ color: TEXT_MUTED }}>
-          Sequential prompt-and-iterate is broken once AI writes faster than you read. Planbooq fans
-          out every ticket to N workers in parallel and lets you pick the winner — instead of
-          re-prompting the same draft toward "fine."
+          One terminal, one ticket at a time is the bottleneck. Planbooq gives every ticket its own
+          branch, worktree, and agent session, so you keep many tickets moving instead of
+          babysitting one.
         </p>
       </div>
       <div className="mt-12 grid gap-4 sm:grid-cols-3">
         <Tile
           num="01"
           title="Run ten in parallel."
-          body="Each ticket spawns N AI workers in isolated worktrees. Your wall-clock collapses to the slowest worker, not the longest queue."
+          body="Drop a backlog and every ticket starts at once — each on its own branch in its own worktree. Wall-clock collapses to whatever the slowest agent takes."
         />
         <Tile
           num="02"
-          title="Pick, don't prompt."
-          body="Every variant lands as a live preview URL plus screenshots. Hot-or-not the winner in seconds. Remix on the roadmap."
+          title="Isolated by default."
+          body="Branch, worktree, and agent session per ticket. Agents never step on each other, and main stays clean while they run."
         />
         <Tile
           num="03"
-          title="One surface for the loop."
-          body="Cursor's AI, Linear's discipline, Notion's calm. Keyboard-first desktop cockpit. Your repo, your keys, your taste."
+          title="Glance and ship."
+          body="When a ticket lands in review, the PR, diff, and CI status are right there. Look once, ship, move on."
         />
       </div>
     </section>
@@ -488,7 +493,7 @@ function Tile({
 
 function HowItWorks(): React.ReactElement {
   return (
-    <section id="how" className="mt-32 sm:mt-40">
+    <section id="how" className="mt-32 scroll-mt-20 sm:mt-40">
       <div className="flex flex-col items-start">
         <Eyebrow>How it works</Eyebrow>
         <h2
@@ -508,26 +513,26 @@ function HowItWorks(): React.ReactElement {
         <Step
           n={1}
           title="Drop a ticket"
-          body="Describe what you want and move on. Cmd-K palette keeps your hands on the keyboard."
+          body="Describe what you want and move on. ⌘K palette keeps your hands on the keyboard."
           glyph={<StepDrop />}
         />
         <Step
           n={2}
-          title="Fan out"
-          body="N workers spin up in parallel — each in its own branch and worktree. You queue the next ticket."
-          glyph={<StepFanOut />}
+          title="Agent runs"
+          body="The ticket spins up its own branch and worktree, and an agent runs it end-to-end. You queue the next one."
+          glyph={<StepAgent />}
         />
         <Step
           n={3}
-          title="Glance & decide"
-          body="Live preview URLs and auto-screenshots. Seconds of attention per ticket, not minutes of re-prompts."
-          glyph={<StepCompare />}
+          title="Glance"
+          body="Diff, PR, and CI status flow back to the card. Look once and decide — no re-prompt loop."
+          glyph={<StepGlance />}
         />
         <Step
           n={4}
           title="Ship"
           body="One click opens the PR and clears the lane. Merge auto-completes the ticket back to the board."
-          glyph={<StepPick />}
+          glyph={<StepShip />}
         />
       </ol>
     </section>
@@ -598,7 +603,7 @@ function StepDrop(): React.ReactElement {
   );
 }
 
-function StepFanOut(): React.ReactElement {
+function StepAgent(): React.ReactElement {
   return (
     <svg
       width="20"
@@ -611,18 +616,15 @@ function StepFanOut(): React.ReactElement {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <circle cx="6" cy="13" r="2.5" />
-      <circle cx="20" cy="6" r="2.5" />
-      <circle cx="20" cy="13" r="2.5" />
-      <circle cx="20" cy="20" r="2.5" />
-      <path d="M8.5 13 17.5 6" />
-      <path d="M8.5 13h9" />
-      <path d="M8.5 13 17.5 20" />
+      <path d="M4 8h6l3-4h9" />
+      <path d="M4 13h12" />
+      <path d="M4 18h6l3 4h9" />
+      <circle cx="20" cy="13" r="2" />
     </svg>
   );
 }
 
-function StepCompare(): React.ReactElement {
+function StepGlance(): React.ReactElement {
   return (
     <svg
       width="20"
@@ -635,14 +637,15 @@ function StepCompare(): React.ReactElement {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <rect x="3" y="5" width="9" height="16" rx="2" />
-      <rect x="14" y="5" width="9" height="16" rx="2" />
-      <path d="M13 3v20" strokeDasharray="2 2" />
+      <rect x="3" y="5" width="20" height="16" rx="2" />
+      <path d="M3 10h20" />
+      <path d="M8 15h6" />
+      <path d="M8 18h10" />
     </svg>
   );
 }
 
-function StepPick(): React.ReactElement {
+function StepShip(): React.ReactElement {
   return (
     <svg
       width="20"
@@ -732,8 +735,8 @@ function BottomCTA(): React.ReactElement {
           className="mx-auto mt-6 max-w-xl text-balance text-[15px] leading-relaxed"
           style={{ color: TEXT_MUTED }}
         >
-          Real-time multiplayer kanban, full keyboard nav, GitHub-wired tickets, BYOK so unit
-          economics stay yours. One surface, ten things in flight, none of them blocking you.
+          Real-time multiplayer kanban. Full keyboard nav. GitHub-wired tickets. BYOK so unit
+          economics stay yours.
         </p>
 
         <PromptBar />
@@ -798,7 +801,7 @@ function PromptBar(): React.ReactElement {
             <path d="m20 20-3.5-3.5" />
           </svg>
           <span className="flex-1 text-left text-[14px]" style={{ color: TEXT_FAINT }}>
-            Add a ticket — "Hero section, friendlier, swap CTA copy…"
+            Add a ticket — "Refresh the hero copy and swap the CTA…"
           </span>
           <span
             className="rounded-md border px-1.5 py-0.5 font-mono text-[10.5px]"
@@ -811,7 +814,7 @@ function PromptBar(): React.ReactElement {
           className="mt-2 flex items-center justify-between px-2 pt-1 pb-1 font-mono text-[10px] tracking-[0.18em] uppercase"
           style={{ color: TEXT_FAINT }}
         >
-          <span>Runs in parallel</span>
+          <span>Agent runs on its own branch</span>
           <span>You move on</span>
         </div>
       </div>

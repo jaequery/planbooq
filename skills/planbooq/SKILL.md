@@ -200,9 +200,6 @@ suggest the fix — don't retry blindly.
 
 ## What this skill does NOT do
 
-- **Variants** — not yet implemented in the API. If the user asks to
-  spawn or pick variants, tell them the endpoint is reserved
-  (`/tickets/{id}/variants`, `/variants/{id}/pick`) but not live yet.
 - **Realtime** — for live updates, the user should subscribe to the
   Ably channel `workspace:{workspaceId}` directly via
   `/api/ably/token`. This skill is the write surface, not the
