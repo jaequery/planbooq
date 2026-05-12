@@ -765,7 +765,7 @@ export function TicketDetailDialog({
               </div>
             </div>
 
-            <div className="mt-6 border-t border-border/60 px-8 py-6">
+            <div className="mt-6 border-t border-border/60 bg-muted/30 px-8 py-6">
               <TicketAgentPanel
                 key={ticket.id}
                 ticketId={ticket.id}
