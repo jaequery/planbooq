@@ -141,8 +141,6 @@ function Hero(): React.ReactElement {
           </a>
         </div>
       </div>
-
-      <HeroScene />
     </section>
   );
 }
@@ -165,101 +163,6 @@ function DownloadGlyph(): React.ReactElement {
       <path d="m6 11 6 6 6-6" />
       <path d="M4 21h16" />
     </svg>
-  );
-}
-
-function HeroScene(): React.ReactElement {
-  return (
-    <div className="relative mt-14 w-full overflow-hidden rounded-[28px] border border-[#1F2A1E]/10 shadow-[0_1px_0_rgba(0,0,0,0.04),0_24px_60px_-20px_rgba(31,42,30,0.25)]">
-      <svg
-        viewBox="0 0 1200 540"
-        preserveAspectRatio="xMidYMid slice"
-        className="block h-[280px] w-full sm:h-[460px]"
-        aria-hidden="true"
-      >
-        <defs>
-          <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#C9D7E8" />
-            <stop offset="55%" stopColor="#E5DDC2" />
-            <stop offset="100%" stopColor="#EFE5C8" />
-          </linearGradient>
-          <linearGradient id="far-hills" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#8FA593" />
-            <stop offset="100%" stopColor="#A6B9A6" />
-          </linearGradient>
-          <linearGradient id="mid-hills" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#5F7A4F" />
-            <stop offset="100%" stopColor="#6E8A5C" />
-          </linearGradient>
-          <linearGradient id="near-field" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#4F6A3B" />
-            <stop offset="100%" stopColor="#3A5A30" />
-          </linearGradient>
-          <radialGradient id="sun" cx="0.78" cy="0.22" r="0.18">
-            <stop offset="0%" stopColor="#FFF6DE" />
-            <stop offset="100%" stopColor="#FFF6DE" stopOpacity="0" />
-          </radialGradient>
-        </defs>
-
-        <rect width="1200" height="540" fill="url(#sky)" />
-        <rect width="1200" height="540" fill="url(#sun)" />
-
-        {/* clouds */}
-        <g fill="#FBF6E3" opacity="0.85">
-          <ellipse cx="180" cy="120" rx="110" ry="14" />
-          <ellipse cx="240" cy="138" rx="80" ry="10" />
-          <ellipse cx="780" cy="90" rx="140" ry="12" />
-          <ellipse cx="980" cy="160" rx="90" ry="9" />
-        </g>
-
-        {/* far hills */}
-        <path
-          d="M0,360 C160,300 280,330 440,310 C600,290 760,340 940,320 C1080,304 1140,316 1200,310 L1200,540 L0,540 Z"
-          fill="url(#far-hills)"
-        />
-
-        {/* mid hills */}
-        <path
-          d="M0,410 C140,360 320,400 520,380 C720,360 880,420 1080,400 C1140,394 1180,402 1200,400 L1200,540 L0,540 Z"
-          fill="url(#mid-hills)"
-        />
-
-        {/* tree silhouettes */}
-        <g fill="#2F4A2C" opacity="0.9">
-          <circle cx="120" cy="385" r="22" />
-          <circle cx="148" cy="380" r="18" />
-          <circle cx="172" cy="388" r="20" />
-          <rect x="138" y="395" width="6" height="22" rx="2" />
-
-          <circle cx="940" cy="378" r="20" />
-          <circle cx="966" cy="384" r="16" />
-          <rect x="946" y="390" width="5" height="20" rx="2" />
-        </g>
-
-        {/* near field */}
-        <path
-          d="M0,440 C200,420 420,470 640,450 C860,432 1020,478 1200,460 L1200,540 L0,540 Z"
-          fill="url(#near-field)"
-        />
-
-        {/* grass strokes */}
-        <g stroke="#2F4A2C" strokeWidth="1.2" strokeLinecap="round" opacity="0.55">
-          {Array.from({ length: 90 }).map((_, i) => {
-            const x = (i * 1200) / 90 + (i % 3) * 4;
-            const y = 470 + (i % 5) * 4;
-            return <line key={i} x1={x} y1={y} x2={x + 2} y2={y - 8} />;
-          })}
-        </g>
-
-        {/* lone figure */}
-        <g transform="translate(560,360)">
-          <ellipse cx="0" cy="60" rx="22" ry="4" fill="#1F2A1E" opacity="0.25" />
-          <path d="M-8,-30 Q-12,0 -10,55 L10,55 Q12,0 8,-30 Z" fill="#E8DFC4" />
-          <circle cx="0" cy="-38" r="10" fill="#E8C9A8" />
-          <path d="M-10,-44 Q0,-58 10,-44 L10,-38 L-10,-38 Z" fill="#3A5A40" />
-        </g>
-      </svg>
-    </div>
   );
 }
 
