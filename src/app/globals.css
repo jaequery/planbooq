@@ -203,6 +203,44 @@
     0 24px 64px rgba(16, 185, 129, 0.15);
 }
 
+/* Marketing landing page palette — scoped to the .marketing wrapper so the
+   app-wide design tokens (sidebar, board, dialogs) stay untouched. Light is
+   the default; .dark on the html element flips the values via next-themes. */
+.marketing {
+  --mk-bg: #ffffff;
+  --mk-surface: #fafafa;
+  --mk-surface-2: #f4f4f5;
+  --mk-ink: #0a0a0a;
+  --mk-ink-2: #18181b;
+  --mk-muted: #52525b;
+  --mk-faint: #71717a;
+  --mk-hairline: rgba(10, 10, 10, 0.08);
+  --mk-hairline-strong: rgba(10, 10, 10, 0.14);
+  --mk-accent: #16a34a;
+  --mk-accent-on: #ffffff;
+  --mk-accent-soft: rgba(22, 163, 74, 0.08);
+  --mk-warn: #b45309;
+  --mk-cta-bg: #0a0a0a;
+  --mk-cta-ink: #ffffff;
+}
+.dark .marketing {
+  --mk-bg: #0a0a0a;
+  --mk-surface: #111113;
+  --mk-surface-2: #18181b;
+  --mk-ink: #fafafa;
+  --mk-ink-2: #e4e4e7;
+  --mk-muted: #a1a1aa;
+  --mk-faint: #71717a;
+  --mk-hairline: rgba(255, 255, 255, 0.08);
+  --mk-hairline-strong: rgba(255, 255, 255, 0.14);
+  --mk-accent: #4ade80;
+  --mk-accent-on: #0a0a0a;
+  --mk-accent-soft: rgba(74, 222, 128, 0.08);
+  --mk-warn: #fbbf24;
+  --mk-cta-bg: #111113;
+  --mk-cta-ink: #fafafa;
+}
+
 @keyframes ticket-pulse {
   0% {
     box-shadow: 0 0 0 0 rgba(123, 211, 137, 0.55);
