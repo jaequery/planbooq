@@ -499,6 +499,7 @@ function DesktopPanel({
     statusKeyRef.current = statusKey;
   }, [statusKey]);
   const messagesRef = useRef<ChatMsg[]>([]);
+  const messageSequencesRef = useRef<Map<string, number>>(new Map());
   const setBlockedIfAwaiting = () => {
     if (statusKeyRef.current !== "building") return;
     // Concatenate every assistant message since the last user message.
@@ -721,6 +722,7 @@ function DesktopPanel({
     setBusy(false);
     currentAssistantId.current = null;
     messagesRef.current = [];
+    messageSequencesRef.current = new Map();
     didInitialScrollRef.current = false;
     atBottomRef.current = true;
 
@@ -868,11 +870,39 @@ function DesktopPanel({
       } else if (event.name === "message.updated" && event.ticketId === ticketId) {
         const prev = messagesRef.current;
         const idx = prev.findIndex((m) => m.id === event.messageId);
-        if (idx === -1) return;
-        if (event.body === undefined) return;
-        const merged = prev.slice();
-        const cur = merged[idx]!;
-        merged[idx] = { ...cur, text: event.body } as ChatMsg;
+        if (event.body !== undefined) {
+          if (event.latestSequence !== undefined) {
+            messageSequencesRef.current.set(event.messageId, event.latestSequence);
+          }
+          if (idx === -1) return;
+          const merged = prev.slice();
+          const cur = merged[idx];
+          if (!cur) return;
+          merged[idx] = { ...cur, text: event.body } as ChatMsg;
+          messagesRef.current = merged;
+          setMessages(merged);
+          return;
+        }
+        if (!event.chunks?.length) return;
+        const lastSeen = messageSequencesRef.current.get(event.messageId) ?? -1;
+        const chunks = event.chunks
+          .filter((chunk) => chunk.sequence > lastSeen)
+          .sort((a, b) => a.sequence - b.sequence);
+        if (chunks.length === 0) return;
+        const text = chunks.map((chunk) => chunk.delta).join("");
+        messageSequencesRef.current.set(
+          event.messageId,
+          Math.max(event.latestSequence ?? lastSeen, ...chunks.map((chunk) => chunk.sequence)),
+        );
+        const merged = idx === -1 ? [...prev] : prev.slice();
+        if (idx === -1) {
+          merged.push({ id: event.messageId, role: "assistant", text, createdAt: Date.now() });
+          merged.sort((a, b) => a.createdAt - b.createdAt);
+        } else {
+          const cur = merged[idx];
+          if (!cur) return;
+          merged[idx] = { ...cur, text: `${cur.text}${text}` } as ChatMsg;
+        }
         messagesRef.current = merged;
         setMessages(merged);
       }

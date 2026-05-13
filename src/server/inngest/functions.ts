@@ -4,6 +4,7 @@ import { prisma } from "@/server/db";
 import { inferTicketPriority, runOpenRouterForTicket } from "@/server/openrouter";
 import { mirrorJobTerminal } from "@/server/services/mirror-agent-job";
 import { reconcileBuildingTicket } from "@/server/services/ticket-status";
+import { workflowCommander } from "@/server/services/workflow-commander";
 
 import { inngest } from "./client";
 
@@ -80,7 +81,7 @@ export const ticketCreated = inngest.createFunction(
         workspaceId: ticket.workspaceId,
         projectId: ticket.projectId,
         ticket: updated,
-        by: ticket.id,
+        by: "inngest:auto-priority",
       });
 
       logger.info("autoPriority.assigned", {
@@ -596,46 +597,15 @@ export const workflowStepCompleted = inngest.createFunction(
     if (finished.status !== "SUCCEEDED") return { ok: false, reason: "step_not_succeeded" };
     if (finished.run.status !== "RUNNING") return { ok: false, reason: "run_not_running" };
 
-    const siblings = finished.run.stepRuns;
-    const anyFailed = siblings.some((s) => s.status === "FAILED" || s.status === "CANCELED");
-    if (anyFailed) {
-      // A prior step failed — don't auto-dispatch downstream. Surface the
-      // failure via the existing FAILED row + STEP_COMPLETED activity and
-      // let the user decide.
-      return { ok: true, reason: "halted-by-prior-failure" };
-    }
-
-    const next = siblings.find((s) => s.status === "PENDING");
-
-    if (!next) {
-      const allDone = siblings.every((s) => s.status === "SUCCEEDED");
-      if (allDone) {
-        await step.run("close-workflow-run", async () => {
-          await prisma.workflowRun.updateMany({
-            where: { id: finished.runId, status: "RUNNING" },
-            data: { status: "SUCCEEDED", finishedAt: new Date() },
-          });
-        });
-        return { ok: true, reason: "workflow-completed" };
-      }
-      return { ok: true, reason: "no-pending-step" };
-    }
-
-    await step.run("publish-dispatch", () =>
-      publishWorkspaceEvent(finished.run.workspaceId, {
-        name: "ticket.workflow.dispatch",
-        workspaceId: finished.run.workspaceId,
-        ticketId: finished.run.ticketId,
-        runId: finished.run.id,
-        stepRunId: next.id,
-        stepName: next.name,
-        position: next.position,
-        total: siblings.length,
-        prompt: next.prompt,
-      }),
+    const dispatched = await step.run("dispatch-next-step", () =>
+      workflowCommander.dispatchNextStep({ runId: finished.runId, byUserId: null }),
     );
 
-    return { ok: true, reason: "dispatched", nextStepRunId: next.id };
+    return {
+      ok: true,
+      reason: dispatched.dispatched ? "dispatched" : (dispatched.reason ?? "not-dispatched"),
+      nextStepRunId: dispatched.stepRunId,
+    };
   },
 );
 

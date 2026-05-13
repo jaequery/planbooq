@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Message, MessageMentionTargetType, MessageRole } from "@prisma/client";
 import { z } from "zod";
+import { decodeKeysetCursor, encodeKeysetCursor } from "@/lib/keyset-cursor";
 import { logger } from "@/lib/logger";
 import type { MessageEventPayload, ServerActionResult } from "@/lib/types";
 import { publishWorkspaceEvent } from "@/server/ably";
@@ -154,10 +155,8 @@ export async function createMessageSvc(
         idempotencyKey,
         conversationId: conversation.id,
         workspaceId: ticket.workspaceId,
-        authorUserId:
-          ctx.trust === "user_session" ? ctx.actorUserId : null,
-        authorAgentId:
-          ctx.trust === "internal_agent" ? input.authorAgentId ?? null : null,
+        authorUserId: ctx.trust === "user_session" ? ctx.actorUserId : null,
+        authorAgentId: ctx.trust === "internal_agent" ? (input.authorAgentId ?? null) : null,
         role: input.role as MessageRole,
         body: input.body,
         status: input.role === "AGENT" ? "PENDING" : "COMPLETE",
@@ -190,11 +189,7 @@ export async function createMessageSvc(
     // dispatchAgentMentions. Fire-and-forget; failures surface as SYSTEM
     // messages via the dispatcher. SYSTEM messages and AGENT replies don't
     // re-trigger dispatch (would loop).
-    if (
-      ctx.trust === "user_session" &&
-      message.role === "USER" &&
-      message.mentions.length > 0
-    ) {
+    if (ctx.trust === "user_session" && message.role === "USER" && message.mentions.length > 0) {
       void dispatchAgentMentions({
         message: { id: message.id, body: message.body, workspaceId: message.workspaceId },
         actorUserId: ctx.actorUserId!,
@@ -224,9 +219,7 @@ export async function listMessagesSvc(
   userId: string,
   conversationId: string,
   opts: { cursor?: string | null; limit?: number } = {},
-): Promise<
-  ServerActionResult<{ items: MessageWithAuthors[]; nextCursor: string | null }>
-> {
+): Promise<ServerActionResult<{ items: MessageWithAuthors[]; nextCursor: string | null }>> {
   const conversation = await prisma.conversation.findUnique({
     where: { id: conversationId },
     select: { id: true, workspaceId: true },
@@ -238,15 +231,37 @@ export async function listMessagesSvc(
     return { ok: false, error: "forbidden" };
   }
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+  let decodedCursor = decodeKeysetCursor(opts.cursor);
+  if (!decodedCursor && opts.cursor) {
+    const cursorMessage = await prisma.message.findUnique({
+      where: { id: opts.cursor },
+      select: { id: true, createdAt: true },
+    });
+    decodedCursor = cursorMessage
+      ? { id: cursorMessage.id, createdAt: cursorMessage.createdAt }
+      : null;
+  }
   const items = await prisma.message.findMany({
-    where: { conversationId },
+    where: {
+      conversationId,
+      ...(decodedCursor
+        ? {
+            OR: [
+              { createdAt: { gt: decodedCursor.createdAt } },
+              { createdAt: decodedCursor.createdAt, id: { gt: decodedCursor.id } },
+            ],
+          }
+        : {}),
+    },
     include: MESSAGE_INCLUDE,
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: limit + 1,
-    ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
   });
-  const nextCursor = items.length > limit ? (items[limit - 1]?.id ?? null) : null;
-  return { ok: true, data: { items: items.slice(0, limit), nextCursor } };
+  const page = items.slice(0, limit);
+  const last = page[page.length - 1];
+  const nextCursor =
+    items.length > limit && last ? encodeKeysetCursor(last.createdAt, last.id) : null;
+  return { ok: true, data: { items: page, nextCursor } };
 }
 
 // Per-message debounced broadcaster. Token-rate `message.updated` events
@@ -310,8 +325,7 @@ export async function appendMessageChunkSvc(args: {
     },
   });
   if (!message) return { ok: false, error: "message_not_found" };
-  if (message.authorAgentId !== args.agentId)
-    return { ok: false, error: "agent_mismatch" };
+  if (message.authorAgentId !== args.agentId) return { ok: false, error: "agent_mismatch" };
   if (message.status === "COMPLETE" || message.status === "ERROR")
     return { ok: false, error: "message_already_finalized" };
 
@@ -371,8 +385,7 @@ export async function finalizeMessageSvc(args: {
     },
   });
   if (!message) return { ok: false, error: "message_not_found" };
-  if (message.authorAgentId !== args.agentId)
-    return { ok: false, error: "agent_mismatch" };
+  if (message.authorAgentId !== args.agentId) return { ok: false, error: "agent_mismatch" };
   if (message.status === "COMPLETE" || message.status === "ERROR")
     return { ok: true, data: { messageId: args.messageId } };
 
@@ -416,7 +429,13 @@ export async function finalizeMessageSvc(args: {
 }
 
 export type TimelineRow =
-  | { kind: "message"; id: string; createdAt: Date; messageId: string }
+  | {
+      kind: "message";
+      id: string;
+      createdAt: Date;
+      messageId: string;
+      message: MessageEventPayload;
+    }
   | { kind: "activity"; id: string; createdAt: Date; activityId: string };
 
 // Unified timeline: Messages + TicketActivities for a conversation, ordered by
@@ -444,17 +463,36 @@ export async function getTimelineSvc(
   if (!ticketId) {
     // Standalone conversations (no ticket) have no activity stream — fall
     // back to a plain message list.
+    const decodedStandaloneCursor = decodeKeysetCursor(opts.cursor);
     const items = await prisma.message.findMany({
-      where: { conversationId },
-      orderBy: { createdAt: "asc" },
+      where: {
+        conversationId,
+        ...(decodedStandaloneCursor
+          ? {
+              OR: [
+                { createdAt: { gt: decodedStandaloneCursor.createdAt } },
+                {
+                  createdAt: decodedStandaloneCursor.createdAt,
+                  id: { gt: decodedStandaloneCursor.id },
+                },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       take: limit + 1,
-      select: { id: true, createdAt: true },
-      ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
+      include: MESSAGE_INCLUDE,
     });
-    const rows: TimelineRow[] = items
-      .slice(0, limit)
-      .map((m) => ({ kind: "message", id: `m:${m.id}`, createdAt: m.createdAt, messageId: m.id }));
-    const nextCursor = items.length > limit ? (items[limit - 1]?.id ?? null) : null;
+    const rows: TimelineRow[] = items.slice(0, limit).map((m) => ({
+      kind: "message",
+      id: `m:${m.id}`,
+      createdAt: m.createdAt,
+      messageId: m.id,
+      message: toEventPayload(m),
+    }));
+    const last = items.slice(0, limit).at(-1);
+    const nextCursor =
+      items.length > limit && last ? encodeKeysetCursor(last.createdAt, last.id) : null;
     return { ok: true, data: { items: rows, nextCursor } };
   }
 
@@ -462,12 +500,10 @@ export async function getTimelineSvc(
   // timestamps don't drop rows. After-cursor only (forward pagination).
   let afterCreatedAt: Date | null = null;
   let afterId: string | null = null;
-  if (opts.cursor) {
-    const [iso, id] = opts.cursor.split("|");
-    if (iso && id) {
-      afterCreatedAt = new Date(iso);
-      afterId = id;
-    }
+  const decodedCursor = decodeKeysetCursor(opts.cursor);
+  if (decodedCursor) {
+    afterCreatedAt = decodedCursor.createdAt;
+    afterId = decodedCursor.id;
   }
 
   const rows = await prisma.$queryRaw<
@@ -486,15 +522,35 @@ export async function getTimelineSvc(
     LIMIT ${limit + 1}
   `;
 
-  const items: TimelineRow[] = rows.slice(0, limit).map((r) =>
-    r.kind === "message"
-      ? { kind: "message", id: `m:${r.row_id}`, createdAt: r.created_at, messageId: r.row_id }
-      : { kind: "activity", id: `a:${r.row_id}`, createdAt: r.created_at, activityId: r.row_id },
-  );
-  const nextCursor =
-    rows.length > limit
-      ? `${rows[limit - 1]!.created_at.toISOString()}|${rows[limit - 1]!.row_id}`
-      : null;
+  const pageRows = rows.slice(0, limit);
+  const messages = await prisma.message.findMany({
+    where: { id: { in: pageRows.filter((r) => r.kind === "message").map((r) => r.row_id) } },
+    include: MESSAGE_INCLUDE,
+  });
+  const messageMap = new Map(messages.map((message) => [message.id, toEventPayload(message)]));
+  const items: TimelineRow[] = [];
+  for (const r of pageRows) {
+    if (r.kind === "activity") {
+      items.push({
+        kind: "activity",
+        id: `a:${r.row_id}`,
+        createdAt: r.created_at,
+        activityId: r.row_id,
+      });
+      continue;
+    }
+    const message = messageMap.get(r.row_id);
+    if (!message) continue;
+    items.push({
+      kind: "message",
+      id: `m:${r.row_id}`,
+      createdAt: r.created_at,
+      messageId: r.row_id,
+      message,
+    });
+  }
+  const lastRow = rows.length > limit ? rows[limit - 1] : null;
+  const nextCursor = lastRow ? encodeKeysetCursor(lastRow.created_at, lastRow.row_id) : null;
   return { ok: true, data: { items, nextCursor } };
 }
 

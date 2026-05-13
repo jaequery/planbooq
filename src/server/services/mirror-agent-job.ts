@@ -11,6 +11,7 @@ import {
 } from "@/server/services/agent-job-outcome";
 import { getOrCreateConversationForTicket } from "@/server/services/conversations";
 import { reconcileBuildingTicket } from "@/server/services/ticket-status";
+import { workflowCommander } from "@/server/services/workflow-commander";
 
 // =============================================================================
 // Mirror layer for AgentJob → Conversation/Message.
@@ -853,96 +854,15 @@ async function persistTurnEnd(job: AgentJob, outcome: TurnEndOutcome): Promise<v
     stepRunIdToClose = candidate?.id ?? null;
   }
 
-  let stepRunTransitioned = false;
-  if (stepRunIdToClose) {
-    // Idempotent CAS — only PENDING/RUNNING flip to their terminal state. A
-    // re-fire of the same turn-end (e.g. retries from the reaper) doesn't
-    // bounce a completed step back, and a step that was already canceled
-    // stays canceled.
-    const terminalStatus = outcome.kind === "success" ? "SUCCEEDED" : "FAILED";
-    const cas = await prisma.workflowStepRun
-      .updateMany({
-        where: {
-          id: stepRunIdToClose,
-          status: { in: ["PENDING", "RUNNING"] },
-        },
-        data: { status: terminalStatus, finishedAt: new Date() },
+  const completion = stepRunIdToClose
+    ? await workflowCommander.completeStep({
+        stepRunId: stepRunIdToClose,
+        jobId: job.id,
+        result: outcome.kind === "success" ? "success" : "failure",
+        ...(outcome.kind === "failure" ? { error: outcome.error } : {}),
       })
-      .catch(() => ({ count: 0 }));
-    stepRunTransitioned = (cas?.count ?? 0) > 0;
-
-    // Backfill stepName from the WorkflowStepRun row when prompt-prefix
-    // matching missed (cold resume, edited prompt). Without this, the
-    // STEP_COMPLETED activity below silently no-ops and the timeline shows
-    // "Step started: X" with no matching completion — the original bug
-    // reported on PLAN-RIF1NL where Issue PR / Score it from A-F never got
-    // completion rows even though the step actually ran.
-    if (!stepName) {
-      const sr = await prisma.workflowStepRun
-        .findUnique({
-          where: { id: stepRunIdToClose },
-          select: { name: true },
-        })
-        .catch(() => null);
-      if (sr?.name) stepName = sr.name;
-    }
-  }
-
-  if (stepName) {
-    // First-writer-wins dedup per (ticketId, name): if a STEP_COMPLETED row
-    // already exists for this step — even with a different result — keep it
-    // and skip. Matches the prior idempotency contract and prevents the
-    // renderer-side handler in ticket-workflow-panel.tsx from racing us into
-    // a duplicate row.
-    const existing = await prisma.ticketActivity.findFirst({
-      where: {
-        ticketId: job.ticketId,
-        kind: "STEP_COMPLETED",
-        payload: { path: ["name"], equals: stepName },
-      },
-      select: { id: true },
-    });
-    if (!existing) {
-      try {
-        const payload: Record<string, unknown> = {
-          name: stepName,
-          result: outcome.kind === "success" ? "success" : "failure",
-        };
-        if (outcome.kind === "failure") {
-          payload.error = outcome.error.slice(0, 480);
-        }
-        const activity = await prisma.ticketActivity.create({
-          data: {
-            ticketId: job.ticketId,
-            workspaceId: job.workspaceId,
-            jobId: job.id,
-            kind: "STEP_COMPLETED",
-            payload: payload as Prisma.InputJsonValue,
-          },
-          select: { id: true, kind: true, payload: true, jobId: true, createdAt: true },
-        });
-        await publishWorkspaceEvent(job.workspaceId, {
-          name: "ticket.activity",
-          workspaceId: job.workspaceId,
-          ticketId: job.ticketId,
-          activity: {
-            id: activity.id,
-            kind: activity.kind,
-            payload: activity.payload as Record<string, unknown>,
-            jobId: activity.jobId,
-            createdAt: activity.createdAt.toISOString(),
-          },
-        });
-      } catch (err) {
-        logger.warn("mirror.step-completed.activity.failed", {
-          jobId: job.id,
-          stepName,
-          result: outcome.kind,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-  }
+    : { transitioned: false, runId: null };
+  const stepRunTransitioned = completion.transitioned;
 
   // Server-driven workflow chain. Only fire when THIS call is the one that
   // actually transitioned the step to SUCCEEDED — protects against a retry
@@ -1131,6 +1051,34 @@ async function mirrorWireTerminal(
   clearWireState(job.id);
 }
 
+async function resolveTerminalStepRunId(job: AgentJob): Promise<string | null> {
+  if (!job.ticketId) return job.workflowStepRunId ?? null;
+  const lastUser = await prisma.message
+    .findFirst({
+      where: { agentJobId: job.id, role: "USER" },
+      orderBy: { createdAt: "desc" },
+      select: { body: true, workflowStepRunId: true },
+    })
+    .catch(() => null);
+  if (lastUser?.workflowStepRunId) return lastUser.workflowStepRunId;
+  if (job.workflowStepRunId) return job.workflowStepRunId;
+
+  const stepName = lastUser?.body?.match(/^\[Workflow(?:\s+\d+\/\d+)?:\s*([^\]]+)\]/)?.[1]?.trim();
+  if (!stepName) return null;
+  const candidate = await prisma.workflowStepRun
+    .findFirst({
+      where: {
+        name: stepName,
+        status: { in: ["PENDING", "RUNNING"] },
+        run: { ticketId: job.ticketId },
+      },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    })
+    .catch(() => null);
+  return candidate?.id ?? null;
+}
+
 // -----------------------------------------------------------------------------
 // Public API — mode-dispatched entry points used by route handlers and the
 // reaper. Failures are logged and swallowed; mirroring must never break the
@@ -1184,14 +1132,15 @@ export async function mirrorJobTerminal(args: {
   // step as in-progress when the underlying job died. SUCCEEDED is handled
   // per-turn by persistTurnEnd — a single AgentJob can span multiple
   // workflow steps (warm-send), so we don't close stepRun=SUCCEEDED here.
-  if (args.status !== "SUCCEEDED" && args.job.workflowStepRunId) {
-    await prisma.workflowStepRun
-      .updateMany({
-        where: {
-          id: args.job.workflowStepRunId,
-          status: { in: ["PENDING", "RUNNING"] },
-        },
-        data: { status: args.status, finishedAt: new Date() },
+  if (args.status !== "SUCCEEDED") {
+    const stepRunId = await resolveTerminalStepRunId(args.job);
+    if (!stepRunId) return;
+    await workflowCommander
+      .completeStep({
+        stepRunId,
+        jobId: args.job.id,
+        result: "failure",
+        error: args.status === "CANCELED" ? "Agent job canceled" : "Agent job failed",
       })
       .catch(() => undefined);
   }

@@ -38,7 +38,13 @@ type ServerActivity = {
 };
 
 type ServerTimelineRow =
-  | { kind: "message"; id: string; createdAt: string; messageId: string }
+  | {
+      kind: "message";
+      id: string;
+      createdAt: string;
+      messageId: string;
+      message: MessageEventPayload;
+    }
   | { kind: "activity"; id: string; createdAt: string; activityId: string };
 
 type ClientMessage = MessageEventPayload & {
@@ -57,7 +63,7 @@ type Props = {
 export function ConversationThread({
   ticketId,
   workspaceId,
-  conversationId,
+  conversationId: _conversationId,
 }: Props): React.ReactElement {
   const [messages, setMessages] = useState<Map<string, ClientMessage>>(new Map());
   const [order, setOrder] = useState<string[]>([]);
@@ -98,9 +104,8 @@ export function ConversationThread({
     setOrder((prev) => (prev.includes(m.id) ? prev : [...prev, m.id]));
   }, []);
 
-  // Initial load: timeline endpoint returns row pointers; for now we hydrate
-  // messages by re-fetching each one inline. Phase-9 polish: the timeline
-  // endpoint should return decorated rows so we make one round-trip.
+  // Initial load: timeline endpoint returns decorated message rows so the
+  // rendered chat matches the server-selected message/activity window exactly.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -111,42 +116,21 @@ export function ConversationThread({
       }
       const json = (await r.json()) as { ok: boolean; data?: { items: ServerTimelineRow[] } };
       const items = json.ok && json.data ? json.data.items : [];
-      const messageIds = items
-        .filter(
-          (row): row is Extract<ServerTimelineRow, { kind: "message" }> => row.kind === "message",
-        )
-        .map((row) => row.messageId);
-      if (messageIds.length > 0) {
-        // Hydrate via the per-conversation list endpoint (one query, includes
-        // authors + mentions). Activities are rendered as inline status pills
-        // from the existing TicketTimeline component; this thread focuses on
-        // messages.
-        const r2 = await fetch(
-          `/api/v1/tickets/${ticketId}/messages?limit=${messageIds.length}`,
-        ).catch(() => null);
-        if (r2?.ok && !cancelled) {
-          const list = (await r2.json()) as {
-            ok: boolean;
-            data?: {
-              items: (MessageEventPayload & { createdAt: string; updatedAt: string })[];
-            };
-          };
-          const listItems = list.ok && list.data ? list.data.items : [];
-          const map = new Map<string, ClientMessage>();
-          const ord: string[] = [];
-          for (const m of listItems) {
-            map.set(m.id, {
-              ...m,
-              createdAt: new Date(m.createdAt),
-              updatedAt: new Date(m.updatedAt),
-            });
-            ord.push(m.id);
-          }
-          if (!cancelled) {
-            setMessages(map);
-            setOrder(ord);
-          }
-        }
+      const map = new Map<string, ClientMessage>();
+      const ord: string[] = [];
+      for (const row of items) {
+        if (row.kind !== "message") continue;
+        const message = row.message;
+        map.set(message.id, {
+          ...message,
+          createdAt: new Date(message.createdAt),
+          updatedAt: new Date(message.updatedAt),
+        });
+        ord.push(message.id);
+      }
+      if (!cancelled) {
+        setMessages(map);
+        setOrder(ord);
       }
       if (!cancelled) setLoaded(true);
     })();
@@ -569,8 +553,9 @@ function ActivityRow({ activity }: { activity: ServerActivity }): React.ReactEle
 function MessageRow({ message }: { message: ClientMessage }): React.ReactElement {
   const body = useMemo(() => {
     if (message.status !== "STREAMING" || !message.streamingChunks) return message.body;
-    const sequences = [...message.streamingChunks.keys()].sort((a, b) => a - b);
-    return message.body + sequences.map((s) => message.streamingChunks!.get(s) ?? "").join("");
+    const chunks = message.streamingChunks;
+    const sequences = [...chunks.keys()].sort((a, b) => a - b);
+    return message.body + sequences.map((s) => chunks.get(s) ?? "").join("");
   }, [message.body, message.status, message.streamingChunks]);
 
   const authorLabel =
