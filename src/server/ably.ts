@@ -76,7 +76,11 @@ export async function createTokenRequest(
 ): Promise<Ably.TokenRequest | null> {
   const client = getClient();
   if (!client) {
-    logger.warn("ably.token.skipped", { reason: "ABLY_API_KEY not set" });
+    if (process.env.NODE_ENV === "production") {
+      logger.error("ably.token.skipped", { reason: "ABLY_API_KEY not set" });
+    } else {
+      logger.warn("ably.token.skipped", { reason: "ABLY_API_KEY not set" });
+    }
     return null;
   }
 

@@ -12,9 +12,9 @@ import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { inngest } from "@/server/inngest/client";
 import { generateTicketDraft } from "@/server/openrouter";
-import { recordStatusChangedActivity } from "@/server/services/ticket-activity";
 import {
   autoTransitionPlanningToTodo,
+  moveTicketToStatusId,
   moveTicketToStatusKey,
 } from "@/server/services/ticket-status";
 
@@ -64,119 +64,18 @@ export async function moveTicket(
     if (ticket.archivedAt) return { ok: false, error: "ticket_archived" };
 
     await requireMembership(ticket.workspaceId, userId);
-    const fromStatusId = ticket.statusId;
-
-    const targetStatus = await prisma.status.findUnique({ where: { id: toStatusId } });
-    if (!targetStatus || targetStatus.workspaceId !== ticket.workspaceId) {
-      return { ok: false, error: "invalid_status" };
-    }
-
-    const finalPosition = await prisma.$transaction(async (tx) => {
-      const [before, after] = await Promise.all([
-        beforeTicketId
-          ? tx.ticket.findUnique({ where: { id: beforeTicketId } })
-          : Promise.resolve(null),
-        afterTicketId
-          ? tx.ticket.findUnique({ where: { id: afterTicketId } })
-          : Promise.resolve(null),
-      ]);
-
-      if (beforeTicketId) {
-        if (
-          !before ||
-          before.workspaceId !== ticket.workspaceId ||
-          before.projectId !== ticket.projectId ||
-          before.statusId !== toStatusId ||
-          before.archivedAt
-        ) {
-          throw new Error("invalid_anchor_before");
-        }
-      }
-      if (afterTicketId) {
-        if (
-          !after ||
-          after.workspaceId !== ticket.workspaceId ||
-          after.projectId !== ticket.projectId ||
-          after.statusId !== toStatusId ||
-          after.archivedAt
-        ) {
-          throw new Error("invalid_anchor_after");
-        }
-      }
-
-      let position: number;
-      if (before && after) {
-        position = (before.position + after.position) / 2;
-      } else if (after && !before) {
-        position = after.position - 1;
-      } else if (before && !after) {
-        position = before.position + 1;
-      } else {
-        const last = await tx.ticket.findFirst({
-          where: {
-            statusId: toStatusId,
-            projectId: ticket.projectId,
-            workspaceId: ticket.workspaceId,
-            archivedAt: null,
-          },
-          orderBy: { position: "desc" },
-          select: { position: true },
-        });
-        position = (last?.position ?? 0) + 1;
-      }
-
-      const updateResult = await tx.ticket.updateMany({
-        where: { id: ticketId, workspaceId: ticket.workspaceId },
-        data: { statusId: toStatusId, position },
-      });
-      if (updateResult.count !== 1) {
-        throw new Error("ticket_update_failed");
-      }
-      return position;
-    });
-
-    const updated = { id: ticketId };
-
-    const project = await prisma.project.findUnique({
-      where: { id: ticket.projectId },
-      select: { slug: true },
-    });
-    if (project) revalidatePath(`/p/${project.slug}`);
-
-    await publishWorkspaceEvent(ticket.workspaceId, {
-      name: "ticket.moved",
-      ticketId: updated.id,
-      workspaceId: ticket.workspaceId,
-      projectId: ticket.projectId,
-      fromStatusId,
+    const moved = await moveTicketToStatusId({
+      ticketId,
       toStatusId,
-      position: finalPosition,
+      beforeTicketId,
+      afterTicketId,
       by: userId,
+      activityByUserId: userId,
     });
-
-    await recordStatusChangedActivity({
-      ticketId: updated.id,
-      workspaceId: ticket.workspaceId,
-      fromStatusId,
-      toStatusId,
-      byUserId: userId,
-    });
-
-    void inngest
-      .send({
-        name: "ticket/moved",
-        data: { ticketId: updated.id, workspaceId: ticket.workspaceId },
-      })
-      .catch((error: unknown) => {
-        logger.warn("inngest.send.failed", {
-          name: "ticket/moved",
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
 
     return {
       ok: true,
-      data: { ticketId: updated.id, toStatusId, position: finalPosition },
+      data: { ticketId, toStatusId, position: moved.position },
     };
   } catch (error) {
     logger.error("moveTicket.failed", {
@@ -789,7 +688,7 @@ export async function loadMoreTicketsForStatus(
 
     const rows = await prisma.ticket.findMany({
       where: { projectId, statusId, archivedAt: null },
-      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      orderBy: [{ position: "asc" }, { id: "asc" }],
       take: limit + 1,
       cursor: { id: cursor },
       skip: 1,

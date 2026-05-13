@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { selectAuthoritativeLiveJobs } from "@/lib/live-agent-jobs";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 
@@ -31,8 +32,12 @@ export async function GET(
       ticketId: true,
       kind: true,
       status: true,
+      createdAt: true,
     },
   });
 
-  return NextResponse.json({ ok: true, data: jobs });
+  return NextResponse.json({
+    ok: true,
+    data: selectAuthoritativeLiveJobs(jobs).map(({ createdAt: _createdAt, ...job }) => job),
+  });
 }

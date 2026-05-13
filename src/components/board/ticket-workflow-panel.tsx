@@ -11,7 +11,6 @@ import {
   getTicketWorkflow,
   getWorkflowStatusContext,
   listWorkflowTemplates,
-  logWorkflowActivity,
   removeTicketStep,
   reorderTicketSteps,
   setTicketWorkflowFromTemplate,
@@ -59,10 +58,7 @@ export function TicketWorkflowPanel({
   projectId: string;
   autoRun?: boolean;
   /** True once the sibling agent panel has loaded its own project-local-path
-   *  state and is wired to receive `planbooq:workflow-run` events. Gating
-   *  auto-run on this prevents the race where this panel's fetch wins,
-   *  dispatches the event, and the agent panel sees a stale `repoPath=null`
-   *  and toasts "Pick a project folder first". */
+   *  state and is wired to receive server-authored workflow dispatch events. */
   agentReady?: boolean;
   onReady?: () => void;
 }): React.ReactElement | null {
@@ -101,27 +97,19 @@ export function TicketWorkflowPanel({
       const detail = (e as CustomEvent).detail as { ticketId?: string; running?: boolean };
       if (detail?.ticketId !== ticketId) return;
       const next = !!detail.running;
-      // Falling edge: agent just went idle. If we have a pending step, that
-      // step finished — log completion and, if more queued, start the next.
+      // Falling edge: agent just went idle. If we have a local running hint,
+      // clear it and let the server-authored WorkflowStepRun/activity state
+      // catch up on refresh.
       if (wasRunningRef.current && !next && pendingStepsRef.current.length > 0) {
-        const finished = pendingStepsRef.current.shift()!;
-        void logWorkflowActivity({
-          ticketId,
-          text: `Workflow step completed: ${finished}`,
-        }).catch(() => {});
-        setCompletedSteps((prev) => {
-          const out = new Set(prev);
-          out.add(finished);
-          return out;
-        });
-        const upcoming = pendingStepsRef.current[0];
-        setCurrentStep(upcoming ?? null);
-        if (upcoming) {
-          void logWorkflowActivity({
-            ticketId,
-            text: `Workflow step started: ${upcoming}`,
-          }).catch(() => {});
+        const finished = pendingStepsRef.current.shift();
+        if (finished) {
+          setCompletedSteps((prev) => {
+            const out = new Set(prev);
+            out.add(finished);
+            return out;
+          });
         }
+        setCurrentStep(null);
       }
       wasRunningRef.current = next;
       setRunning(next);
@@ -205,10 +193,9 @@ export function TicketWorkflowPanel({
   // → board opens this dialog with autoRunAction=true).
   //
   // `agentReady` gates on the sibling agent panel finishing its own
-  // getProjectLocalPath fetch. Without it the two panels race: this one
-  // sets hasLocalPath=true, fires runAll → planbooq:workflow-run, and the
-  // agent panel's send() reads its still-null repoPath and toasts
-  // "Pick a project folder first."
+  // getProjectLocalPath fetch. The server now publishes the actual workflow
+  // dispatch event, but the agent panel still needs to be mounted and ready
+  // to consume that event.
   const autoRunFiredRef = useRef(false);
   useEffect(() => {
     if (!autoRun) return;
@@ -260,31 +247,15 @@ export function TicketWorkflowPanel({
 
   async function runPrompts(steps: Array<{ name: string; prompt: string }>) {
     if (steps.length === 0) return;
-    // Create the WorkflowRun + per-step WorkflowStepRun rows FIRST so each
-    // dispatched prompt carries its own stepRunId. That id rides the
-    // planbooq:workflow-run event → agent panel queue → POST desktop-jobs →
-    // AgentJob.workflowStepRunId, giving us a real FK from chat back to the
-    // step instead of the fragile prompt-prefix regex match.
-    let stepRunIds: string[] = [];
+    // The server creates the WorkflowRun, marks the first step as started,
+    // writes STEP_STARTED activity, and publishes ticket.workflow.dispatch.
     try {
-      const r = await triggerWorkflowRun(ticketId, {
+      await triggerWorkflowRun(ticketId, {
         steps: steps.map((s) => ({ name: s.name, prompt: s.prompt })),
       });
-      if (r.ok) stepRunIds = r.stepRunIds;
     } catch {
-      // tolerated — fall through with empty ids; dispatch still works in
-      // legacy "prompt-prefix only" mode, just without the FK.
+      // tolerated — status refinement below is best-effort too
     }
-    const payloadSteps = steps.map((s, i) => ({
-      stepRunId: stepRunIds[i] ?? null,
-      name: s.name,
-      prompt: s.prompt,
-    }));
-    window.dispatchEvent(
-      new CustomEvent("planbooq:workflow-run", {
-        detail: { ticketId, steps: payloadSteps },
-      }),
-    );
     // Ask local Claude Code in the background for a smarter status pick than
     // the deterministic backlog|todo → building that triggerWorkflowRun
     // already applied, and refine if it differs.
@@ -337,30 +308,19 @@ export function TicketWorkflowPanel({
     })();
   }
 
-  function logStarted(name: string) {
-    void logWorkflowActivity({
-      ticketId,
-      text: `Workflow step started: ${name}`,
-    }).catch(() => {});
-  }
-
   function runStep(step: { name: string; prompt: string }) {
     if (!hasLocalPath) {
       toast.error("Choose this project's folder first");
       return;
     }
-    const queueWasEmpty = pendingStepsRef.current.length === 0;
-    pendingStepsRef.current.push(step.name);
+    pendingStepsRef.current = [step.name];
     setCompletedSteps((prev) => {
       if (!prev.has(step.name)) return prev;
       const out = new Set(prev);
       out.delete(step.name);
       return out;
     });
-    if (queueWasEmpty) {
-      setCurrentStep(step.name);
-      logStarted(step.name);
-    }
+    setCurrentStep(step.name);
     void runPrompts([{ name: step.name, prompt: `[Workflow: ${step.name}]\n${step.prompt}` }]);
     toast.success(`Running step: ${step.name}`);
   }
@@ -384,12 +344,8 @@ export function TicketWorkflowPanel({
       ]
         .filter(Boolean)
         .join("\n");
-      const queueWasEmpty = pendingStepsRef.current.length === 0;
-      pendingStepsRef.current.push(defaultName);
-      if (queueWasEmpty) {
-        setCurrentStep(defaultName);
-        logStarted(defaultName);
-      }
+      pendingStepsRef.current = [defaultName];
+      setCurrentStep(defaultName);
       void runPrompts([{ name: defaultName, prompt: defaultPrompt }]);
       toast.success("Running default build");
       return;
@@ -398,17 +354,15 @@ export function TicketWorkflowPanel({
       name: s.name,
       prompt: `[Workflow ${i + 1}/${enabled.length}: ${s.name}]\n${s.prompt}`,
     }));
-    const queueWasEmpty = pendingStepsRef.current.length === 0;
-    for (const s of enabled) pendingStepsRef.current.push(s.name);
+    pendingStepsRef.current = enabled[0] ? [enabled[0].name] : [];
     setCompletedSteps((prev) => {
       if (prev.size === 0) return prev;
       const out = new Set(prev);
       for (const s of enabled) out.delete(s.name);
       return out;
     });
-    if (queueWasEmpty && enabled[0]) {
+    if (enabled[0]) {
       setCurrentStep(enabled[0].name);
-      logStarted(enabled[0].name);
     }
     void runPrompts(dispatch);
     toast.success(`Running ${enabled.length} step${enabled.length === 1 ? "" : "s"}`);

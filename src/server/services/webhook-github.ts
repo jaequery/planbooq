@@ -6,15 +6,12 @@ import { logger } from "@/lib/logger";
 import { parseTicketRef } from "@/lib/ticket-identifier";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
-import {
-  recordPrMergedActivity,
-  recordStatusChangedActivity,
-} from "@/server/services/ticket-activity";
+import { recordPrMergedActivity } from "@/server/services/ticket-activity";
 import {
   markPullRequestMerged,
   recordTicketPullRequest,
 } from "@/server/services/ticket-pull-requests";
-import { reconcileBuildingTicket } from "@/server/services/ticket-status";
+import { moveTicketToStatusId, reconcileBuildingTicket } from "@/server/services/ticket-status";
 
 const SIGNATURE_PREFIX = "sha256=";
 
@@ -149,8 +146,8 @@ export async function autoCompleteTicketByPrUrl(
     });
   }
 
-  const completed = await prisma.status.findFirst({
-    where: { workspaceId: ticket.workspaceId, name: { equals: "Completed", mode: "insensitive" } },
+  const completed = await prisma.status.findUnique({
+    where: { workspaceId_key: { workspaceId: ticket.workspaceId, key: "completed" } },
     select: { id: true },
   });
   if (!completed) {
@@ -159,27 +156,6 @@ export async function autoCompleteTicketByPrUrl(
   }
 
   if (ticket.statusId === completed.id) return { kind: "already_completed" };
-
-  const fromStatusId = ticket.statusId;
-  const finalPosition = await prisma.$transaction(async (tx) => {
-    const last = await tx.ticket.findFirst({
-      where: {
-        statusId: completed.id,
-        projectId: ticket.projectId,
-        workspaceId: ticket.workspaceId,
-        archivedAt: null,
-      },
-      orderBy: { position: "desc" },
-      select: { position: true },
-    });
-    const position = (last?.position ?? 0) + 1;
-    const r = await tx.ticket.updateMany({
-      where: { id: ticket.id, workspaceId: ticket.workspaceId },
-      data: { statusId: completed.id, position },
-    });
-    if (r.count !== 1) throw new Error("ticket_update_failed");
-    return position;
-  });
 
   // Collect cleanup pointers for the desktop renderer: the most recent
   // AgentJob that ran in a worktree for this ticket, plus the PR branch.
@@ -202,24 +178,12 @@ export async function autoCompleteTicketByPrUrl(
     ? { worktreePath: latestJob.worktreePath, branch: prRecord?.branch ?? null }
     : null;
 
-  await publishWorkspaceEvent(ticket.workspaceId, {
-    name: "ticket.moved",
+  await moveTicketToStatusId({
     ticketId: ticket.id,
-    workspaceId: ticket.workspaceId,
-    projectId: ticket.projectId,
-    fromStatusId,
     toStatusId: completed.id,
-    position: finalPosition,
     by: "github-webhook",
+    activityByUserId: null,
     cleanup,
-  });
-
-  await recordStatusChangedActivity({
-    ticketId: ticket.id,
-    workspaceId: ticket.workspaceId,
-    fromStatusId,
-    toStatusId: completed.id,
-    byUserId: null,
   });
 
   return {

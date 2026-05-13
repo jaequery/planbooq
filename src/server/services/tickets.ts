@@ -6,7 +6,10 @@ import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
 import { inngest } from "@/server/inngest/client";
 import { ensureLegacyPrRecorded } from "@/server/services/ticket-pull-requests";
-import { autoTransitionPlanningToTodo } from "@/server/services/ticket-status";
+import {
+  autoTransitionPlanningToTodo,
+  moveTicketToStatusId,
+} from "@/server/services/ticket-status";
 
 const TICKET_RELATIONS_INCLUDE = {
   assignee: { select: { id: true, name: true, email: true, image: true } },
@@ -238,83 +241,17 @@ export async function moveTicketSvc(
     if (!ticket) return { ok: false, error: "ticket_not_found" };
     if (ticket.archivedAt) return { ok: false, error: "ticket_archived" };
     await requireMembership(ticket.workspaceId, userId);
-    const fromStatusId = ticket.statusId;
-
-    const targetStatus = await prisma.status.findUnique({ where: { id: parsed.toStatusId } });
-    if (!targetStatus || targetStatus.workspaceId !== ticket.workspaceId) {
-      return { ok: false, error: "invalid_status" };
-    }
-
-    const finalPosition = await prisma.$transaction(async (tx) => {
-      const [before, after] = await Promise.all([
-        beforeTicketId
-          ? tx.ticket.findUnique({ where: { id: beforeTicketId } })
-          : Promise.resolve(null),
-        afterTicketId
-          ? tx.ticket.findUnique({ where: { id: afterTicketId } })
-          : Promise.resolve(null),
-      ]);
-      if (beforeTicketId) {
-        if (
-          !before ||
-          before.workspaceId !== ticket.workspaceId ||
-          before.projectId !== ticket.projectId ||
-          before.statusId !== parsed.toStatusId ||
-          before.archivedAt
-        )
-          throw new Error("invalid_anchor_before");
-      }
-      if (afterTicketId) {
-        if (
-          !after ||
-          after.workspaceId !== ticket.workspaceId ||
-          after.projectId !== ticket.projectId ||
-          after.statusId !== parsed.toStatusId ||
-          after.archivedAt
-        )
-          throw new Error("invalid_anchor_after");
-      }
-
-      let position: number;
-      if (before && after) position = (before.position + after.position) / 2;
-      else if (after && !before) position = after.position - 1;
-      else if (before && !after) position = before.position + 1;
-      else {
-        const last = await tx.ticket.findFirst({
-          where: {
-            statusId: parsed.toStatusId,
-            projectId: ticket.projectId,
-            workspaceId: ticket.workspaceId,
-            archivedAt: null,
-          },
-          orderBy: { position: "desc" },
-          select: { position: true },
-        });
-        position = (last?.position ?? 0) + 1;
-      }
-
-      const r = await tx.ticket.updateMany({
-        where: { id: ticketId, workspaceId: ticket.workspaceId },
-        data: { statusId: parsed.toStatusId, position },
-      });
-      if (r.count !== 1) throw new Error("ticket_update_failed");
-      return position;
-    });
-
-    await publishWorkspaceEvent(ticket.workspaceId, {
-      name: "ticket.moved",
+    const moved = await moveTicketToStatusId({
       ticketId,
-      workspaceId: ticket.workspaceId,
-      projectId: ticket.projectId,
-      fromStatusId,
       toStatusId: parsed.toStatusId,
-      position: finalPosition,
+      beforeTicketId,
+      afterTicketId,
       by: userId,
+      activityByUserId: userId,
     });
-    safeInngest("ticket/moved", { ticketId, workspaceId: ticket.workspaceId });
     return {
       ok: true,
-      data: { ticketId, toStatusId: parsed.toStatusId, position: finalPosition },
+      data: { ticketId, toStatusId: parsed.toStatusId, position: moved.position },
     };
   } catch (error) {
     logger.error("moveTicketSvc.failed", {

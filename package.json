@@ -11,6 +11,7 @@
     "lint": "biome check",
     "lint:fix": "biome check --write",
     "format": "biome format --write",
+    "test:workflow-chat-activity": "tsx scripts/workflow-chat-activity-regression.test.ts",
     "typecheck": "tsc --noEmit",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
