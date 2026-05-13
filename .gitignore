@@ -48,6 +48,7 @@ yarn-error.log*
 .idea
 .vscode/*
 !.vscode/extensions.json
+.cursor/
 
 # team-build worktree artifacts
 .team-build/
