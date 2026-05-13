@@ -1214,8 +1214,7 @@ export async function triggerWorkflowRun(
 export async function getRunningWorkflowDispatchForTicketAction(
   ticketId: string,
 ): Promise<
-  | { ok: true; payload: { runId: string; stepRunId: string; prompt: string } | null }
-  | Err
+  { ok: true; payload: { runId: string; stepRunId: string; prompt: string } | null } | Err
 > {
   const ticket = await loadTicket(ticketId);
   if (!ticket) return { ok: false, error: "not_found" };
@@ -1278,9 +1277,7 @@ export async function applyWorkflowStatusSuggestion(
  * Only fires when the ticket is currently in `building` — we never override
  * an explicit user move.
  */
-export async function decideEndOfRunStatus(
-  ticketId: string,
-): Promise<Result<EndOfRunDecision>> {
+export async function decideEndOfRunStatus(ticketId: string): Promise<Result<EndOfRunDecision>> {
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
     select: {

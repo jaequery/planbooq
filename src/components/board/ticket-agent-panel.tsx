@@ -590,9 +590,7 @@ function DesktopPanel({
       if (!ctxRes.ok || ctxRes.statuses.length === 0) return;
       const allowed = ctxRes.statuses.map((s) => s.key);
       const enumChoices = [...allowed, "noop"];
-      const lastAssistant = [...messagesRef.current]
-        .reverse()
-        .find((m) => m.role === "assistant");
+      const lastAssistant = [...messagesRef.current].reverse().find((m) => m.role === "assistant");
       const summary = lastAssistant ? lastAssistant.text.slice(-1500) : "(no agent output)";
       const askPrompt = [
         "Pick the kanban status for a ticket whose Claude Code session just ended.",
