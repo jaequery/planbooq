@@ -539,26 +539,49 @@ function DesktopPanel({
   };
 
   // Called when the agent finishes a run with no pending workflow steps and
-  // is not awaiting user input. Tries the PR-based decision server-side
-  // first (open → review, merged → completed, conflict → blocked), then
-  // falls back to a local Claude Code one-shot pick from allowed statuses.
+  // is not awaiting user input. The server-side decision is a typed
+  // EndOfRunDecision: if it moved the ticket or another writer already
+  // resolved this run (not-building / pr-noop), return without running the
+  // local LLM fallback — that path is reserved for the genuinely-ambiguous
+  // no-pr / pr-error cases. The LLM fallback returns ONE WORD from the
+  // allowed-status enum (or "noop"); no JSON, no regex.
   const decideEndOfRun = async () => {
     if (statusKeyRef.current !== "building") return;
     try {
       const r = await decideEndOfRunStatus(ticketId);
-      if (r.ok && r.statusKey) {
-        statusKeyRef.current = r.statusKey;
-        // decideEndOfRunStatus moves the ticket server-side via
-        // moveTicketToStatusKey, which publishes the same `ticket.moved`
-        // event the realtime handler watches. Stamp the self-write latch
-        // so the echo doesn't trigger an erroneous agentStop (the session
-        // is already winding down anyway, but keeping the latch in sync
-        // with every server-driven self-write is the safe invariant).
-        markSelfStatusWrite(r.statusKey);
-        return;
+      if (r.ok) {
+        switch (r.kind) {
+          case "moved":
+            statusKeyRef.current = r.statusKey;
+            // decideEndOfRunStatus moves the ticket server-side via
+            // moveTicketToStatusKey, which publishes the same `ticket.moved`
+            // event the realtime handler watches. Stamp the self-write latch
+            // so the echo doesn't trigger an erroneous agentStop.
+            markSelfStatusWrite(r.statusKey);
+            return;
+          case "not-building":
+          case "pr-noop":
+            // Another writer (server reconcile, webhook, or an earlier
+            // workflow-suggestion round-trip) already resolved this run.
+            // Trust their decision — running the LLM fallback now would
+            // produce a second activity row and make the ticket appear to
+            // "go through" an intermediate column on its way to the real one.
+            return;
+          case "no-pr":
+          case "pr-error":
+            // Server has no signal — fall through to the local LLM oneshot.
+            break;
+          default: {
+            // Exhaustiveness guard: if a new kind is added to
+            // EndOfRunDecision, TS will error here.
+            const _exhaustive: never = r;
+            void _exhaustive;
+            return;
+          }
+        }
       }
     } catch {
-      // tolerated — try the LLM fallback
+      // tolerated — try the LLM fallback below
     }
     try {
       const bridge = getDesktopBridge();
@@ -566,13 +589,22 @@ function DesktopPanel({
       const ctxRes = await getWorkflowStatusContext(ticketId);
       if (!ctxRes.ok || ctxRes.statuses.length === 0) return;
       const allowed = ctxRes.statuses.map((s) => s.key);
+      const enumChoices = [...allowed, "noop"];
       const lastAssistant = [...messagesRef.current].reverse().find((m) => m.role === "assistant");
       const summary = lastAssistant ? lastAssistant.text.slice(-1500) : "(no agent output)";
       const askPrompt = [
-        "You are picking the kanban status for a ticket whose Claude Code session just ended.",
-        "Status keys (typical meanings): backlog (not started), todo (planned), building (agent is still actively working — only pick this if the session is mid-tool-call, NOT if it has stopped to ask the user something), blocked (the agent stopped its turn and is waiting on the user — includes any open question, choice between options, request to confirm/approve, or proposed default like 'Default is A unless you say otherwise'), review (PR open / ready to review), completed (done/merged).",
-        "Decision rule: if the last agent message poses ANY question, lists options for the user to pick, asks for confirmation/approval, or proposes a default while waiting for the user to override it, the answer is `blocked`. Only return `building` if the agent is clearly still mid-task with no user input expected.",
-        'Reply with strict JSON only: {"statusKey":"<one of allowed>","reason":"short"}. No prose, no fences.',
+        "Pick the kanban status for a ticket whose Claude Code session just ended.",
+        "Return ONE WORD only. No JSON, no fences, no punctuation, no prose.",
+        "Choose exactly one of:",
+        enumChoices.join(" | "),
+        "",
+        "Decision rules:",
+        "- `noop`: the ticket has already moved out of `building` (another writer resolved it), OR you are not confident which status fits, OR the right answer is the current status.",
+        "- `blocked`: agent stopped its turn waiting on the user (open question, lists options to pick, asks for confirmation/approval, or proposes a default like 'Default is X unless you say otherwise').",
+        "- `building`: agent is clearly still mid-task with no user input expected.",
+        "- `review`: a PR is open and ready to review.",
+        "- `completed`: work is done / merged.",
+        "- other keys map by their typical meaning.",
         "",
         `Allowed status keys: ${allowed.join(", ")}`,
         `Current status: ${ctxRes.currentStatusKey || "(unknown)"}`,
@@ -588,24 +620,17 @@ function DesktopPanel({
         timeoutMs: 15_000,
       });
       if (!res.ok || !res.text) return;
-      const stripped = res.text
-        .replace(/^```(?:json)?\s*/i, "")
-        .replace(/```$/i, "")
-        .trim();
-      let suggested: string | undefined;
-      try {
-        const parsed = JSON.parse(stripped) as { statusKey?: unknown };
-        if (typeof parsed.statusKey === "string" && allowed.includes(parsed.statusKey)) {
-          suggested = parsed.statusKey;
-        }
-      } catch {
-        // unparseable — leave status alone
-      }
-      if (suggested && suggested !== statusKeyRef.current) {
-        statusKeyRef.current = suggested;
-        markSelfStatusWrite(suggested);
-        await applyWorkflowStatusSuggestion(ticketId, suggested).catch(() => {});
-      }
+      // Closed-enum word check: trim + lowercase + literal membership.
+      // No regex strip, no JSON.parse — if the LLM disobeys the
+      // "one word only" instruction, the answer fails the enum check and
+      // the ticket stays in its current state (fail-safe).
+      const choice = res.text.trim().toLowerCase();
+      if (choice === "noop") return;
+      if (!allowed.includes(choice)) return;
+      if (choice === statusKeyRef.current) return;
+      statusKeyRef.current = choice;
+      markSelfStatusWrite(choice);
+      await applyWorkflowStatusSuggestion(ticketId, choice).catch(() => {});
     } catch {
       // tolerated
     }
