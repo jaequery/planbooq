@@ -56,11 +56,13 @@ function makeTempId(): string {
 }
 
 const AUTO_EXECUTE_STORAGE_KEY = "pbq.autoExecute";
-const AUTO_RUN_IDS_STORAGE_KEY = "pbq.autoRunWorkflowIds";
+const AUTO_RUN_ID_STORAGE_KEY = "pbq.autoRunWorkflowId";
+// Legacy multi-select key — read-only, used once for migration.
+const LEGACY_AUTO_RUN_IDS_STORAGE_KEY = "pbq.autoRunWorkflowIds";
 
 // Tri-state migration of the legacy global auto-run flag:
-//   - "true" / null  → default-on (caller seeds with all known template ids)
-//   - "false"        → default-off (caller seeds with [])
+//   - "true" / null  → default-on (caller seeds with the project default id)
+//   - "false"        → default-off (caller seeds with null)
 function readLegacyAutoExecute(): boolean {
   try {
     return window.localStorage.getItem(AUTO_EXECUTE_STORAGE_KEY) !== "false";
@@ -69,21 +71,37 @@ function readLegacyAutoExecute(): boolean {
   }
 }
 
-function readAutoRunIds(): string[] | null {
+// Reads the persisted single-id selection. For backwards-compat with the
+// previous multi-select schema, we also accept a JSON array and collapse it
+// to its first valid id so existing users don't get reset to "off" silently.
+function readAutoRunId(): string | null {
   try {
-    const raw = window.localStorage.getItem(AUTO_RUN_IDS_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
+    const raw = window.localStorage.getItem(AUTO_RUN_ID_STORAGE_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed === "string" && parsed.length > 0) return parsed;
+      } catch {
+        // fall through to legacy lookup
+      }
+    }
+    const legacy = window.localStorage.getItem(LEGACY_AUTO_RUN_IDS_STORAGE_KEY);
+    if (!legacy) return null;
+    const parsed = JSON.parse(legacy);
     if (!Array.isArray(parsed)) return null;
-    return parsed.filter((x): x is string => typeof x === "string");
+    const first = parsed.find((x): x is string => typeof x === "string" && x.length > 0);
+    return first ?? null;
   } catch {
     return null;
   }
 }
 
-function writeAutoRunIds(ids: string[]): void {
+function writeAutoRunId(id: string | null): void {
   try {
-    window.localStorage.setItem(AUTO_RUN_IDS_STORAGE_KEY, JSON.stringify(ids));
+    if (id === null) window.localStorage.removeItem(AUTO_RUN_ID_STORAGE_KEY);
+    else window.localStorage.setItem(AUTO_RUN_ID_STORAGE_KEY, JSON.stringify(id));
+    // Clear the legacy multi-select array so it can't reappear after a refresh.
+    window.localStorage.removeItem(LEGACY_AUTO_RUN_IDS_STORAGE_KEY);
   } catch {
     // ignore
   }
@@ -118,29 +136,28 @@ export function ChatOrb({
   const uploadCounterRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const [autoRunIds, setAutoRunIds] = useState<Set<string>>(() => new Set());
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
   const [templates, setTemplates] = useState<WorkflowTemplateRow[] | null>(null);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
-  // Tracks whether we've reconciled the auto-run allowlist with the
+  // Tracks whether we've reconciled the auto-run selection with the
   // server-side templates list at least once. Until then we keep whatever
-  // localStorage held (or an empty set), but never persist back.
+  // localStorage held (or null), but never persist back.
   const seededRef = useRef(false);
   const isActive = isFocused || prompt.length > 0 || pending || attachments.length > 0;
 
-  // Effective auto-run for THIS project: only fires when the project's default
-  // workflow template is in the user's allowlist. Per-ticket workflow
-  // overrides aren't exposed at create-time, so the project default is the
-  // honest decision point.
+  // Effective auto-run for THIS project: only fires when the user's selected
+  // workflow IS the project's default. Per-ticket workflow overrides aren't
+  // exposed at create-time, so the project default is the honest decision
+  // point.
   const effectiveAutoExecute =
-    defaultWorkflowTemplateId !== null && autoRunIds.has(defaultWorkflowTemplateId);
-  const selectedCount = autoRunIds.size;
+    selectedWorkflowId !== null && selectedWorkflowId === defaultWorkflowTemplateId;
 
-  // Load the persisted allowlist on mount.
+  // Load the persisted selection on mount.
   useEffect(() => {
-    const stored = readAutoRunIds();
-    if (stored) setAutoRunIds(new Set(stored));
+    const stored = readAutoRunId();
+    if (stored) setSelectedWorkflowId(stored);
   }, []);
 
   const loadTemplates = useCallback(async () => {
@@ -152,21 +169,30 @@ export function ChatOrb({
         return;
       }
       setTemplates(res.templates);
-      // First-ever load: migrate the legacy global flag into per-workflow
-      // selections so existing users keep their effective on/off behavior.
+      // First-ever load: migrate the legacy global flag (and any legacy
+      // multi-select array) into a single selection so existing users keep
+      // their effective on/off behavior.
       if (!seededRef.current) {
         seededRef.current = true;
-        const existing = readAutoRunIds();
+        const existing = readAutoRunId();
         if (existing === null) {
-          const seed = readLegacyAutoExecute() ? res.templates.map((t) => t.id) : [];
-          setAutoRunIds(new Set(seed));
-          writeAutoRunIds(seed);
+          const seed = readLegacyAutoExecute()
+            ? (res.templates.find((t) => t.id === defaultWorkflowTemplateId)?.id ??
+              res.templates[0]?.id ??
+              null)
+            : null;
+          setSelectedWorkflowId(seed);
+          writeAutoRunId(seed);
+        } else if (!res.templates.some((t) => t.id === existing)) {
+          // Stored selection points at a deleted template — clear it.
+          setSelectedWorkflowId(null);
+          writeAutoRunId(null);
         }
       }
     } finally {
       setTemplatesLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, defaultWorkflowTemplateId]);
 
   // Eagerly load templates once on mount so the legacy-flag migration runs
   // before the user's first ticket submit (otherwise the very first create
@@ -175,12 +201,12 @@ export function ChatOrb({
     void loadTemplates();
   }, [loadTemplates]);
 
+  // Single-selection radio behavior: clicking the selected row clears it,
+  // clicking any other row replaces the selection.
   const toggleWorkflowAutoRun = useCallback((id: string): void => {
-    setAutoRunIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      writeAutoRunIds([...next]);
+    setSelectedWorkflowId((prev) => {
+      const next = prev === id ? null : id;
+      writeAutoRunId(next);
       return next;
     });
   }, []);
@@ -508,12 +534,7 @@ export function ChatOrb({
                     }`}
                   />
                 </span>
-                <span>
-                  Auto-run
-                  {selectedCount > 0 ? (
-                    <span className="ml-1 text-[10px] tabular-nums">({selectedCount})</span>
-                  ) : null}
-                </span>
+                <span>Auto-run</span>
               </button>
               <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
                 <PopoverTrigger asChild>
@@ -521,22 +542,23 @@ export function ChatOrb({
                     type="button"
                     aria-haspopup="dialog"
                     aria-expanded={pickerOpen}
-                    aria-label="Choose auto-run workflows"
+                    aria-label="Choose auto-run workflow"
                     disabled={pending}
                     className="inline-flex h-5 w-4 items-center justify-center rounded transition-colors hover:text-foreground disabled:opacity-50"
-                    title="Choose which workflows auto-run"
+                    title="Choose which workflow auto-runs"
                   >
                     <ChevronDown className="h-3 w-3" aria-hidden />
                   </button>
                 </PopoverTrigger>
                 <PopoverContent align="end" sideOffset={8} className="w-72 p-0">
                   <div className="border-b border-border/70 px-3 py-2">
-                    <div className="font-medium text-[12px]">Auto-run workflows</div>
+                    <div className="font-medium text-[12px]">Auto-run workflow</div>
                     <p className="text-[11px] text-muted-foreground">
-                      New tickets auto-execute only when the project's default workflow is selected.
+                      Pick the one workflow that auto-runs on new tickets. Only fires when it
+                      matches the project default.
                     </p>
                   </div>
-                  <div className="max-h-64 overflow-y-auto py-1">
+                  <div className="max-h-64 overflow-y-auto py-1" role="radiogroup">
                     {templatesLoading && templates === null ? (
                       <div className="flex items-center gap-2 px-3 py-2 text-[12px] text-muted-foreground">
                         <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
@@ -544,19 +566,19 @@ export function ChatOrb({
                       </div>
                     ) : templates && templates.length > 0 ? (
                       templates.map((t) => {
-                        const selected = autoRunIds.has(t.id);
+                        const selected = selectedWorkflowId === t.id;
                         const isDefault = t.id === defaultWorkflowTemplateId;
                         return (
                           <button
                             key={t.id}
                             type="button"
-                            role="menuitemcheckbox"
+                            role="menuitemradio"
                             aria-checked={selected}
                             onClick={() => toggleWorkflowAutoRun(t.id)}
                             className="flex w-full items-start gap-2 px-3 py-2 text-left text-[12px] transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none"
                           >
                             <span
-                              className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors ${
+                              className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border transition-colors ${
                                 selected
                                   ? "border-primary bg-primary text-primary-foreground"
                                   : "border-border bg-background"
