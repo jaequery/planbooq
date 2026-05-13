@@ -19,6 +19,13 @@ type Err = { ok: false; error: string };
 type Result<T> = Ok<T> | Err;
 type Empty = Record<string, never>;
 
+export type EndOfRunDecision =
+  | { kind: "moved"; statusKey: string }
+  | { kind: "not-building" }
+  | { kind: "no-pr" }
+  | { kind: "pr-error"; code: string }
+  | { kind: "pr-noop"; outcome: "open" | "merged" | "closed" | "conflict" };
+
 async function requireUserId(): Promise<{ ok: true; userId: string } | Err> {
   const session = await auth();
   if (!session?.user?.id) return { ok: false, error: "unauthorized" };
@@ -1265,16 +1272,15 @@ export async function applyWorkflowStatusSuggestion(
 /**
  * Decide what status a ticket should land in once the agent has stopped
  * working on it. Mirrors the start-of-run status pick in `triggerWorkflowRun`,
- * but for the end-of-run side: if a PR is open it should land in review (or
- * completed/blocked depending on merge state), otherwise return null so the
- * caller can fall back to a local-LLM pick.
+ * but for the end-of-run side: returns a typed `EndOfRunDecision` so the
+ * client can switch exhaustively without string equality or JSON parsing.
  *
  * Only fires when the ticket is currently in `building` — we never override
  * an explicit user move.
  */
 export async function decideEndOfRunStatus(
   ticketId: string,
-): Promise<Result<{ statusKey: string | null; reason: string }>> {
+): Promise<Result<EndOfRunDecision>> {
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
     select: {
@@ -1289,7 +1295,7 @@ export async function decideEndOfRunStatus(
 
   const currentKey = ticket.status?.key ?? "";
   if (currentKey !== "building") {
-    return { ok: true, statusKey: null, reason: "not-building" };
+    return { ok: true, kind: "not-building" };
   }
 
   const statuses = await prisma.status.findMany({
@@ -1301,31 +1307,31 @@ export async function decideEndOfRunStatus(
 
   const pr = parseGitHubPrUrl(ticket.prUrl);
   if (!ticket.prUrl || !pr) {
-    return { ok: true, statusKey: null, reason: "no-pr" };
+    return { ok: true, kind: "no-pr" };
   }
 
   const outcome = await getPrStatusForUser({ userId: ctx.userId, pr });
   if (outcome.kind !== "ok") {
-    return { ok: true, statusKey: null, reason: `pr-${outcome.kind}` };
+    return { ok: true, kind: "pr-error", code: outcome.kind };
   }
   const s = outcome.status;
   let target: string | null = null;
-  let reason = "pr-open";
+  let prOutcome: "open" | "merged" | "closed" | "conflict" = "open";
   if (s.merged) {
     target = pick("completed") ?? pick("review");
-    reason = "pr-merged";
+    prOutcome = "merged";
   } else if (s.state === "closed") {
     target = pick("blocked") ?? pick("review");
-    reason = "pr-closed";
+    prOutcome = "closed";
   } else if (s.mergeable === false) {
     target = pick("blocked") ?? pick("review");
-    reason = "pr-conflict";
+    prOutcome = "conflict";
   } else {
     target = pick("review");
-    reason = "pr-open";
+    prOutcome = "open";
   }
   if (!target || target === currentKey) {
-    return { ok: true, statusKey: null, reason: `${reason}-noop` };
+    return { ok: true, kind: "pr-noop", outcome: prOutcome };
   }
   await moveTicketToStatusKey({
     ticketId,
@@ -1333,7 +1339,7 @@ export async function decideEndOfRunStatus(
     byUserId: ctx.userId,
   });
   revalidatePath("/");
-  return { ok: true, statusKey: target, reason };
+  return { ok: true, kind: "moved", statusKey: target };
 }
 
 export async function logWorkflowActivity(input: {
