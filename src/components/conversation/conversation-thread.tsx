@@ -2,6 +2,7 @@
 
 import { formatDistanceToNowStrict } from "date-fns";
 import {
+  ArrowDown,
   ArrowRight,
   Bot,
   CheckCircle2,
@@ -67,7 +68,25 @@ export function ConversationThread({
     { targetType: "USER" | "AGENT" | "TICKET"; targetId: string; label: string }[]
   >([]);
   const [loaded, setLoaded] = useState(false);
+  // Sticky-bottom scroll: pin to the bottom when new messages land only if
+  // the user is already at the bottom. If they've scrolled up to read, leave
+  // their position alone and surface a "Jump to latest" affordance instead.
+  //
+  // The mechanics mirror the live ticket chat (ticket-agent-panel.tsx): a
+  // synchronous scroll listener owns the live at-bottom truth, while the pin
+  // effect re-reads the live scroll position so a streaming chunk that lands
+  // in the same tick the user scrolls up can't yank them back.
   const scrollerRef = useRef<HTMLDivElement>(null);
+  // 32px forgives a freshly-rendered row and sub-pixel scroll offsets while
+  // staying tight enough that a deliberate scroll-up is detected immediately.
+  const AT_BOTTOM_THRESHOLD = 32;
+  const atBottomRef = useRef(true);
+  // Programmatic scrolls fire a scroll event. Without this guard the listener
+  // would briefly observe scrollTop > scrollHeight - clientHeight and flicker
+  // atBottom to false for one frame.
+  const isPinningRef = useRef(false);
+  const [atBottom, setAtBottom] = useState(true);
+  const didInitialScrollRef = useRef(false);
 
   const upsertMessage = useCallback((m: MessageEventPayload) => {
     setMessages((prev) => {
@@ -223,15 +242,74 @@ export function ConversationThread({
     return out;
   }, [order, messages, activities]);
 
-  // Auto-scroll to bottom when a new message lands while the user is already
-  // near the bottom. Don't yank them up if they've scrolled back in history.
+  // Sync scroll listener: own the live at-bottom truth so the pin effect
+  // below can read it synchronously without racing async observers.
   useEffect(() => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const threshold = 80;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-    if (nearBottom) el.scrollTop = el.scrollHeight;
-  }, [rows.length]);
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const update = (): void => {
+      if (isPinningRef.current) return;
+      const next =
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= AT_BOTTOM_THRESHOLD;
+      if (atBottomRef.current !== next) {
+        atBottomRef.current = next;
+        setAtBottom(next);
+      }
+    };
+    scroller.addEventListener("scroll", update, { passive: true });
+    // Seed once on attach so the mirror reflects reality even if no scroll
+    // event fires (content shorter than the viewport).
+    update();
+    return () => scroller.removeEventListener("scroll", update);
+  }, [loaded]);
+
+  // Pin on row changes, but only if the user is currently at the bottom.
+  // First hydration (loaded → true with rows present) always pins so opening
+  // the thread lands on the newest message. Subsequent pins read live
+  // scrollTop synchronously to defeat the streaming-chunk-vs-scroll-up race.
+  useEffect(() => {
+    if (!loaded || rows.length === 0) return;
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const pin = (): void => {
+      isPinningRef.current = true;
+      scroller.scrollTop = scroller.scrollHeight;
+      atBottomRef.current = true;
+      setAtBottom(true);
+      // Release suppression on the next frame, after the browser emits the
+      // scroll event for our programmatic write.
+      requestAnimationFrame(() => {
+        isPinningRef.current = false;
+      });
+    };
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true;
+      pin();
+      return;
+    }
+    const nearBottom =
+      scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= AT_BOTTOM_THRESHOLD;
+    if (nearBottom) pin();
+    else if (atBottomRef.current) {
+      // Live position says we're scrolled away but the ref hasn't caught up
+      // (e.g. a chunk landed before the scroll listener fired). Reconcile so
+      // the Jump button surfaces immediately.
+      atBottomRef.current = false;
+      setAtBottom(false);
+    }
+  }, [rows, loaded]);
+
+  const jumpToLatest = useCallback(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    isPinningRef.current = true;
+    scroller.scrollTop = scroller.scrollHeight;
+    atBottomRef.current = true;
+    setAtBottom(true);
+    requestAnimationFrame(() => {
+      isPinningRef.current = false;
+    });
+  }, []);
 
   const send = useCallback(async () => {
     const body = composerBody.trim();
@@ -260,21 +338,34 @@ export function ConversationThread({
 
   return (
     <div className="flex h-full flex-col">
-      <div ref={scrollerRef} className="flex-1 space-y-4 overflow-y-auto px-1 py-2">
-        {!loaded ? (
-          <div className="flex justify-center py-6 text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-          </div>
-        ) : rows.length === 0 ? (
-          <div className="py-6 text-center text-xs text-muted-foreground">No activity yet.</div>
-        ) : (
-          rows.map((r) =>
-            r.kind === "message" ? (
-              <MessageRow key={r.message.id} message={r.message} />
-            ) : (
-              <ActivityRow key={r.activity.id} activity={r.activity} />
-            ),
-          )
+      <div className="relative flex-1 min-h-0">
+        <div ref={scrollerRef} className="absolute inset-0 space-y-4 overflow-y-auto px-1 py-2">
+          {!loaded ? (
+            <div className="flex justify-center py-6 text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="py-6 text-center text-xs text-muted-foreground">No activity yet.</div>
+          ) : (
+            rows.map((r) =>
+              r.kind === "message" ? (
+                <MessageRow key={r.message.id} message={r.message} />
+              ) : (
+                <ActivityRow key={r.activity.id} activity={r.activity} />
+              ),
+            )
+          )}
+        </div>
+        {loaded && rows.length > 0 && !atBottom && (
+          <button
+            type="button"
+            onClick={jumpToLatest}
+            aria-label="Jump to most recent message"
+            className="absolute right-3 bottom-3 inline-flex items-center gap-1 rounded-full border border-border bg-background/95 px-3 py-1 text-[11px] text-foreground shadow-md backdrop-blur transition-colors hover:bg-muted"
+          >
+            <ArrowDown className="size-3" aria-hidden />
+            Jump to latest
+          </button>
         )}
       </div>
       <div className="pt-3">
