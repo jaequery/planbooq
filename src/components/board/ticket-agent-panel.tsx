@@ -843,7 +843,20 @@ function DesktopPanel({
             }
           }
           if (cancelled) return;
-          if (liveSid) {
+          // Status key is the source of truth for "should the agent be
+          // running?". If the ticket already left `building` (e.g. ship moved
+          // it to review while the panel was closed, or a webhook merged it
+          // to completed), don't resurrect "thinking…" on remount and
+          // best-effort kill the lingering broker session so it stops
+          // burning tokens. Covers the second screenshot's symptom — Review
+          // ticket reopening with a spinning chat orb because a broker
+          // session outlived the ticket's status transition.
+          if (liveSid && statusKeyRef.current && statusKeyRef.current !== "building") {
+            if (bridge?.agentStop) {
+              void bridge.agentStop({ sessionId: liveSid }).catch(() => undefined);
+            }
+            setBusy(false);
+          } else if (liveSid) {
             setSessionId(liveSid);
             setBusy(true);
           } else {
@@ -869,31 +882,41 @@ function DesktopPanel({
   // render the local turn so duplicates from realtime are absorbed.
   const onRealtimeEvent = useCallback(
     (event: AblyChannelEvent) => {
-      // When the ticket lands in Blocked from outside this panel (user DnD
-      // on the kanban board, status picker, another browser tab, an API
-      // call), kill the live session so the agent actually stops — not just
-      // the column label. Without this, the panel's local optimistic flips
-      // bounce the status between Running and Blocked while `pnpm lint` /
-      // `typecheck` continue in the background. See ticket PLAN-S7J167.
+      // When the ticket leaves `building` from outside this panel — user DnD
+      // on the kanban board, status picker, `pbq ship` (review), GitHub merge
+      // webhook (completed), another browser tab, an API call — kill the
+      // live session so the agent actually stops instead of grinding on in
+      // the worktree while the column label has already moved on. Covers
+      // the original Blocked symptom (PR #179) plus the post-ship "thinking…"
+      // hang where the Claude subprocess kept running for minutes after
+      // `pbq ship` already flipped the ticket to Review.
       if (
         event.name === "ticket.moved" &&
         event.ticketId === ticketId &&
-        event.toStatusKey === "blocked"
+        event.toStatusKey &&
+        event.toStatusKey !== "building"
       ) {
-        // Consume the self-write latch: any blocked write the panel itself
+        const toKey = event.toStatusKey;
+        // Consume the self-write latch: any status write the panel itself
         // initiated (setBlockedIfAwaiting / decideEndOfRun / errorEnd /
         // queued-step gate) round-trips through Ably and would re-enter
         // here. Killing on the echo would tear down sessions the user
         // expects to stay alive (e.g. agent paused on a question).
         const latch = selfStatusWriteRef.current;
-        if (latch && latch.key === "blocked" && Date.now() - latch.ts < SELF_WRITE_WINDOW_MS) {
+        if (latch && latch.key === toKey && Date.now() - latch.ts < SELF_WRITE_WINDOW_MS) {
           selfStatusWriteRef.current = null;
-          statusKeyRef.current = "blocked";
+          statusKeyRef.current = toKey;
           return;
         }
-        // External Blocked — treat as a user-driven stop.
-        statusKeyRef.current = "blocked";
-        userBlockedRef.current = true;
+        // External move out of building — treat as a user-driven stop.
+        statusKeyRef.current = toKey;
+        if (toKey === "blocked") {
+          userBlockedRef.current = true;
+        }
+        // Drop any queued workflow steps. Without this, the drain effect
+        // would see busy=false post-halt, pull the next step off the queue,
+        // and start a fresh session on the ticket we just decided is done.
+        workflowQueueRef.current = [];
         const sid = sessionIdRef.current;
         const bridge = getDesktopBridge();
         if (sid && bridge) {
@@ -903,6 +926,11 @@ function DesktopPanel({
           markSessionStoppedByUser(sid);
           void bridge.agentStop({ sessionId: sid }).catch(() => undefined);
         }
+        // Flip busy off immediately so the chat orb stops showing "thinking…"
+        // without waiting for the bridge's exit event to round-trip. The exit
+        // handler still runs and clears sessionId / patches AgentJob status.
+        setBusy(false);
+        clearIdleTimer();
         return;
       }
       if (event.name === "ticket.workflow.dispatch" && event.ticketId === ticketId) {

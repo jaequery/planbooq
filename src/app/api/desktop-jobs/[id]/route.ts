@@ -123,13 +123,20 @@ export async function PATCH(
   // Status-mutation path (terminal events, worktree/session-id stamps). Runs
   // as a separate query so the hot append path stays single-roundtrip.
   const statusData: Record<string, unknown> = {};
-  if (parsed.data.status) {
+  // First-terminal-wins: if the row is already terminal (e.g. shipTicketSvc
+  // pre-marked it SUCCEEDED before the chat subprocess actually exited), a
+  // later bridge-exit PATCH must not demote it to CANCELED/FAILED. Skip the
+  // status write in that case; other fields below (exitCode, claudeSessionId,
+  // worktreePath) still flow through so the row stays accurate.
+  const existingIsTerminal = job.status !== "RUNNING";
+  const incomingIsTerminal =
+    parsed.data.status === "SUCCEEDED" ||
+    parsed.data.status === "FAILED" ||
+    parsed.data.status === "CANCELED";
+  const wouldDemoteTerminal = existingIsTerminal && incomingIsTerminal;
+  if (parsed.data.status && !wouldDemoteTerminal) {
     statusData.status = parsed.data.status;
-    if (
-      parsed.data.status === "SUCCEEDED" ||
-      parsed.data.status === "FAILED" ||
-      parsed.data.status === "CANCELED"
-    ) {
+    if (incomingIsTerminal) {
       statusData.finishedAt = new Date();
     }
   }
@@ -149,13 +156,12 @@ export async function PATCH(
   if (parsed.data.appendOutput) {
     void mirrorAppendOutput({ job, appendOutput: parsed.data.appendOutput });
   }
-  if (
-    parsed.data.status === "SUCCEEDED" ||
-    parsed.data.status === "FAILED" ||
-    parsed.data.status === "CANCELED"
-  ) {
+  if (incomingIsTerminal && !wouldDemoteTerminal) {
     // Read the now-final blob once on terminal. We skipped it on the hot path
     // above so this is the only place the full output gets pulled across.
+    // Suppressed on demote-attempt — the first terminal write already
+    // mirrored, and a second pass would double-write NOTE rows and step
+    // transitions.
     void prisma.agentJob
       .findUnique({ where: { id }, select: { output: true } })
       .then((row) => {
@@ -183,7 +189,11 @@ export async function PATCH(
 
   // Fanout for cross-tab/cross-client liveness.
   // Ably caps a single publish at 64KB; chunk large appendOutput so we stay under it.
-  if (job.workspaceId && (parsed.data.appendOutput || parsed.data.status)) {
+  // Suppress the `status` field on a demote-attempt — subscribers must see
+  // the first-terminal-wins outcome (e.g. shipTicketSvc's SUCCEEDED), not the
+  // bridge-exit CANCELED/FAILED we just discarded above.
+  const broadcastStatus = wouldDemoteTerminal ? undefined : parsed.data.status;
+  if (job.workspaceId && (parsed.data.appendOutput || broadcastStatus)) {
     const workspaceId = job.workspaceId;
     const kind = (job.kind as "PLAN" | "EXECUTE" | "CHAT") ?? "CHAT";
     const baseEvent = {
@@ -205,14 +215,14 @@ export async function PATCH(
         void publishWorkspaceEvent(workspaceId, {
           ...baseEvent,
           appendOutput: chunks[i],
-          status: isLast ? parsed.data.status : undefined,
+          status: isLast ? broadcastStatus : undefined,
         });
       }
     } else {
       void publishWorkspaceEvent(workspaceId, {
         ...baseEvent,
         appendOutput: undefined,
-        status: parsed.data.status,
+        status: broadcastStatus,
       });
     }
   }
@@ -221,12 +231,10 @@ export async function PATCH(
   // `decideEndOfRun` only fires while the ticket dialog is mounted, so a
   // user who closed the dialog mid-run would otherwise leave the card
   // stranded in `building` forever. When the job hits a terminal status,
-  // demote the ticket here too.
-  const isTerminal =
-    parsed.data.status === "SUCCEEDED" ||
-    parsed.data.status === "FAILED" ||
-    parsed.data.status === "CANCELED";
-  if (isTerminal && job.ticketId) {
+  // demote the ticket here too. Suppressed on demote-attempt: reconcile is
+  // internally idempotent (bails on non-building tickets), but the first
+  // terminal write already ran it; firing again is wasted work.
+  if (incomingIsTerminal && !wouldDemoteTerminal && job.ticketId) {
     void reconcileBuildingTicket({
       ticketId: job.ticketId,
       byUserId: job.userId ?? userId,
