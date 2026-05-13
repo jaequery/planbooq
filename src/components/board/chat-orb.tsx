@@ -1,12 +1,13 @@
 "use client";
 
-import { Check, ChevronDown, ImageIcon, Loader2, Settings2, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { Check, ChevronDown, HelpCircle, ImageIcon, Loader2, Settings2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { quickCreateTicket } from "@/actions/ticket";
 import { listWorkflowTemplates } from "@/actions/workflow";
 import { WorkflowManagerDialog } from "@/components/board/workflow-manager-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Ticket, TicketWithRelations } from "@/lib/types";
 
 type Props = {
@@ -153,6 +154,17 @@ export function ChatOrb({
   // point.
   const effectiveAutoExecute =
     selectedWorkflowId !== null && selectedWorkflowId === defaultWorkflowTemplateId;
+
+  // Label rendered on the auto-run pill: the selected workflow's name when we
+  // can resolve one, otherwise the generic "Auto-run" so the disabled / not-yet-
+  // loaded state still reads as itself.
+  const displayLabel = useMemo(() => {
+    if (selectedWorkflowId && templates) {
+      const match = templates.find((t) => t.id === selectedWorkflowId);
+      if (match) return match.name;
+    }
+    return "Auto-run";
+  }, [selectedWorkflowId, templates]);
 
   // Load the persisted selection on mount.
   useEffect(() => {
@@ -534,8 +546,25 @@ export function ChatOrb({
                     }`}
                   />
                 </span>
-                <span>Auto-run</span>
+                <span className="max-w-[8rem] truncate">{displayLabel}</span>
               </button>
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="What is auto-run?"
+                      className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
+                    >
+                      <HelpCircle className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" sideOffset={6} className="max-w-[15rem] text-center">
+                    Auto-run dispatches the selected workflow as soon as a ticket is created. Toggle
+                    off to keep workflows manual.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
                 <PopoverTrigger asChild>
                   <button
