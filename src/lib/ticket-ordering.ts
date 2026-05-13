@@ -8,10 +8,10 @@ export function compareTicketsByPosition(
   a: PositionOrderedTicket,
   b: PositionOrderedTicket,
 ): number {
-  const diff = a.position - b.position;
+  const diff = b.position - a.position;
   if (diff !== 0) return diff;
   const updatedDiff = +new Date(b.updatedAt) - +new Date(a.updatedAt);
-  return updatedDiff !== 0 ? updatedDiff : a.id.localeCompare(b.id);
+  return updatedDiff !== 0 ? updatedDiff : b.id.localeCompare(a.id);
 }
 
 export function sortTicketsByPosition<T extends PositionOrderedTicket>(tickets: T[]): T[] {

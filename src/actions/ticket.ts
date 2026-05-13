@@ -688,7 +688,7 @@ export async function loadMoreTicketsForStatus(
 
     const rows = await prisma.ticket.findMany({
       where: { projectId, statusId, archivedAt: null },
-      orderBy: [{ position: "asc" }, { id: "asc" }],
+      orderBy: [{ position: "desc" }, { id: "desc" }],
       take: limit + 1,
       cursor: { id: cursor },
       skip: 1,
