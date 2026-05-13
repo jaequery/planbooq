@@ -139,6 +139,11 @@ export async function moveTicketToStatusId(args: {
     projectId: ticket.projectId,
     fromStatusId,
     toStatusId,
+    // Subscribers that need to react to specific columns (e.g. the chat
+    // panel killing a live agent session when the ticket lands in
+    // `blocked`) shouldn't have to do a second status lookup. `target` was
+    // already fetched above, so this is a free derivation.
+    toStatusKey: target.key,
     position,
     by: args.by,
     cleanup: args.cleanup,

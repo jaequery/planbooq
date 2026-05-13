@@ -99,6 +99,10 @@ export type AblyChannelEvent =
       projectId: string;
       fromStatusId: string;
       toStatusId: string;
+      // Destination status key (e.g. "blocked", "building"). Set by mutators
+      // that know the key — chat panels react to specific keys without an
+      // extra lookup. Optional because legacy publishers may only carry the id.
+      toStatusKey?: string;
       position: number;
       by: string;
       // Set when moving to Completed via merge (webhook or in-app merge): the

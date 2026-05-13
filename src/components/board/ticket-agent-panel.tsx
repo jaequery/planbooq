@@ -524,11 +524,17 @@ function DesktopPanel({
       .join("\n\n");
     if (!turnText || !looksLikeAwaitingUser(turnText)) return;
     statusKeyRef.current = "blocked";
+    markSelfStatusWrite("blocked");
     void applyWorkflowStatusSuggestion(ticketId, "blocked").catch(() => {});
   };
   const clearBlocked = () => {
     if (statusKeyRef.current !== "blocked") return;
+    // If the user (or webhook / API) parked the ticket in Blocked, don't
+    // un-block it just because the agent emitted another chunk. Only the
+    // user's next message clears the latch.
+    if (userBlockedRef.current) return;
     statusKeyRef.current = "building";
+    markSelfStatusWrite("building");
     void applyWorkflowStatusSuggestion(ticketId, "building").catch(() => {});
   };
 
@@ -542,6 +548,13 @@ function DesktopPanel({
       const r = await decideEndOfRunStatus(ticketId);
       if (r.ok && r.statusKey) {
         statusKeyRef.current = r.statusKey;
+        // decideEndOfRunStatus moves the ticket server-side via
+        // moveTicketToStatusKey, which publishes the same `ticket.moved`
+        // event the realtime handler watches. Stamp the self-write latch
+        // so the echo doesn't trigger an erroneous agentStop (the session
+        // is already winding down anyway, but keeping the latch in sync
+        // with every server-driven self-write is the safe invariant).
+        markSelfStatusWrite(r.statusKey);
         return;
       }
     } catch {
@@ -590,6 +603,7 @@ function DesktopPanel({
       }
       if (suggested && suggested !== statusKeyRef.current) {
         statusKeyRef.current = suggested;
+        markSelfStatusWrite(suggested);
         await applyWorkflowStatusSuggestion(ticketId, suggested).catch(() => {});
       }
     } catch {
@@ -660,6 +674,26 @@ function DesktopPanel({
   // only record steps that actually handed off to the desktop bridge (otherwise
   // a failed send would latch forever and block redelivery).
   const inFlightWorkflowDispatchRef = useRef<Set<string>>(new Set());
+  // Latched when the user (or anything outside this panel) moves the ticket
+  // into `blocked` while a session is live. While set, the panel must NOT
+  // flip the status back to `building` on the next streamed chunk — that's
+  // exactly the "rapid Running↔Blocked oscillation" symptom we're fixing.
+  // Cleared the next time we send a user message (the user has resumed the
+  // turn) or when the session is torn down.
+  const userBlockedRef = useRef(false);
+  // Round-trip latch: any status write the panel initiates locally
+  // (applyWorkflowStatusSuggestion / decideEndOfRunStatus / etc.) round-trips
+  // via the Ably `ticket.moved` channel back to this same component. We must
+  // NOT treat that echo as a "user moved the ticket to Blocked" signal —
+  // otherwise auto-Blocked (agent asked a question, session should stay
+  // alive) would kill the running child. Stamp `{key, ts}` right before each
+  // self-initiated write; the realtime handler consumes the latch when the
+  // matching event arrives within `SELF_WRITE_WINDOW_MS`.
+  const SELF_WRITE_WINDOW_MS = 5_000;
+  const selfStatusWriteRef = useRef<{ key: string; ts: number } | null>(null);
+  const markSelfStatusWrite = (key: string) => {
+    selfStatusWriteRef.current = { key, ts: Date.now() };
+  };
   // Mirror of `busy` for closures (Ably handler, drain effect) that need the
   // current value without re-subscribing on every state flip.
   const busyRef = useRef(false);
@@ -835,6 +869,42 @@ function DesktopPanel({
   // render the local turn so duplicates from realtime are absorbed.
   const onRealtimeEvent = useCallback(
     (event: AblyChannelEvent) => {
+      // When the ticket lands in Blocked from outside this panel (user DnD
+      // on the kanban board, status picker, another browser tab, an API
+      // call), kill the live session so the agent actually stops — not just
+      // the column label. Without this, the panel's local optimistic flips
+      // bounce the status between Running and Blocked while `pnpm lint` /
+      // `typecheck` continue in the background. See ticket PLAN-S7J167.
+      if (
+        event.name === "ticket.moved" &&
+        event.ticketId === ticketId &&
+        event.toStatusKey === "blocked"
+      ) {
+        // Consume the self-write latch: any blocked write the panel itself
+        // initiated (setBlockedIfAwaiting / decideEndOfRun / errorEnd /
+        // queued-step gate) round-trips through Ably and would re-enter
+        // here. Killing on the echo would tear down sessions the user
+        // expects to stay alive (e.g. agent paused on a question).
+        const latch = selfStatusWriteRef.current;
+        if (latch && latch.key === "blocked" && Date.now() - latch.ts < SELF_WRITE_WINDOW_MS) {
+          selfStatusWriteRef.current = null;
+          statusKeyRef.current = "blocked";
+          return;
+        }
+        // External Blocked — treat as a user-driven stop.
+        statusKeyRef.current = "blocked";
+        userBlockedRef.current = true;
+        const sid = sessionIdRef.current;
+        const bridge = getDesktopBridge();
+        if (sid && bridge) {
+          // Same flow as the manual Stop button — mark BEFORE agentStop so
+          // the resulting exit event is classified as user-canceled (not a
+          // failure that would re-bucket the ticket).
+          markSessionStoppedByUser(sid);
+          void bridge.agentStop({ sessionId: sid }).catch(() => undefined);
+        }
+        return;
+      }
       if (event.name === "ticket.workflow.dispatch" && event.ticketId === ticketId) {
         // Server-driven workflow chaining. The Inngest function
         // `workflow-step-completed` publishes this after a step succeeds and
@@ -1014,6 +1084,7 @@ function DesktopPanel({
         if (r.errorEnd) {
           if (statusKeyRef.current !== "blocked") {
             statusKeyRef.current = "blocked";
+            markSelfStatusWrite("blocked");
             void applyWorkflowStatusSuggestion(ticketId, "blocked").catch(() => {});
           }
           const summary = r.errorEnd.summary.replace(/\s+/g, " ").trim();
@@ -1042,6 +1113,7 @@ function DesktopPanel({
         // Blocked card the user dismisses with one click is not.
         if (hadQueuedNextStep && statusKeyRef.current === "building") {
           statusKeyRef.current = "blocked";
+          markSelfStatusWrite("blocked");
           void applyWorkflowStatusSuggestion(ticketId, "blocked").catch(() => {});
         }
         // If neither the regex nor the workflow-gate moved us, fall back to
@@ -1139,11 +1211,7 @@ function DesktopPanel({
   };
 
   const sendRef = useRef<
-    | ((
-        override?: string,
-        opts?: { workflowStepRunId?: string | null },
-      ) => Promise<boolean>)
-    | null
+    ((override?: string, opts?: { workflowStepRunId?: string | null }) => Promise<boolean>) | null
   >(null);
   const workflowQueueDrainingRef = useRef(false);
   const workflowDrainFailAttemptsRef = useRef(0);
@@ -1239,6 +1307,7 @@ function DesktopPanel({
     const terminal = cur === "review" || cur === "completed";
     if (running && cur !== "building" && !terminal) {
       statusKeyRef.current = "building";
+      markSelfStatusWrite("building");
       void applyWorkflowStatusSuggestion(ticketId, "building").catch(() => {});
     }
   }, [busy, ticketId]);
@@ -1252,7 +1321,10 @@ function DesktopPanel({
     const message = (override ?? input).trim();
     if (!message) return false;
     // User is responding — undo any auto-Blocked move so the card lands back
-    // in Running while Claude works on the reply.
+    // in Running while Claude works on the reply. Sending a new prompt also
+    // clears the user-driven Blocked latch (the user explicitly resumed),
+    // otherwise clearBlocked() would refuse to demote the status.
+    userBlockedRef.current = false;
     clearBlocked();
 
     if (typeof bridge.agentStart !== "function" || typeof bridge.agentSend !== "function") {
