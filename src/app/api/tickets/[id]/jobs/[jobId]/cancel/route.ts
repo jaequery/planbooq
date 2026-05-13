@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
-import { logger } from "@/lib/logger";
-import { publishAgentEvent, publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
-import { reconcileBuildingTicket } from "@/server/services/ticket-status";
+import { cancelAgentJob } from "@/server/services/agent-jobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +15,10 @@ export const dynamic = "force-dynamic";
  * the remote agent can SIGTERM its `claude` child. PLAN streams continue
  * to write into the (now-CANCELED) row until the upstream fetch ends; the
  * client aborts its own read so the user sees an immediate stop.
+ *
+ * Cancellation side-effects live in `cancelAgentJob` (services/agent-jobs)
+ * so `deleteTicketSvc` can reuse the same path when a ticket is deleted
+ * mid-execution.
  */
 export async function POST(
   _req: Request,
@@ -43,51 +45,28 @@ export async function POST(
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
 
-  const job = await prisma.agentJob.findUnique({ where: { id: jobId } });
+  const job = await prisma.agentJob.findUnique({
+    where: { id: jobId },
+    select: { id: true, ticketId: true },
+  });
   if (!job || job.ticketId !== ticketId) {
     return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   }
 
-  if (job.status !== "PENDING" && job.status !== "RUNNING") {
-    return NextResponse.json({ ok: true, data: { status: job.status, alreadyTerminal: true } });
-  }
-
-  const updated = await prisma.agentJob.update({
-    where: { id: jobId },
-    data: {
-      status: "CANCELED",
-      finishedAt: new Date(),
-      error: job.error ?? "canceled_by_user",
-    },
-    select: { id: true, kind: true, agentId: true, workspaceId: true },
-  });
-
-  const workspaceId = updated.workspaceId ?? ticket.workspaceId;
-  void publishWorkspaceEvent(workspaceId, {
-    name: "agent.delta",
-    workspaceId,
-    ticketId,
+  const result = await cancelAgentJob({
     jobId,
-    kind: (updated.kind as "PLAN" | "EXECUTE" | "CHAT") ?? "CHAT",
-    status: "CANCELED",
+    reason: "canceled_by_user",
+    byUserId: userId,
   });
 
-  if (updated.agentId) {
-    void publishAgentEvent(updated.agentId, "job.cancel", { jobId, ticketId }).catch((err) => {
-      logger.warn("job.cancel.publish.failed", {
-        jobId,
-        agentId: updated.agentId,
-        error: err instanceof Error ? err.message : String(err),
-      });
+  if (result.status === "NOT_FOUND") {
+    return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  }
+  if (result.status === "ALREADY_TERMINAL") {
+    return NextResponse.json({
+      ok: true,
+      data: { status: result.jobStatus, alreadyTerminal: true },
     });
   }
-
-  void reconcileBuildingTicket({
-    ticketId,
-    byUserId: userId,
-    excludeJobId: jobId,
-    jobStatus: "CANCELED",
-  }).catch(() => undefined);
-
   return NextResponse.json({ ok: true, data: { status: "CANCELED" } });
 }

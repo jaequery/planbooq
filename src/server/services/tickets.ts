@@ -5,11 +5,13 @@ import type { ServerActionResult, TicketWithRelations } from "@/lib/types";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
 import { inngest } from "@/server/inngest/client";
+import { cancelAgentJob } from "@/server/services/agent-jobs";
 import { ensureLegacyPrRecorded } from "@/server/services/ticket-pull-requests";
 import {
   autoTransitionPlanningToTodo,
   moveTicketToStatusId,
 } from "@/server/services/ticket-status";
+import { workflowCommander } from "@/server/services/workflow-commander";
 
 const TICKET_RELATIONS_INCLUDE = {
   assignee: { select: { id: true, name: true, email: true, image: true } },
@@ -332,6 +334,44 @@ export async function deleteTicketSvc(
     const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } });
     if (!ticket) return { ok: false, error: "ticket_not_found" };
     await requireMembership(ticket.workspaceId, userId);
+
+    // Pre-delete cleanup of in-flight work. The Prisma `onDelete: Cascade`
+    // alone removes AgentJob / WorkflowRun rows but does not signal the
+    // desktop agent to SIGTERM its `claude` child (that requires a
+    // `job.cancel` event on the agent channel) and does not stop Inngest's
+    // step-completion handler from advancing to the next workflow step
+    // (it CAS-updates against status RUNNING, which only flips here).
+    // Worktree teardown on the desktop is the agent's job once it receives
+    // `job.cancel`; we don't drive that from the server.
+    const runningJobs = await prisma.agentJob.findMany({
+      where: { ticketId, status: { in: ["PENDING", "RUNNING"] } },
+      select: { id: true },
+    });
+    if (runningJobs.length > 0) {
+      await Promise.allSettled(
+        runningJobs.map((j) =>
+          cancelAgentJob({
+            jobId: j.id,
+            reason: "ticket_deleted",
+            byUserId: userId,
+            reconcileTicket: false,
+          }),
+        ),
+      );
+    }
+
+    const runningRuns = await prisma.workflowRun.findMany({
+      where: { ticketId, status: { in: ["PENDING", "RUNNING"] } },
+      select: { id: true },
+    });
+    if (runningRuns.length > 0) {
+      await Promise.allSettled(
+        runningRuns.map((r) =>
+          workflowCommander.cancelRun({ runId: r.id, reason: "ticket_deleted" }),
+        ),
+      );
+    }
+
     await prisma.ticket.delete({ where: { id: ticketId } });
     await publishWorkspaceEvent(ticket.workspaceId, {
       name: "ticket.deleted",
