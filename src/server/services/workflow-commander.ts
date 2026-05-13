@@ -49,6 +49,39 @@ export function withWorkflowStepBoundary(args: {
   ].join("\n");
 }
 
+/** If Ably missed `ticket.workflow.dispatch`, the client can fetch the same
+ *  prompt payload for the authoritative RUNNING step. */
+export async function getRunningWorkflowDispatchForTicket(
+  ticketId: string,
+): Promise<{ runId: string; stepRunId: string; prompt: string } | null> {
+  const run = await prisma.workflowRun.findFirst({
+    where: { ticketId, status: "RUNNING" },
+    orderBy: { startedAt: "desc" },
+    select: {
+      id: true,
+      stepRuns: {
+        where: { status: "RUNNING" },
+        orderBy: { position: "asc" },
+        take: 1,
+        select: { id: true, name: true, prompt: true, position: true },
+      },
+    },
+  });
+  const step = run?.stepRuns[0];
+  if (!run || !step) return null;
+  const total = await prisma.workflowStepRun.count({ where: { runId: run.id } });
+  return {
+    runId: run.id,
+    stepRunId: step.id,
+    prompt: withWorkflowStepBoundary({
+      stepName: step.name,
+      position: step.position,
+      total,
+      prompt: step.prompt,
+    }),
+  };
+}
+
 async function publishActivity(args: {
   workspaceId: string;
   ticketId: string;
@@ -249,7 +282,9 @@ export const workflowCommander = {
       return { kind: "dispatch" as const, stepRun: next, activity, total: run.stepRuns.length };
     });
 
-    if (result.kind !== "dispatch") return { dispatched: false, reason: result.reason };
+    if (result.kind !== "dispatch") {
+      return { dispatched: false, reason: result.reason };
+    }
     await publishActivity({
       workspaceId: result.stepRun.run.workspaceId,
       ticketId: result.stepRun.run.ticketId,

@@ -9,7 +9,10 @@ import { prisma } from "@/server/db";
 import { getPrStatusForUser, parseGitHubPrUrl } from "@/server/services/github-pr";
 import { mirrorJobTerminal } from "@/server/services/mirror-agent-job";
 import { moveTicketToStatusKey, reconcileBuildingTicket } from "@/server/services/ticket-status";
-import { workflowCommander } from "@/server/services/workflow-commander";
+import {
+  getRunningWorkflowDispatchForTicket,
+  workflowCommander,
+} from "@/server/services/workflow-commander";
 
 type Ok<T> = T extends Record<string, never> ? { ok: true } : { ok: true } & T;
 type Err = { ok: false; error: string };
@@ -1199,6 +1202,20 @@ export async function triggerWorkflowRun(
 
   revalidatePath("/");
   return { ok: true, runId: run.runId, stepCount: recorded.length, stepRunIds };
+}
+
+export async function getRunningWorkflowDispatchForTicketAction(
+  ticketId: string,
+): Promise<
+  | { ok: true; payload: { runId: string; stepRunId: string; prompt: string } | null }
+  | Err
+> {
+  const ticket = await loadTicket(ticketId);
+  if (!ticket) return { ok: false, error: "not_found" };
+  const ctx = await requireMember(ticket.workspaceId);
+  if (!ctx.ok) return ctx;
+  const payload = await getRunningWorkflowDispatchForTicket(ticketId);
+  return { ok: true, payload };
 }
 
 /**
