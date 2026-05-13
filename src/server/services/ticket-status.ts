@@ -101,9 +101,9 @@ export async function moveTicketToStatusId(args: {
     if (before && after) {
       nextPosition = (before.position + after.position) / 2;
     } else if (after && !before) {
-      nextPosition = after.position - 1;
+      nextPosition = after.position + 1;
     } else if (before && !after) {
-      nextPosition = before.position + 1;
+      nextPosition = before.position - 1;
     } else {
       const last = await tx.ticket.findFirst({
         where: {

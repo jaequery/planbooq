@@ -66,8 +66,8 @@ function reorderInsert(list: Ticket[], inserted: Ticket, beforeTicketId: string 
 
 function computePosition(prev: Ticket | undefined, next: Ticket | undefined): number {
   if (prev && next) return (prev.position + next.position) / 2;
-  if (prev && !next) return prev.position + 1;
-  if (!prev && next) return next.position - 1;
+  if (prev && !next) return prev.position - 1;
+  if (!prev && next) return next.position + 1;
   return 1;
 }
 

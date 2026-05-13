@@ -35,7 +35,7 @@ export default async function ProjectPage({ params }: Props): Promise<React.Reac
       include: {
         tickets: {
           where: { projectId: project.id, archivedAt: null },
-          orderBy: [{ position: "asc" }, { id: "asc" }],
+          orderBy: [{ position: "desc" }, { id: "desc" }],
           // Fetch one extra row per column to detect whether more pages exist
           // without a second count query.
           take: TICKET_PAGE_SIZE + 1,
