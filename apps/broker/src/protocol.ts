@@ -18,8 +18,13 @@ export type TicketContext = {
 export type StartRequest = {
   // Worktree where claude should run. Main creates it before calling.
   worktreePath: string;
-  // First user message. Main has already prepended the PLANBOOQ.md preamble.
+  // Raw first user message — what we display in the chat thread. The broker
+  // persists this verbatim via the `{kind:"user"}` wire event.
   firstMessage: string;
+  // Optional instruction-only text prepended to `firstMessage` before being
+  // piped to Claude's stdin. Used for the PLANBOOQ.md re-read directive so
+  // Claude sees it without it leaking into the user-visible message body.
+  claudePreamble?: string;
   ticket?: TicketContext;
   // Server-side AgentJob id; broker will heartbeat against this row.
   jobId?: string;
@@ -33,11 +38,13 @@ export type StartRequest = {
 export type ResumeRequest = {
   worktreePath: string;
   claudeSessionId: string;
-  // First user message of the resumed chat. Main has already prepended the
-  // PLANBOOQ.md preamble (same line as `StartRequest.firstMessage`) so the
-  // resumed Claude session rereads the ticket context at the top of the
-  // new chat.
+  // Raw first user message of the resumed chat — displayed verbatim in the
+  // chat thread. Pair with `claudePreamble` if Claude needs additional
+  // stdin-only context (e.g. re-reading PLANBOOQ.md at session top).
   message: string;
+  // Optional instruction-only text prepended to `message` before being piped
+  // to Claude's stdin. Not persisted in the chat thread.
+  claudePreamble?: string;
   ticket?: TicketContext;
   jobId?: string;
   workflowStepRunId?: string | null;

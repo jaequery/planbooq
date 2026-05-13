@@ -155,10 +155,13 @@ async function findWorktreeForBranch(
 }
 
 // Every cold-start user message — fresh worktree (`agentStart`) or resumed
-// session in an existing worktree (`agentResume`) — is prefixed with this
-// line so Claude rereads PLANBOOQ.md at the top of every new chat. Warm
-// continuations via `agentSend` do not get it: Claude already has the file
-// in context from earlier in the same broker session.
+// session in an existing worktree (`agentResume`) — is paired with this
+// preamble so Claude rereads PLANBOOQ.md at the top of every new chat. The
+// broker prepends it onto Claude's stdin only; `patchUserMessage` persists
+// the raw user message, so this internal directive never leaks into the
+// user-visible chat thread. Warm continuations via `agentSend` do not get
+// it: Claude already has the file in context from earlier in the same
+// broker session.
 const PLANBOOQ_PREAMBLE =
   "Before doing anything else, read `PLANBOOQ.md` in the worktree root — it contains the ticket context, the `./.planbooq/pbq` CLI, and the exact shipping/error flow you must follow. Apply its rules for the entire session.\n\n";
 
@@ -535,7 +538,8 @@ export function registerAgentIpc(): void {
 
       const r = await callBroker<StartRequest, StartResponse>("POST", "/start", {
         worktreePath: wtPath,
-        firstMessage: PLANBOOQ_PREAMBLE + firstMessage,
+        firstMessage,
+        claudePreamble: PLANBOOQ_PREAMBLE,
         ticket: input.ticket,
         jobId: input.jobId,
         workflowStepRunId: input.workflowStepRunId,
@@ -588,7 +592,8 @@ export function registerAgentIpc(): void {
       const r = await callBroker<ResumeRequest, ResumeResponse>("POST", "/resume", {
         worktreePath: input.worktreePath,
         claudeSessionId: input.claudeSessionId,
-        message: PLANBOOQ_PREAMBLE + input.message,
+        message: input.message,
+        claudePreamble: PLANBOOQ_PREAMBLE,
         ticket: input.ticket,
         jobId: input.jobId,
         workflowStepRunId: input.workflowStepRunId,

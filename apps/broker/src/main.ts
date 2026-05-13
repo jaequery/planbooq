@@ -149,6 +149,7 @@ const server = http.createServer(async (req, res) => {
       const { sessionId } = startSession({
         worktreePath: body.worktreePath,
         firstMessage: body.firstMessage,
+        claudePreamble: body.claudePreamble,
         ticket: body.ticket,
         jobId: body.jobId,
         workflowStepRunId: body.workflowStepRunId,
@@ -169,6 +170,7 @@ const server = http.createServer(async (req, res) => {
         worktreePath: body.worktreePath,
         claudeSessionId: body.claudeSessionId,
         message: body.message,
+        claudePreamble: body.claudePreamble,
         ticket: body.ticket,
         jobId: body.jobId,
         workflowStepRunId: body.workflowStepRunId,
