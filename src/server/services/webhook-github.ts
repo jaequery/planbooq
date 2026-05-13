@@ -151,7 +151,7 @@ export async function autoCompleteTicketByPrUrl(
 
   const completed = await prisma.status.findFirst({
     where: { workspaceId: ticket.workspaceId, name: { equals: "Completed", mode: "insensitive" } },
-    select: { id: true },
+    select: { id: true, key: true },
   });
   if (!completed) {
     logger.warn("github.webhook.no_completed_status", { workspaceId: ticket.workspaceId });
@@ -209,6 +209,7 @@ export async function autoCompleteTicketByPrUrl(
     projectId: ticket.projectId,
     fromStatusId,
     toStatusId: completed.id,
+    toStatusKey: completed.key,
     position: finalPosition,
     by: "github-webhook",
     cleanup,

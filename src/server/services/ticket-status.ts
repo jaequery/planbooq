@@ -73,6 +73,7 @@ export async function moveTicketToStatusKey(args: {
     projectId: ticket.projectId,
     fromStatusId,
     toStatusId: target.id,
+    toStatusKey: args.toStatusKey,
     position,
     by: args.byUserId,
   });

@@ -308,6 +308,7 @@ export async function moveTicketSvc(
       projectId: ticket.projectId,
       fromStatusId,
       toStatusId: parsed.toStatusId,
+      toStatusKey: targetStatus.key,
       position: finalPosition,
       by: userId,
     });

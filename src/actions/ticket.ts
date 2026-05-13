@@ -150,6 +150,7 @@ export async function moveTicket(
       projectId: ticket.projectId,
       fromStatusId,
       toStatusId,
+      toStatusKey: targetStatus.key,
       position: finalPosition,
       by: userId,
     });
