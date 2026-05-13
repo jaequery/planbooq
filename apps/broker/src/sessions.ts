@@ -399,6 +399,10 @@ function spawnClaude(
 export type StartParams = {
   worktreePath: string;
   firstMessage: string;
+  // Instruction-only text prepended to `firstMessage` before piping to Claude's
+  // stdin. NOT persisted via `patchUserMessage` — keeps internal preamble out
+  // of the user-visible chat thread.
+  claudePreamble?: string;
   ticket?: TicketContext;
   jobId?: string;
   workflowStepRunId?: string | null;
@@ -425,7 +429,7 @@ export function startSession(params: StartParams): { sessionId: string } {
   };
   sessions.set(sessionId, s);
   if (s.jobId && s.apiBaseUrl && s.apiToken) startHeartbeat(s, sessionId);
-  proc.stdin?.write(userMessageFrame(params.firstMessage));
+  proc.stdin?.write(userMessageFrame((params.claudePreamble ?? "") + params.firstMessage));
   patchUserMessage(s, sessionId, params.firstMessage);
   return { sessionId };
 }
@@ -434,6 +438,8 @@ export type ResumeParams = {
   worktreePath: string;
   claudeSessionId: string;
   message: string;
+  // See `StartParams.claudePreamble` — same semantics on resume.
+  claudePreamble?: string;
   ticket?: TicketContext;
   jobId?: string;
   workflowStepRunId?: string | null;
@@ -463,7 +469,7 @@ export function resumeSession(params: ResumeParams): { sessionId: string } {
   };
   sessions.set(sessionId, s);
   if (s.jobId && s.apiBaseUrl && s.apiToken) startHeartbeat(s, sessionId);
-  proc.stdin?.write(userMessageFrame(params.message));
+  proc.stdin?.write(userMessageFrame((params.claudePreamble ?? "") + params.message));
   patchUserMessage(s, sessionId, params.message);
   return { sessionId };
 }

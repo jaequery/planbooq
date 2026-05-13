@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { workflowCommander } from "@/server/services/workflow-commander";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -181,15 +182,8 @@ export async function POST(
     select: { id: true },
   });
 
-  // Mark the step run RUNNING. Idempotent CAS from PENDING so a re-dispatch
-  // of an already-completed step doesn't yank it backwards.
   if (stepRunId) {
-    await prisma.workflowStepRun
-      .updateMany({
-        where: { id: stepRunId, status: "PENDING" },
-        data: { status: "RUNNING", startedAt },
-      })
-      .catch(() => undefined);
+    await workflowCommander.attachJobToStep({ stepRunId, jobId: job.id }).catch(() => undefined);
   }
 
   return NextResponse.json({ ok: true, data: { jobId: job.id } });

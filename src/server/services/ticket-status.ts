@@ -4,20 +4,36 @@ import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
-import { inngest } from "@/server/inngest/client";
 import { getPrStatusForUser, parseGitHubPrUrl } from "@/server/services/github-pr";
 import { recordStatusChangedActivity } from "@/server/services/ticket-activity";
 
+type MoveCleanup = {
+  worktreePath: string;
+  branch: string | null;
+};
+
+type TicketMoveResult = {
+  fromStatusId: string;
+  toStatusId: string;
+  position: number;
+  workspaceId: string;
+  projectId: string;
+};
+
 /**
- * Move a ticket to the status with the given key (e.g. "todo", "building").
- * Appends to the end of the destination column. Shared by drag-reorder and
- * status-aware CTAs.
+ * Canonical status transition path. Every caller that moves a ticket should
+ * use this so the DB update, activity row, cache invalidation, and realtime
+ * event stay in lockstep.
  */
-export async function moveTicketToStatusKey(args: {
+export async function moveTicketToStatusId(args: {
   ticketId: string;
-  toStatusKey: string;
-  byUserId: string;
-}): Promise<{ fromStatusId: string; toStatusId: string; position: number } | null> {
+  toStatusId: string;
+  by: string;
+  activityByUserId?: string | null;
+  beforeTicketId?: string | null;
+  afterTicketId?: string | null;
+  cleanup?: MoveCleanup | null;
+}): Promise<TicketMoveResult> {
   const ticket = await prisma.ticket.findUnique({
     where: { id: args.ticketId },
     select: {
@@ -28,36 +44,86 @@ export async function moveTicketToStatusKey(args: {
       archivedAt: true,
     },
   });
-  if (!ticket || ticket.archivedAt) return null;
+  if (!ticket) throw new Error("ticket_not_found");
+  if (ticket.archivedAt) throw new Error("ticket_archived");
 
-  const target = await prisma.status.findUnique({
-    where: {
-      workspaceId_key: { workspaceId: ticket.workspaceId, key: args.toStatusKey },
-    },
-    select: { id: true },
-  });
-  if (!target) return null;
+  const target = await prisma.status.findUnique({ where: { id: args.toStatusId } });
+  if (!target || target.workspaceId !== ticket.workspaceId) throw new Error("invalid_status");
 
+  const toStatusId = target.id;
   const fromStatusId = ticket.statusId;
-  if (fromStatusId === target.id) {
-    return { fromStatusId, toStatusId: target.id, position: 0 };
+  const beforeTicketId = args.beforeTicketId ?? null;
+  const afterTicketId = args.afterTicketId ?? null;
+  if (fromStatusId === toStatusId && !beforeTicketId && !afterTicketId) {
+    return {
+      fromStatusId,
+      toStatusId,
+      position: 0,
+      workspaceId: ticket.workspaceId,
+      projectId: ticket.projectId,
+    };
   }
 
-  const last = await prisma.ticket.findFirst({
-    where: {
-      statusId: target.id,
-      projectId: ticket.projectId,
-      workspaceId: ticket.workspaceId,
-      archivedAt: null,
-    },
-    orderBy: { position: "desc" },
-    select: { position: true },
-  });
-  const position = (last?.position ?? 0) + 1;
+  const position = await prisma.$transaction(async (tx) => {
+    const [before, after] = await Promise.all([
+      beforeTicketId
+        ? tx.ticket.findUnique({ where: { id: beforeTicketId } })
+        : Promise.resolve(null),
+      afterTicketId
+        ? tx.ticket.findUnique({ where: { id: afterTicketId } })
+        : Promise.resolve(null),
+    ]);
 
-  await prisma.ticket.update({
-    where: { id: ticket.id },
-    data: { statusId: target.id, position },
+    if (beforeTicketId) {
+      if (
+        !before ||
+        before.workspaceId !== ticket.workspaceId ||
+        before.projectId !== ticket.projectId ||
+        before.statusId !== toStatusId ||
+        before.archivedAt
+      ) {
+        throw new Error("invalid_anchor_before");
+      }
+    }
+    if (afterTicketId) {
+      if (
+        !after ||
+        after.workspaceId !== ticket.workspaceId ||
+        after.projectId !== ticket.projectId ||
+        after.statusId !== toStatusId ||
+        after.archivedAt
+      ) {
+        throw new Error("invalid_anchor_after");
+      }
+    }
+
+    let nextPosition: number;
+    if (before && after) {
+      nextPosition = (before.position + after.position) / 2;
+    } else if (after && !before) {
+      nextPosition = after.position - 1;
+    } else if (before && !after) {
+      nextPosition = before.position + 1;
+    } else {
+      const last = await tx.ticket.findFirst({
+        where: {
+          statusId: toStatusId,
+          projectId: ticket.projectId,
+          workspaceId: ticket.workspaceId,
+          archivedAt: null,
+        },
+        orderBy: { position: "desc" },
+        select: { position: true },
+      });
+      nextPosition = (last?.position ?? 0) + 1;
+    }
+
+    const result = await tx.ticket.updateMany({
+      where: { id: ticket.id, workspaceId: ticket.workspaceId },
+      data: { statusId: toStatusId, position: nextPosition },
+    });
+    if (result.count !== 1) throw new Error("ticket_update_failed");
+    return nextPosition;
   });
 
   const project = await prisma.project.findUnique({
@@ -72,33 +138,72 @@ export async function moveTicketToStatusKey(args: {
     workspaceId: ticket.workspaceId,
     projectId: ticket.projectId,
     fromStatusId,
-    toStatusId: target.id,
-    toStatusKey: args.toStatusKey,
+    toStatusId,
+    // Subscribers that need to react to specific columns (e.g. the chat
+    // panel killing a live agent session when the ticket lands in
+    // `blocked`) shouldn't have to do a second status lookup. `target` was
+    // already fetched above, so this is a free derivation.
+    toStatusKey: target.key,
     position,
-    by: args.byUserId,
+    by: args.by,
+    cleanup: args.cleanup,
   });
 
   await recordStatusChangedActivity({
     ticketId: ticket.id,
     workspaceId: ticket.workspaceId,
     fromStatusId,
-    toStatusId: target.id,
-    byUserId: args.byUserId ?? null,
+    toStatusId,
+    byUserId: args.activityByUserId ?? args.by,
   });
 
-  void inngest
-    .send({
-      name: "ticket/moved",
-      data: { ticketId: ticket.id, workspaceId: ticket.workspaceId },
-    })
-    .catch((error: unknown) => {
-      logger.warn("inngest.send.failed", {
-        name: "ticket/moved",
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
+  return {
+    fromStatusId,
+    toStatusId,
+    position,
+    workspaceId: ticket.workspaceId,
+    projectId: ticket.projectId,
+  };
+}
 
-  return { fromStatusId, toStatusId: target.id, position };
+/**
+ * Move a ticket to the status with the given key (e.g. "todo", "building").
+ * Appends to the end of the destination column. Shared by status-aware CTAs.
+ */
+export async function moveTicketToStatusKey(args: {
+  ticketId: string;
+  toStatusKey: string;
+  byUserId: string;
+}): Promise<TicketMoveResult | null> {
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: args.ticketId },
+    select: { workspaceId: true, projectId: true, archivedAt: true, statusId: true },
+  });
+  if (!ticket || ticket.archivedAt) return null;
+
+  const target = await prisma.status.findUnique({
+    where: {
+      workspaceId_key: { workspaceId: ticket.workspaceId, key: args.toStatusKey },
+    },
+    select: { id: true },
+  });
+  if (!target) return null;
+  if (ticket.statusId === target.id) {
+    return {
+      fromStatusId: ticket.statusId,
+      toStatusId: target.id,
+      position: 0,
+      workspaceId: ticket.workspaceId,
+      projectId: ticket.projectId,
+    };
+  }
+
+  return moveTicketToStatusId({
+    ticketId: args.ticketId,
+    toStatusId: target.id,
+    by: args.byUserId,
+    activityByUserId: args.byUserId,
+  });
 }
 
 /**

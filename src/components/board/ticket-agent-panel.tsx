@@ -10,6 +10,7 @@ import { getProjectLocalPath, updateProject } from "@/actions/project";
 import {
   applyWorkflowStatusSuggestion,
   decideEndOfRunStatus,
+  getRunningWorkflowDispatchForTicketAction,
   getTicketWorkflow,
   getWorkflowStatusContext,
   logWorkflowActivity,
@@ -499,6 +500,7 @@ function DesktopPanel({
     statusKeyRef.current = statusKey;
   }, [statusKey]);
   const messagesRef = useRef<ChatMsg[]>([]);
+  const messageSequencesRef = useRef<Map<string, number>>(new Map());
   const setBlockedIfAwaiting = () => {
     if (statusKeyRef.current !== "building") return;
     // Concatenate every assistant message since the last user message.
@@ -667,6 +669,11 @@ function DesktopPanel({
   // dispatch twice; without this latch we'd send the prompt to Claude twice
   // and end up with two AgentJobs racing for the same WorkflowStepRun.
   const dispatchedStepRunIdsRef = useRef<Set<string>>(new Set());
+  // Prevents overlapping dispatch handlers for the same stepRunId before
+  // `send()` resolves — distinct from `dispatchedStepRunIdsRef`, which must
+  // only record steps that actually handed off to the desktop bridge (otherwise
+  // a failed send would latch forever and block redelivery).
+  const inFlightWorkflowDispatchRef = useRef<Set<string>>(new Set());
   // Latched when the user (or anything outside this panel) moves the ticket
   // into `blocked` while a session is live. While set, the panel must NOT
   // flip the status back to `building` on the next streamed chunk — that's
@@ -755,6 +762,7 @@ function DesktopPanel({
     setBusy(false);
     currentAssistantId.current = null;
     messagesRef.current = [];
+    messageSequencesRef.current = new Map();
     didInitialScrollRef.current = false;
     atBottomRef.current = true;
 
@@ -905,14 +913,33 @@ function DesktopPanel({
         // crash. Idempotent via dispatchedStepRunIdsRef so Inngest retries
         // and Ably replay don't double-fire.
         if (dispatchedStepRunIdsRef.current.has(event.stepRunId)) return;
-        dispatchedStepRunIdsRef.current.add(event.stepRunId);
+        if (inFlightWorkflowDispatchRef.current.has(event.stepRunId)) return;
         if (busyRef.current || !sendRef.current) {
-          workflowQueueRef.current.push({
-            stepRunId: event.stepRunId,
-            prompt: event.prompt,
-          });
+          if (
+            !workflowQueueRef.current.some(
+              (q) => q.stepRunId != null && q.stepRunId === event.stepRunId,
+            )
+          ) {
+            workflowQueueRef.current.push({
+              stepRunId: event.stepRunId,
+              prompt: event.prompt,
+            });
+          }
         } else {
-          void sendRef.current(event.prompt, { workflowStepRunId: event.stepRunId });
+          inFlightWorkflowDispatchRef.current.add(event.stepRunId);
+          void (async () => {
+            try {
+              if (dispatchedStepRunIdsRef.current.has(event.stepRunId)) return;
+              const ok = await sendRef.current?.(event.prompt, {
+                workflowStepRunId: event.stepRunId,
+              });
+              if (ok) {
+                dispatchedStepRunIdsRef.current.add(event.stepRunId);
+              }
+            } finally {
+              inFlightWorkflowDispatchRef.current.delete(event.stepRunId);
+            }
+          })();
         }
         return;
       }
@@ -938,11 +965,39 @@ function DesktopPanel({
       } else if (event.name === "message.updated" && event.ticketId === ticketId) {
         const prev = messagesRef.current;
         const idx = prev.findIndex((m) => m.id === event.messageId);
-        if (idx === -1) return;
-        if (event.body === undefined) return;
-        const merged = prev.slice();
-        const cur = merged[idx]!;
-        merged[idx] = { ...cur, text: event.body } as ChatMsg;
+        if (event.body !== undefined) {
+          if (event.latestSequence !== undefined) {
+            messageSequencesRef.current.set(event.messageId, event.latestSequence);
+          }
+          if (idx === -1) return;
+          const merged = prev.slice();
+          const cur = merged[idx];
+          if (!cur) return;
+          merged[idx] = { ...cur, text: event.body } as ChatMsg;
+          messagesRef.current = merged;
+          setMessages(merged);
+          return;
+        }
+        if (!event.chunks?.length) return;
+        const lastSeen = messageSequencesRef.current.get(event.messageId) ?? -1;
+        const chunks = event.chunks
+          .filter((chunk) => chunk.sequence > lastSeen)
+          .sort((a, b) => a.sequence - b.sequence);
+        if (chunks.length === 0) return;
+        const text = chunks.map((chunk) => chunk.delta).join("");
+        messageSequencesRef.current.set(
+          event.messageId,
+          Math.max(event.latestSequence ?? lastSeen, ...chunks.map((chunk) => chunk.sequence)),
+        );
+        const merged = idx === -1 ? [...prev] : prev.slice();
+        if (idx === -1) {
+          merged.push({ id: event.messageId, role: "assistant", text, createdAt: Date.now() });
+          merged.sort((a, b) => a.createdAt - b.createdAt);
+        } else {
+          const cur = merged[idx];
+          if (!cur) return;
+          merged[idx] = { ...cur, text: `${cur.text}${text}` } as ChatMsg;
+        }
         messagesRef.current = merged;
         setMessages(merged);
       }
@@ -1156,8 +1211,11 @@ function DesktopPanel({
   };
 
   const sendRef = useRef<
-    ((override?: string, opts?: { workflowStepRunId?: string | null }) => Promise<void>) | null
+    ((override?: string, opts?: { workflowStepRunId?: string | null }) => Promise<boolean>) | null
   >(null);
+  const workflowQueueDrainingRef = useRef(false);
+  const workflowDrainFailAttemptsRef = useRef(0);
+  const [workflowDrainNonce, setWorkflowDrainNonce] = useState(0);
 
   // Listen for workflow Run events: enqueue prompts, drain when idle.
   useEffect(() => {
@@ -1168,25 +1226,15 @@ function DesktopPanel({
       };
       if (!detail || detail.ticketId !== ticketId || !Array.isArray(detail.steps)) return;
       for (const s of detail.steps) {
-        // Pre-populate the dedup latch for every step we're about to drain
-        // locally. The server-side Inngest chain will ALSO publish a
-        // `ticket.workflow.dispatch` event for steps 2..N once step 1
-        // succeeds. Without seeding the latch here, we'd dispatch each
-        // downstream step twice (once from this local queue drain, once
-        // from the server-driven event). Steps with no stepRunId (legacy
-        // dispatch path) skip the latch — they can't double-fire anyway
-        // because Inngest needs the FK to chain.
-        if (s.stepRunId) dispatchedStepRunIdsRef.current.add(s.stepRunId);
         workflowQueueRef.current.push({
           stepRunId: s.stepRunId ?? null,
           prompt: s.prompt,
         });
       }
-      // Kick a drain attempt; further drains happen via the busy effect below.
-      if (!busyRef.current && sendRef.current) {
-        const next = workflowQueueRef.current.shift();
-        if (next) void sendRef.current(next.prompt, { workflowStepRunId: next.stepRunId });
-      }
+      // Same drain path as Ably-driven dispatches — never seed
+      // `dispatchedStepRunIdsRef` here: that would swallow a later
+      // `ticket.workflow.dispatch` for the same step before `send()` succeeds.
+      setWorkflowDrainNonce((n) => n + 1);
     };
     window.addEventListener("planbooq:workflow-run", onRun);
     return () => window.removeEventListener("planbooq:workflow-run", onRun);
@@ -1211,10 +1259,37 @@ function DesktopPanel({
     if (busy) return;
     if (workflowQueueRef.current.length === 0) return;
     if (!sendRef.current) return;
-    const next = workflowQueueRef.current.shift();
-    if (!next) return;
-    void sendRef.current(next.prompt, { workflowStepRunId: next.stepRunId });
-  }, [busy]);
+    if (workflowQueueDrainingRef.current) return;
+    workflowQueueDrainingRef.current = true;
+    const next = workflowQueueRef.current[0]!;
+    void (async () => {
+      let ok = false;
+      try {
+        ok = (await sendRef.current?.(next.prompt, { workflowStepRunId: next.stepRunId })) ?? false;
+        if (ok) {
+          workflowDrainFailAttemptsRef.current = 0;
+          workflowQueueRef.current.shift();
+          if (next.stepRunId) dispatchedStepRunIdsRef.current.add(next.stepRunId);
+        } else {
+          if (next.stepRunId) {
+            workflowDrainFailAttemptsRef.current += 1;
+            if (workflowDrainFailAttemptsRef.current >= 2) {
+              workflowQueueRef.current.shift();
+              workflowDrainFailAttemptsRef.current = 0;
+              toast.error("Could not deliver a queued workflow step after two attempts.");
+            }
+          } else {
+            workflowQueueRef.current.shift();
+          }
+        }
+      } finally {
+        workflowQueueDrainingRef.current = false;
+        if (!ok && workflowQueueRef.current.length > 0) {
+          setWorkflowDrainNonce((n) => n + 1);
+        }
+      }
+    })();
+  }, [busy, workflowDrainNonce]);
 
   // Broadcast busy/queue state so the workflow panel can reflect "running".
   useEffect(() => {
@@ -1237,11 +1312,14 @@ function DesktopPanel({
     }
   }, [busy, ticketId]);
 
-  const send = async (override?: string, opts?: { workflowStepRunId?: string | null }) => {
+  const send = async (
+    override?: string,
+    opts?: { workflowStepRunId?: string | null },
+  ): Promise<boolean> => {
     const bridge = getDesktopBridge();
-    if (!bridge) return;
+    if (!bridge) return false;
     const message = (override ?? input).trim();
-    if (!message) return;
+    if (!message) return false;
     // User is responding — undo any auto-Blocked move so the card lands back
     // in Running while Claude works on the reply. Sending a new prompt also
     // clears the user-driven Blocked latch (the user explicitly resumed),
@@ -1251,7 +1329,7 @@ function DesktopPanel({
 
     if (typeof bridge.agentStart !== "function" || typeof bridge.agentSend !== "function") {
       toast.error("Desktop app is out of date — quit and relaunch Planbooq");
-      return;
+      return false;
     }
 
     if (!sessionId) {
@@ -1335,7 +1413,7 @@ function DesktopPanel({
           if (!res.ok || !res.sessionId) {
             toast.error(res.error ?? "Resume failed");
             setBusy(false);
-            return;
+            return false;
           }
           setSessionId(res.sessionId);
           if (jobIdRef.current) {
@@ -1345,18 +1423,18 @@ function DesktopPanel({
               ticketId,
             });
           }
-          return;
+          return true;
         } catch (err) {
           toast.error(err instanceof Error ? err.message : "Resume failed");
           setBusy(false);
-          return;
+          return false;
         }
       }
 
       if (!repoPath) {
         toast.error("Pick a project folder first");
         setBusy(false);
-        return;
+        return false;
       }
       const path = repoPath;
       let workflowBlock = "";
@@ -1402,12 +1480,12 @@ function DesktopPanel({
           toast.error(msg);
         }
         setBusy(false);
-        return;
+        return false;
       }
       if (!res.ok || !res.sessionId) {
         toast.error(res.error ?? "Failed to start session");
         setBusy(false);
-        return;
+        return false;
       }
       setSessionId(res.sessionId);
       setWorktreePath(res.worktreePath ?? null);
@@ -1419,7 +1497,7 @@ function DesktopPanel({
           ticketId,
         });
       }
-      return;
+      return true;
     }
 
     setBusy(true);
@@ -1449,14 +1527,65 @@ function DesktopPanel({
       if (!res.ok) {
         toast.error(res.error ?? "Send failed");
         setBusy(false);
+        return false;
       }
+      return true;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Send failed");
       setBusy(false);
+      return false;
     }
   };
 
   sendRef.current = send;
+
+  // When the ticket panel mounts or returns from a tab switch, Ably may
+  // have already delivered `ticket.workflow.dispatch` to nothing listening.
+  // Pull the authoritative RUNNING step + prompt from Postgres and feed it
+  // through the same path as a realtime dispatch (deduped by stepRunId).
+  useEffect(() => {
+    if (!repoPathLoaded || !repoPath) return;
+    if (!getDesktopBridge()) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await getRunningWorkflowDispatchForTicketAction(ticketId);
+        if (cancelled || !r.ok || r.payload === null) return;
+        const payload = r.payload;
+        if (!payload) return;
+        const { stepRunId, prompt } = payload;
+        if (dispatchedStepRunIdsRef.current.has(stepRunId)) return;
+        if (inFlightWorkflowDispatchRef.current.has(stepRunId)) return;
+        if (
+          workflowQueueRef.current.some((q) => q.stepRunId != null && q.stepRunId === stepRunId)
+        ) {
+          return;
+        }
+        if (busyRef.current || !sendRef.current) {
+          workflowQueueRef.current.push({ stepRunId, prompt });
+          setWorkflowDrainNonce((n) => n + 1);
+        } else {
+          inFlightWorkflowDispatchRef.current.add(stepRunId);
+          void (async () => {
+            try {
+              if (dispatchedStepRunIdsRef.current.has(stepRunId)) return;
+              const ok = await sendRef.current?.(prompt, { workflowStepRunId: stepRunId });
+              if (ok) {
+                dispatchedStepRunIdsRef.current.add(stepRunId);
+              }
+            } finally {
+              inFlightWorkflowDispatchRef.current.delete(stepRunId);
+            }
+          })();
+        }
+      } catch {
+        // tolerated — hydration is best-effort
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [repoPathLoaded, ticketId, repoPath]);
 
   const stop = async () => {
     const bridge = getDesktopBridge();

@@ -417,19 +417,23 @@ enum TicketActivityKind {
 }
 
 model TicketActivity {
-  id          String             @id @default(cuid())
-  ticketId    String
-  workspaceId String
-  jobId       String?
-  kind        TicketActivityKind
-  payload     Json
-  createdAt   DateTime           @default(now())
+  id                String             @id @default(cuid())
+  ticketId          String
+  workspaceId       String
+  jobId             String?
+  workflowStepRunId String?
+  kind              TicketActivityKind
+  payload           Json
+  createdAt         DateTime           @default(now())
 
-  ticket Ticket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  job    AgentJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  ticket          Ticket           @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  job             AgentJob?        @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  workflowStepRun WorkflowStepRun? @relation(fields: [workflowStepRunId], references: [id], onDelete: SetNull)
 
   @@index([ticketId, createdAt])
   @@index([workspaceId, createdAt])
+  @@index([workflowStepRunId])
+  @@unique([workflowStepRunId, kind])
 }
 
 // -----------------------------
@@ -511,6 +515,7 @@ model WorkflowStepRun {
 
   run      WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   messages Message[]
+  activities TicketActivity[]
 
   @@index([runId, position])
 }

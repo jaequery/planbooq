@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type LiveAgentState, LiveAgentsContext } from "@/lib/live-agents-context";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
+import { compareTicketsByPosition } from "@/lib/ticket-ordering";
 import type { BoardData, StatusWithTickets, Ticket, TicketWithRelations } from "@/lib/types";
 import { getDesktopBridge } from "@/lib/use-is-desktop";
 
@@ -68,11 +69,6 @@ function computePosition(prev: Ticket | undefined, next: Ticket | undefined): nu
   if (prev && !next) return prev.position + 1;
   if (!prev && next) return next.position - 1;
   return 1;
-}
-
-function byUpdatedDesc(a: Ticket, b: Ticket): number {
-  const diff = +new Date(b.updatedAt) - +new Date(a.updatedAt);
-  return diff !== 0 ? diff : b.id.localeCompare(a.id);
 }
 
 type ColumnPagination = { nextCursor: string | null; isLoading: boolean };
@@ -297,7 +293,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           if (!moving) return prev;
           return stripped.map((s) => {
             if (s.id !== event.toStatusId) return s;
-            const next = [...s.tickets, moving as Ticket].sort(byUpdatedDesc);
+            const next = [...s.tickets, moving as Ticket].sort(compareTicketsByPosition);
             return { ...s, tickets: next };
           });
         });
@@ -328,7 +324,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
               return { ...s, tickets: s.tickets.filter((t) => t.id !== merged.id) };
             }
             const without = s.tickets.filter((t) => t.id !== merged.id);
-            const next = [...without, merged].sort(byUpdatedDesc);
+            const next = [...without, merged].sort(compareTicketsByPosition);
             return { ...s, tickets: next };
           });
         });
@@ -355,7 +351,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           };
           return prev.map((s) => {
             if (s.id !== restored.statusId) return s;
-            const next = [...s.tickets, restored].sort(byUpdatedDesc);
+            const next = [...s.tickets, restored].sort(compareTicketsByPosition);
             return { ...s, tickets: next };
           });
         });
@@ -372,7 +368,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           };
           return prev.map((s) => {
             if (s.id !== created.statusId) return s;
-            const next = [...s.tickets, created].sort(byUpdatedDesc);
+            const next = [...s.tickets, created].sort(compareTicketsByPosition);
             return { ...s, tickets: next };
           });
         });
@@ -448,10 +444,16 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
     const onVisibility = (): void => {
       if (document.visibilityState === "visible") void reconcile();
     };
+    const onRealtimeRecovered = (event: Event): void => {
+      const detail = (event as CustomEvent<{ workspaceId: string }>).detail;
+      if (detail?.workspaceId === workspaceId) void reconcile();
+    };
     document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("planbooq:realtime-recovered", onRealtimeRecovered);
     return () => {
       cancelled = true;
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("planbooq:realtime-recovered", onRealtimeRecovered);
     };
   }, [initialData.project.workspaceId]);
 
@@ -524,7 +526,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
       if (alreadyPresent) return prev;
       return prev.map((s) =>
         s.id === ticket.statusId
-          ? { ...s, tickets: [...s.tickets, ticket].sort(byUpdatedDesc) }
+          ? { ...s, tickets: [...s.tickets, ticket].sort(compareTicketsByPosition) }
           : s,
       );
     });
@@ -541,7 +543,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
       if (alreadyPresent) return stripped;
       return stripped.map((s) =>
         s.id === enriched.statusId
-          ? { ...s, tickets: [...s.tickets, enriched].sort(byUpdatedDesc) }
+          ? { ...s, tickets: [...s.tickets, enriched].sort(compareTicketsByPosition) }
           : s,
       );
     });
@@ -565,7 +567,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           return { ...s, tickets: s.tickets.filter((t) => t.id !== ticket.id) };
         }
         const without = s.tickets.filter((t) => t.id !== ticket.id);
-        const next = [...without, ticket].sort(byUpdatedDesc);
+        const next = [...without, ticket].sort(compareTicketsByPosition);
         return { ...s, tickets: next };
       }),
     );
@@ -588,7 +590,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
       };
       return prev.map((s) => {
         if (s.id !== restored.statusId) return s;
-        const next = [...s.tickets, restored].sort(byUpdatedDesc);
+        const next = [...s.tickets, restored].sort(compareTicketsByPosition);
         return { ...s, tickets: next };
       });
     });
@@ -601,8 +603,8 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
   }, []);
 
   // Per-column infinite scroll. The keyset cursor walks Prisma's
-  // [updatedAt desc, id desc] order; live realtime additions land at the top
-  // of `tickets` independently, so we de-dupe by id when appending.
+  // [position asc, id asc] order; live realtime additions are sorted back into
+  // that same order so the visible board matches persisted drag order.
   const paginationRef = useRef(pagination);
   useEffect(() => {
     paginationRef.current = pagination;
@@ -643,7 +645,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
             for (const t of result.data.items) {
               if (!known.has(t.id)) merged.push(t);
             }
-            return { ...s, tickets: merged };
+            return { ...s, tickets: merged.sort(compareTicketsByPosition) };
           }),
         );
         setPagination((prev) => {
@@ -747,7 +749,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           statusId: targetStatusId,
           position: optimisticPosition,
         };
-        const merged = [...s.tickets, updated].sort(byUpdatedDesc);
+        const merged = [...s.tickets, updated].sort(compareTicketsByPosition);
         return { ...s, tickets: merged };
       });
     });
@@ -769,7 +771,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           if (s.id !== targetStatusId) return s;
           const tickets = s.tickets
             .map((t) => (t.id === activeId ? { ...t, position: result.data.position } : t))
-            .sort(byUpdatedDesc);
+            .sort(compareTicketsByPosition);
           return { ...s, tickets };
         }),
       );

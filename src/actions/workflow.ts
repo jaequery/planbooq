@@ -9,6 +9,10 @@ import { prisma } from "@/server/db";
 import { getPrStatusForUser, parseGitHubPrUrl } from "@/server/services/github-pr";
 import { mirrorJobTerminal } from "@/server/services/mirror-agent-job";
 import { moveTicketToStatusKey, reconcileBuildingTicket } from "@/server/services/ticket-status";
+import {
+  getRunningWorkflowDispatchForTicket,
+  workflowCommander,
+} from "@/server/services/workflow-commander";
 
 type Ok<T> = T extends Record<string, never> ? { ok: true } : { ok: true } & T;
 type Err = { ok: false; error: string };
@@ -680,24 +684,18 @@ async function reconcileTicketAgentState(
   // the source of truth for which steps actually finished, so canceling
   // here just stops the run from being considered "in progress".
   const orphanRuns = await prisma.workflowRun.findMany({
-    where: { ticketId, status: "RUNNING" },
+    where: { ticketId, status: "RUNNING", updatedAt: { lt: staleCutoff } },
     select: { id: true },
   });
   if (orphanRuns.length > 0) {
-    const finishedAt = new Date();
-    await prisma.$transaction([
-      prisma.workflowStepRun.updateMany({
-        where: {
-          runId: { in: orphanRuns.map((r) => r.id) },
-          status: { in: ["PENDING", "RUNNING"] },
-        },
-        data: { status: "CANCELED", finishedAt },
-      }),
-      prisma.workflowRun.updateMany({
-        where: { id: { in: orphanRuns.map((r) => r.id) } },
-        data: { status: "CANCELED", finishedAt },
-      }),
-    ]);
+    await Promise.all(
+      orphanRuns.map((run) =>
+        workflowCommander.cancelRun({
+          runId: run.id,
+          reason: "workflow went stale before a live agent job attached",
+        }),
+      ),
+    );
   }
 
   // Phase B — reconcile ticket status exactly once. reconcileBuildingTicket
@@ -1151,37 +1149,13 @@ export async function triggerWorkflowRun(
             : enabled.map((s) => ({ name: s.name, prompt: s.prompt }));
         })();
 
-  const now = new Date();
-  // Record the run as RUNNING with PENDING stepRuns. Marking everything
-  // SUCCEEDED at trigger time was misleading — it caused the UI to show
-  // every step checked the moment Run was clicked, even though the agent
-  // hadn't done a thing yet. Real completion is derived at read time
-  // from authoritative signals (prUrl, AgentJobs, TicketActivity).
-  const run = await prisma.workflowRun.create({
-    data: {
-      ticketId,
-      workspaceId: ticket.workspaceId,
-      templateId: wf.templateId,
-      status: "RUNNING",
-      startedAt: now,
-      stepRuns: {
-        create: recorded.map((s, i) => ({
-          position: i,
-          name: s.name,
-          prompt: s.prompt,
-          status: "PENDING" as const,
-        })),
-      },
-    },
-    select: {
-      id: true,
-      stepRuns: {
-        orderBy: { position: "asc" },
-        select: { id: true },
-      },
-    },
+  const run = await workflowCommander.startRun({
+    ticketId,
+    workspaceId: ticket.workspaceId,
+    templateId: wf.templateId,
+    steps: recorded,
   });
-  const stepRunIds = run.stepRuns.map((s) => s.id);
+  const stepRunIds = run.stepRunIds;
 
   // Move the ticket to the right status. The client picks the status with
   // local Claude Code (apps/desktop bridge.agentOneshot) and passes it as
@@ -1224,8 +1198,24 @@ export async function triggerWorkflowRun(
     // tolerated — the workflow run row is already persisted
   }
 
+  await workflowCommander.dispatchNextStep({ runId: run.runId, byUserId: ctx.userId });
+
   revalidatePath("/");
-  return { ok: true, runId: run.id, stepCount: recorded.length, stepRunIds };
+  return { ok: true, runId: run.runId, stepCount: recorded.length, stepRunIds };
+}
+
+export async function getRunningWorkflowDispatchForTicketAction(
+  ticketId: string,
+): Promise<
+  | { ok: true; payload: { runId: string; stepRunId: string; prompt: string } | null }
+  | Err
+> {
+  const ticket = await loadTicket(ticketId);
+  if (!ticket) return { ok: false, error: "not_found" };
+  const ctx = await requireMember(ticket.workspaceId);
+  if (!ctx.ok) return ctx;
+  const payload = await getRunningWorkflowDispatchForTicket(ticketId);
+  return { ok: true, payload };
 }
 
 /**
