@@ -690,16 +690,50 @@ async function reconcileTicketAgentState(
   // rows along with the run itself — the read-time deriveStepCompletion is
   // the source of truth for which steps actually finished, so canceling
   // here just stops the run from being considered "in progress".
-  const orphanRuns = await prisma.workflowRun.findMany({
-    where: { ticketId, status: "RUNNING", updatedAt: { lt: staleCutoff } },
-    select: { id: true },
+  //
+  // Staleness is measured against AgentJob.updatedAt for jobs attached to
+  // the run's stepRuns, NOT against WorkflowRun.updatedAt. Prisma's
+  // @updatedAt on WorkflowRun only ticks when the run row's own fields
+  // change (startRun, cancelRun, final completion); it sits frozen at
+  // creation time during normal step execution. Measuring against it would
+  // ask "is the run old?" rather than "is the run idle?" and would cancel
+  // legitimately-active runs whose latest step just transitioned without
+  // bumping the parent row.
+  const candidateRuns = await prisma.workflowRun.findMany({
+    where: { ticketId, status: "RUNNING" },
+    select: {
+      id: true,
+      startedAt: true,
+      createdAt: true,
+      stepRuns: { select: { id: true } },
+    },
   });
+  const orphanRuns: { id: string }[] = [];
+  for (const run of candidateRuns) {
+    const stepRunIds = run.stepRuns.map((s) => s.id);
+    if (stepRunIds.length > 0) {
+      const recentJob = await prisma.agentJob.findFirst({
+        where: {
+          workflowStepRunId: { in: stepRunIds },
+          updatedAt: { gte: staleCutoff },
+        },
+        select: { id: true },
+      });
+      if (recentJob) continue;
+    }
+    // No job attached has been touched within the staleness window. Grace
+    // the just-dispatched window where the dispatcher started the run but
+    // no agent has attached yet by consulting the run's own start time.
+    const lastTouchedMs = Math.max(run.startedAt?.getTime() ?? 0, run.createdAt.getTime());
+    if (lastTouchedMs >= staleCutoff.getTime()) continue;
+    orphanRuns.push({ id: run.id });
+  }
   if (orphanRuns.length > 0) {
     await Promise.all(
       orphanRuns.map((run) =>
         workflowCommander.cancelRun({
           runId: run.id,
-          reason: "workflow went stale before a live agent job attached",
+          reason: "workflow has no agent activity within 90s",
         }),
       ),
     );
