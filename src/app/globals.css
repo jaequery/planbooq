@@ -208,6 +208,7 @@
    the default; .dark on the html element flips the values via next-themes. */
 .marketing {
   --mk-bg: #ffffff;
+  --mk-beige: #f5f3f0;
   --mk-surface: #fafafa;
   --mk-surface-2: #f4f4f5;
   --mk-ink: #0a0a0a;
@@ -225,6 +226,7 @@
 }
 .dark .marketing {
   --mk-bg: #0a0a0a;
+  --mk-beige: #1a1816;
   --mk-surface: #111113;
   --mk-surface-2: #18181b;
   --mk-ink: #fafafa;
@@ -260,9 +262,43 @@
   animation: ticket-pulse 1.8s ease-out infinite;
 }
 
+@keyframes marketing-nitro-pulse {
+  0%,
+  100% {
+    opacity: 0.1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.26;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes marketing-nitro-flame {
+  0% {
+    opacity: 0.38;
+    transform: translateX(0);
+  }
+  100% {
+    opacity: 0.78;
+    transform: translateX(3px);
+  }
+}
+
+.marketing .marketing-nitro-pulse {
+  transform-origin: center;
+  animation: marketing-nitro-pulse 2.4s ease-in-out infinite;
+}
+
+.marketing .marketing-nitro-flame {
+  animation: marketing-nitro-flame 1s ease-in-out infinite alternate;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-orb-glow-active,
-  .ticket-pulse {
+  .ticket-pulse,
+  .marketing .marketing-nitro-pulse,
+  .marketing .marketing-nitro-flame {
     animation: none;
   }
 }
