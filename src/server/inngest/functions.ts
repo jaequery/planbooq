@@ -597,18 +597,28 @@ export const workflowStepCompleted = inngest.createFunction(
     if (finished.status !== "SUCCEEDED") return { ok: false, reason: "step_not_succeeded" };
     if (finished.run.status !== "RUNNING") return { ok: false, reason: "run_not_running" };
 
-    // Only auto-dispatch the next step on `autonomous` tickets. For everything
-    // else the contract is: stop at Blocked between steps, let the human glance
-    // at the diff/plan and click Run to advance. The opt-in pairs with
-    // persistTurnEnd's reconcile gate (mirror-agent-job.ts) — both must agree
-    // so the ticket either (autonomous) stays at Running while the next step
-    // warm-sends, or (non-autonomous) demotes to Blocked and no dispatch
-    // races that demotion.
-    const auto = await step.run("check-auto-chain", () =>
-      shouldAutoChainAfterStep(finished.run.ticketId, finished.runId),
+    // `dispatchNextStep` has two jobs: dispatch the next PENDING step OR (when
+    // none remain) finalize the WorkflowRun to SUCCEEDED. We must always call
+    // it when no PENDING steps are left, otherwise the run sits at RUNNING
+    // forever (HOQTXA/N4THY7 zombie symptom).
+    //
+    // The autonomous gate applies only to the "dispatch next" path: for
+    // non-autonomous tickets we stop at Blocked between steps and the human
+    // clicks Run to advance. This pairs with persistTurnEnd's reconcile gate
+    // in mirror-agent-job.ts — both must agree, or the demote-to-Blocked
+    // races the auto-dispatch and SIGTERMs the warm session.
+    const pending = await step.run("count-pending", () =>
+      prisma.workflowStepRun.count({
+        where: { runId: finished.runId, status: "PENDING" },
+      }),
     );
-    if (!auto) {
-      return { ok: true, reason: "auto_chain_disabled" };
+    if (pending > 0) {
+      const auto = await step.run("check-auto-chain", () =>
+        shouldAutoChainAfterStep(finished.run.ticketId, finished.runId),
+      );
+      if (!auto) {
+        return { ok: true, reason: "auto_chain_disabled" };
+      }
     }
 
     const dispatched = await step.run("dispatch-next-step", () =>
