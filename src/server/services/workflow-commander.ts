@@ -166,6 +166,114 @@ async function createStepActivity(args: {
   });
 }
 
+/**
+ * Cleanup the desktop side after the run flips to SUCCEEDED. Runs once per
+ * finalization (gated by the CAS in `dispatchNextStep`):
+ *
+ *  - Reap any AgentJob still RUNNING on this run via status-CAS so the
+ *    90s `agent went stale` reaper doesn't have to wait on bridge
+ *    heartbeats to finally stop (the bug — see PLAN-RPL4OB).
+ *  - Mirror each transitioned job's terminal state through `mirrorJobTerminal`
+ *    so wire messages get `status: CANCELED`, the linked TicketActivity is
+ *    written, and Ably `agent.delta` echos to anything still listening.
+ *  - Publish `ticket.workflow.completed` carrying the distinct claudeSessionIds
+ *    so the workspace-level desktop listener can call `bridge.agentStop` on
+ *    the now-idle CLIs.
+ *
+ * Dynamic import of mirrorJobTerminal avoids a top-level cycle with
+ * mirror-agent-job.ts (which imports workflowCommander).
+ */
+async function finalizeRunCleanup(args: {
+  runId: string;
+  ticketId: string;
+  workspaceId: string;
+}): Promise<void> {
+  const jobs = await prisma.agentJob.findMany({
+    where: {
+      workflowStepRun: { runId: args.runId },
+      status: "RUNNING",
+    },
+    select: {
+      id: true,
+      agentId: true,
+      ticketId: true,
+      workspaceId: true,
+      userId: true,
+      source: true,
+      kind: true,
+      prompt: true,
+      output: true,
+      status: true,
+      exitCode: true,
+      error: true,
+      worktreePath: true,
+      claudeSessionId: true,
+      workflowStepRunId: true,
+      outcome: true,
+      outcomeReason: true,
+      sourceJobId: true,
+      continuationAttempt: true,
+      startedAt: true,
+      finishedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  const sessionIds = new Set<string>();
+  for (const job of jobs) {
+    if (job.claudeSessionId) sessionIds.add(job.claudeSessionId);
+  }
+  // Also gather sessionIds from already-terminal jobs on the run — the
+  // desktop CLI for an earlier step's session may still be alive even though
+  // its AgentJob row went terminal (warm-send chains reuse one CLI process
+  // across steps). Without this, finalizing a run whose AgentJobs all ended
+  // cleanly mid-step would publish an empty sessionIds[] and leak the CLI.
+  const terminalSessions = await prisma.agentJob.findMany({
+    where: {
+      workflowStepRun: { runId: args.runId },
+      status: { not: "RUNNING" },
+      claudeSessionId: { not: null },
+    },
+    select: { claudeSessionId: true },
+  });
+  for (const row of terminalSessions) {
+    if (row.claudeSessionId) sessionIds.add(row.claudeSessionId);
+  }
+
+  for (const job of jobs) {
+    const cas = await prisma.agentJob.updateMany({
+      where: { id: job.id, status: "RUNNING" },
+      data: {
+        status: "CANCELED",
+        error: "workflow finalized (run succeeded — agent stopped)",
+        finishedAt: new Date(),
+      },
+    });
+    if (cas.count === 0) continue;
+    const { mirrorJobTerminal } = await import("@/server/services/mirror-agent-job");
+    await mirrorJobTerminal({
+      job: { ...job, status: "CANCELED" },
+      status: "CANCELED",
+      finalOutput: job.output ?? "",
+    }).catch((error: unknown) => {
+      logger.error("workflowCommander.finalize.mirrorJobTerminal.failed", {
+        jobId: job.id,
+        runId: args.runId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }
+
+  await publishWorkspaceEvent(args.workspaceId, {
+    name: "ticket.workflow.completed",
+    workspaceId: args.workspaceId,
+    ticketId: args.ticketId,
+    runId: args.runId,
+    sessionIds: Array.from(sessionIds),
+  });
+}
+
 export const workflowCommander = {
   async startRun(args: {
     ticketId: string;
@@ -237,11 +345,20 @@ export const workflowCommander = {
       if (!next) {
         const allDone = run.stepRuns.every((step) => step.status === "SUCCEEDED");
         if (allDone) {
-          await tx.workflowRun.updateMany({
+          const finalize = await tx.workflowRun.updateMany({
             where: { id: run.id, status: "RUNNING" },
             data: { status: "SUCCEEDED", finishedAt: new Date() },
           });
-          return { kind: "noop" as const, reason: "workflow_completed" };
+          // Only the request that actually flipped RUNNING → SUCCEEDED owns
+          // the post-finalize cleanup. Inngest retries / racing dispatchers
+          // see count=0 and skip, so we don't re-reap or re-publish.
+          return {
+            kind: "finalized" as const,
+            runId: run.id,
+            ticketId: run.ticketId,
+            workspaceId: run.workspaceId,
+            transitioned: finalize.count === 1,
+          };
         }
         return { kind: "noop" as const, reason: "no_pending_step" };
       }
@@ -282,6 +399,16 @@ export const workflowCommander = {
       return { kind: "dispatch" as const, stepRun: next, activity, total: run.stepRuns.length };
     });
 
+    if (result.kind === "finalized") {
+      if (result.transitioned) {
+        await finalizeRunCleanup({
+          runId: result.runId,
+          ticketId: result.ticketId,
+          workspaceId: result.workspaceId,
+        });
+      }
+      return { dispatched: false, reason: "workflow_completed" };
+    }
     if (result.kind !== "dispatch") {
       return { dispatched: false, reason: result.reason };
     }

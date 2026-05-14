@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { AgentSessionGlobalListener } from "@/components/agent-session-global-listener";
 import { AgentSessionManagerMount } from "@/components/agent-session-manager-mount";
 import { ProjectHeaderMenu } from "@/components/board/project-header-menu";
 import { SettingsContent } from "@/components/settings/settings-content";
@@ -98,6 +99,7 @@ export default async function ProjectLayout({
       <ShortcutsProvider shortcuts={shortcuts}>
         <div className="flex h-screen min-h-0 bg-background">
           <AgentSessionManagerMount />
+          <AgentSessionGlobalListener workspaceId={membership.workspaceId} />
           <Sidebar projects={allProjects} workspaceId={membership.workspaceId} />
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-2 pr-4">

@@ -264,6 +264,20 @@ export type AblyChannelEvent =
       prompt: string;
     }
   | {
+      // Published by workflow-commander when `dispatchNextStep` finalizes a
+      // WorkflowRun → SUCCEEDED (no PENDING steps left, all SUCCEEDED). The
+      // workspace-level desktop listener consumes this and calls
+      // `bridge.agentStop` for each session so the idle Claude CLI children
+      // exit instead of heartbeating forever — see PLAN-RPL4OB. Server also
+      // CAS-reaps any AgentJob still RUNNING for the run before publishing,
+      // so DB cleanup is guaranteed even with no desktop subscriber.
+      name: "ticket.workflow.completed";
+      workspaceId: string;
+      ticketId: string;
+      runId: string;
+      sessionIds: string[];
+    }
+  | {
       name: "ticket.activity";
       workspaceId: string;
       ticketId: string;
