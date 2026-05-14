@@ -4,6 +4,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
+  LANDING_COPY_VARIANTS,
+  LANDING_VARIANT_COUNT,
+  type LandingCopy,
+  type LandingVariant,
+  type LandingVariantIndex,
+} from "./landing-copy-variants";
+import {
   APP_HREF,
   BullIllustration,
   BustIllustration,
@@ -25,19 +32,12 @@ import {
 import { Header } from "./marketing-header";
 
 const STORAGE_KEY = "planbooqLandingVariation";
+const DEFAULT_VARIATION: LandingVariantIndex = 3;
 
-export const LANDING_VARIATIONS = [
-  { id: "classic", label: "Classic split" },
-  { id: "noir", label: "Noir band" },
-  { id: "magazine", label: "Magazine" },
-  { id: "alternate", label: "Alternate" },
-  { id: "editorial", label: "Editorial" },
-] as const;
-
-type VariationIndex = 0 | 1 | 2 | 3 | 4;
+export { LANDING_COPY_VARIANTS };
 
 export function LandingExperience(): React.ReactElement {
-  const [variation, setVariation] = useState<VariationIndex>(3);
+  const [variation, setVariation] = useState<LandingVariantIndex>(DEFAULT_VARIATION);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -46,7 +46,9 @@ export function LandingExperience(): React.ReactElement {
       const raw = sessionStorage.getItem(STORAGE_KEY);
       if (raw) {
         const n = Number.parseInt(raw, 10);
-        if (Number.isFinite(n) && n >= 0 && n <= 4) setVariation(n as VariationIndex);
+        if (Number.isFinite(n) && n >= 0 && n < LANDING_VARIANT_COUNT) {
+          setVariation(n as LandingVariantIndex);
+        }
       }
     } catch {
       /* ignore */
@@ -62,29 +64,42 @@ export function LandingExperience(): React.ReactElement {
     }
   }, [variation, mounted]);
 
+  const active: LandingVariant = LANDING_COPY_VARIANTS[variation];
+
   return (
     <>
       <FloatingVariationSwitcher variation={variation} onChange={setVariation} />
-      {variation === 0 ? <LandingClassic /> : null}
-      {variation === 1 ? <LandingNoir /> : null}
-      {variation === 2 ? <LandingMagazine /> : null}
-      {variation === 3 ? <LandingAlternate /> : null}
-      {variation === 4 ? <LandingEditorial /> : null}
+      {renderLayout(active)}
     </>
   );
+}
+
+function renderLayout(variant: LandingVariant): React.ReactElement {
+  switch (variant.layout) {
+    case "classic":
+      return <LandingClassic copy={variant.copy} />;
+    case "noir":
+      return <LandingNoir copy={variant.copy} />;
+    case "magazine":
+      return <LandingMagazine copy={variant.copy} />;
+    case "alternate":
+      return <LandingAlternate copy={variant.copy} />;
+    case "editorial":
+      return <LandingEditorial copy={variant.copy} />;
+  }
 }
 
 function FloatingVariationSwitcher({
   variation,
   onChange,
 }: {
-  variation: VariationIndex;
-  onChange: (v: VariationIndex) => void;
+  variation: LandingVariantIndex;
+  onChange: (v: LandingVariantIndex) => void;
 }): React.ReactElement {
   return (
     <section
       className="fixed bottom-5 right-5 z-[100] flex max-w-[calc(100vw-2.5rem)] flex-col items-end gap-2 sm:bottom-8 sm:right-8"
-      aria-label="Landing layout variations"
+      aria-label="Landing copy variations"
     >
       <div
         className="rounded-2xl border px-3 py-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.12)] backdrop-blur-md"
@@ -97,10 +112,10 @@ function FloatingVariationSwitcher({
           className="mb-2 px-0.5 text-[10px] font-semibold tracking-[0.14em] uppercase"
           style={{ color: "var(--mk-muted)" }}
         >
-          Layouts
+          Themes
         </p>
-        <div className="flex flex-wrap justify-end gap-1">
-          {LANDING_VARIATIONS.map((v, i) => {
+        <div className="flex max-w-[260px] flex-wrap justify-end gap-1">
+          {LANDING_COPY_VARIANTS.map((v, i) => {
             const active = variation === i;
             return (
               <button
@@ -108,9 +123,9 @@ function FloatingVariationSwitcher({
                 type="button"
                 title={v.label}
                 aria-pressed={active}
-                aria-label={`${v.label}, layout ${i + 1} of ${LANDING_VARIATIONS.length}`}
-                onClick={() => onChange(i as VariationIndex)}
-                className="flex h-9 min-w-9 items-center justify-center rounded-lg text-[13px] font-semibold transition"
+                aria-label={`${v.label}, theme ${i + 1} of ${LANDING_VARIANT_COUNT}`}
+                onClick={() => onChange(i as LandingVariantIndex)}
+                className="flex h-8 min-w-8 items-center justify-center rounded-md text-[12px] font-semibold transition"
                 style={{
                   backgroundColor: active ? "var(--mk-ink)" : "transparent",
                   color: active ? "var(--mk-bg)" : "var(--mk-ink)",
@@ -122,19 +137,19 @@ function FloatingVariationSwitcher({
           })}
         </div>
         <p
-          className="mt-2 max-w-[200px] text-right text-[11px] leading-snug"
+          className="mt-2 max-w-[220px] text-right text-[11px] leading-snug"
           style={{ color: "var(--mk-muted)" }}
         >
-          {LANDING_VARIATIONS[variation].label}
+          {LANDING_COPY_VARIANTS[variation].label}
         </p>
       </div>
     </section>
   );
 }
 
-/* ——— Variation 0: Classic (original split hero) ——— */
+/* ——— Variation: Classic (split hero) ——— */
 
-function LandingClassic(): React.ReactElement {
+function LandingClassic({ copy }: { copy: LandingCopy }): React.ReactElement {
   return (
     <>
       <Header />
@@ -145,39 +160,35 @@ function LandingClassic(): React.ReactElement {
               "text-balance text-[2.35rem] leading-[1.12] sm:text-5xl lg:text-[3.25rem]",
             )}
           >
-            Ship web projects without juggling Linear and Cursor.
+            {copy.headline}
           </h1>
           <p className="mt-6 max-w-lg text-[17px] leading-relaxed text-[var(--mk-muted)]">
-            One board where you plan the work and AI runs the builds. Built for solo founders, PMs,
-            and designers—not only engineers.
+            {copy.subhead}
           </p>
           <div className="mt-10 flex flex-wrap items-center gap-4">
-            <PrimaryCta href={APP_HREF}>Start building</PrimaryCta>
-            <SecondaryCta href={DOWNLOAD_HREF}>Mac app</SecondaryCta>
+            <PrimaryCta href={APP_HREF}>{copy.primaryCta}</PrimaryCta>
+            <SecondaryCta href={DOWNLOAD_HREF}>{copy.secondaryCta}</SecondaryCta>
           </div>
         </div>
         <div className="flex justify-center lg:justify-end">
           <SkyscraperIllustration className="max-h-[min(420px,50vh)] w-full max-w-md text-[var(--mk-ink)]" />
         </div>
       </section>
-      <ValueLines
-        a="We merged the best parts of modern vibe coding—planning plus harnessed execution—so speed and output stay in one loop."
-        b="We routinely keep ten tickets moving at once; parallel beats babysitting one thread."
-      />
-      <Philosophy imageFirst={false} />
-      <Trust />
+      <ValueLines a={copy.valueA} b={copy.valueB} />
+      <Philosophy imageFirst={false} copy={copy} />
+      <Trust copy={copy} />
       <Principles />
       <Team centered />
       <Careers />
-      <FinalCta illustration="bull" />
+      <FinalCta illustration="bull" copy={copy} />
       <Footer />
     </>
   );
 }
 
-/* ——— Variation 1: Noir hero band ——— */
+/* ——— Variation: Noir hero band ——— */
 
-function LandingNoir(): React.ReactElement {
+function LandingNoir({ copy }: { copy: LandingCopy }): React.ReactElement {
   return (
     <>
       <Header />
@@ -185,25 +196,24 @@ function LandingNoir(): React.ReactElement {
         <section className="mx-auto grid max-w-6xl gap-12 px-6 py-20 lg:grid-cols-2 lg:items-center lg:gap-16 lg:px-8 lg:py-28">
           <div>
             <p className="text-[11px] font-semibold tracking-[0.2em] text-white/50 uppercase">
-              One harness
+              {copy.eyebrow ?? "One harness"}
             </p>
             <h1
               className={serifClassName(
                 "mt-4 text-balance text-[2.35rem] leading-[1.12] sm:text-5xl lg:text-[3.25rem]",
               )}
             >
-              More shipping. Fewer tabs.
+              {copy.headline}
             </h1>
             <p className="mt-6 max-w-lg text-[17px] leading-relaxed text-white/70">
-              The workflow founders, PMs, and designers actually want: plan the board, let AI crank
-              on tickets, stay fast without losing the plot.
+              {copy.subhead}
             </p>
             <div className="mt-10 flex flex-wrap items-center gap-4">
               <PrimaryCta href={APP_HREF} inverted>
-                Start building
+                {copy.primaryCta}
               </PrimaryCta>
               <SecondaryCta href={DOWNLOAD_HREF} inverted>
-                Mac app
+                {copy.secondaryCta}
               </SecondaryCta>
             </div>
           </div>
@@ -213,25 +223,22 @@ function LandingNoir(): React.ReactElement {
         </section>
       </div>
       <div className="bg-[var(--mk-beige)]">
-        <ValueLines
-          a="Parallel lanes beat one linear thread—we dogfood with many tickets in flight."
-          b="Review stays lightweight: see status on the card, ship, grab the next idea."
-        />
+        <ValueLines a={copy.valueA} b={copy.valueB} />
       </div>
-      <Philosophy imageFirst={false} />
-      <Trust />
+      <Philosophy imageFirst={false} copy={copy} />
+      <Trust copy={copy} />
       <Principles />
       <Team centered />
       <Careers />
-      <FinalCta illustration="bull" />
+      <FinalCta illustration="bull" copy={copy} />
       <Footer />
     </>
   );
 }
 
-/* ——— Variation 2: Magazine (stacked hero, swapped philosophy) ——— */
+/* ——— Variation: Magazine (stacked hero, swapped philosophy) ——— */
 
-function LandingMagazine(): React.ReactElement {
+function LandingMagazine({ copy }: { copy: LandingCopy }): React.ReactElement {
   return (
     <>
       <Header />
@@ -241,15 +248,14 @@ function LandingMagazine(): React.ReactElement {
             "text-balance text-[2.5rem] leading-[1.1] sm:text-6xl sm:leading-[1.05]",
           )}
         >
-          Your web project deserves better than “Linear here, Cursor there.”
+          {copy.headline}
         </h1>
         <p className="mx-auto mt-8 max-w-xl text-[18px] leading-relaxed text-[var(--mk-muted)]">
-          Planbooq ties planning and AI execution together so you can run the harness, fan out work,
-          and keep momentum—even if you are not living in a terminal.
+          {copy.subhead}
         </p>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          <PrimaryCta href={APP_HREF}>Start building</PrimaryCta>
-          <SecondaryCta href={DOWNLOAD_HREF}>Mac app</SecondaryCta>
+          <PrimaryCta href={APP_HREF}>{copy.primaryCta}</PrimaryCta>
+          <SecondaryCta href={DOWNLOAD_HREF}>{copy.secondaryCta}</SecondaryCta>
         </div>
       </section>
       <div className="mx-auto flex justify-center px-6 pb-16 lg:px-8 lg:pb-24">
@@ -259,29 +265,28 @@ function LandingMagazine(): React.ReactElement {
         <div className="mx-auto max-w-6xl px-6 lg:px-8">
           <div className="grid gap-10 lg:grid-cols-2">
             <p className={serifClassName("text-2xl font-medium sm:text-3xl")}>
-              Speed with a clear flight path.
+              {copy.magazineLeadA ?? copy.valueA}
             </p>
             <p className="text-[17px] leading-relaxed text-[var(--mk-muted)]">
-              Not another overloaded planner. A live board where each ticket has an execution lane,
-              you can watch progress at a glance, and ten streams stay civilized instead of chaotic.
+              {copy.magazineLeadB ?? copy.valueB}
             </p>
           </div>
         </div>
       </div>
-      <Philosophy imageFirst />
-      <Trust />
+      <Philosophy imageFirst copy={copy} />
+      <Trust copy={copy} />
       <Principles />
       <Team centered={false} />
       <Careers reversed />
-      <FinalCta illustration="kanban" />
+      <FinalCta illustration="kanban" copy={copy} />
       <Footer />
     </>
   );
 }
 
-/* ——— Variation 3: Alternating full-bleed stripes ——— */
+/* ——— Variation: Alternating full-bleed stripes ——— */
 
-function LandingAlternate(): React.ReactElement {
+function LandingAlternate({ copy }: { copy: LandingCopy }): React.ReactElement {
   return (
     <>
       <Header />
@@ -292,15 +297,14 @@ function LandingAlternate(): React.ReactElement {
               "max-w-xl text-balance text-[2.4rem] leading-[1.08] sm:text-5xl lg:text-[3.1rem]",
             )}
           >
-            One flow for every ticket on your web project.
+            {copy.headline}
           </h1>
           <p className="mt-6 max-w-md text-[17px] leading-relaxed text-[var(--mk-muted)]">
-            Stack the best of vibe coding—plan, harness, execute—so AI maxes speed while you keep
-            the board honest.
+            {copy.subhead}
           </p>
           <div className="mt-10 flex flex-wrap gap-4">
-            <PrimaryCta href={APP_HREF}>Start building</PrimaryCta>
-            <SecondaryCta href={DOWNLOAD_HREF}>Mac app</SecondaryCta>
+            <PrimaryCta href={APP_HREF}>{copy.primaryCta}</PrimaryCta>
+            <SecondaryCta href={DOWNLOAD_HREF}>{copy.secondaryCta}</SecondaryCta>
           </div>
         </div>
         <div className="relative flex min-h-[320px] items-center justify-center bg-[var(--mk-bg)] px-6 py-10 lg:min-h-0 lg:px-10 lg:py-14">
@@ -315,19 +319,16 @@ function LandingAlternate(): React.ReactElement {
         </div>
       </section>
       <div className="bg-[var(--mk-bg)]">
-        <ValueLines
-          a="Founders, PMs, designers, and operators—everyone sees the same live board."
-          b="We routinely run ten tickets at once; parallel work is the default, not a flex."
-        />
+        <ValueLines a={copy.valueA} b={copy.valueB} />
       </div>
       <div className="bg-[var(--mk-beige)] py-16 lg:py-24">
         <div className="mx-auto max-w-6xl px-6 lg:px-8">
-          <PhilosophyInline />
+          <PhilosophyInline copy={copy} />
         </div>
       </div>
       <div className="bg-[var(--mk-bg)] py-16 lg:py-24">
         <div className="mx-auto max-w-6xl px-6 lg:px-8">
-          <TrustStacked />
+          <TrustStacked copy={copy} />
         </div>
       </div>
       <div className="bg-[var(--mk-beige)] py-16 lg:py-24">
@@ -342,14 +343,14 @@ function LandingAlternate(): React.ReactElement {
         <Careers />
       </div>
       <div className="bg-[var(--mk-bg)]">
-        <FinalCta illustration="bull" />
+        <FinalCta illustration="bull" copy={copy} />
       </div>
       <Footer />
     </>
   );
 }
 
-function PhilosophyInline(): React.ReactElement {
+function PhilosophyInline({ copy }: { copy: LandingCopy }): React.ReactElement {
   return (
     <div className="grid gap-10 lg:grid-cols-2 lg:items-center lg:gap-16">
       <div className="relative min-h-[280px] overflow-hidden rounded-2xl lg:order-2 lg:min-h-[360px]">
@@ -363,11 +364,10 @@ function PhilosophyInline(): React.ReactElement {
       </div>
       <div className="lg:order-1">
         <h2 className={serifClassName("text-3xl font-semibold sm:text-4xl")}>
-          Plan here. Ship everywhere else—with less chaos.
+          {copy.philosophyHeading}
         </h2>
         <p className="mt-6 text-[16px] leading-[1.7] text-[var(--mk-muted)]">
-          Connect GitHub-shaped tickets, watch agents chew through the build column, and keep costs
-          sane with BYOK when you want full control.
+          {copy.philosophyBody1}
         </p>
         <Link
           href="#learn"
@@ -380,16 +380,15 @@ function PhilosophyInline(): React.ReactElement {
   );
 }
 
-function TrustStacked(): React.ReactElement {
+function TrustStacked({ copy }: { copy: LandingCopy }): React.ReactElement {
   return (
     <div className="flex flex-col items-center text-center">
       <HandsTrustIllustration className="mb-10 h-auto w-full max-w-[240px] text-[var(--mk-ink)]" />
       <p className={serifClassName("max-w-2xl text-2xl font-medium sm:text-3xl")}>
-        No black boxes—status stays where you already look: on the card.
+        {copy.trustHeadA}
       </p>
       <p className="mt-6 max-w-xl text-[15px] leading-relaxed text-[var(--mk-muted)]">
-        Each ticket keeps its lane tidy, automation stays visible, and review stays a quick glance
-        before you move on to the next idea.
+        {copy.trustBody}
       </p>
     </div>
   );
@@ -427,9 +426,9 @@ function PrinciplesCards(): React.ReactElement {
   );
 }
 
-/* ——— Variation 4: Editorial tight rhythm ——— */
+/* ——— Variation: Editorial tight rhythm ——— */
 
-function LandingEditorial(): React.ReactElement {
+function LandingEditorial({ copy }: { copy: LandingCopy }): React.ReactElement {
   return (
     <>
       <Header />
@@ -440,16 +439,15 @@ function LandingEditorial(): React.ReactElement {
               "max-w-[18ch] text-[2.6rem] leading-[1.05] sm:text-6xl lg:text-[4rem]",
             )}
           >
-            Plan. Harness. Ship the web thing.
+            {copy.headline}
           </h1>
           <p className="max-w-md text-[17px] leading-relaxed text-[var(--mk-muted)] lg:pb-2">
-            One board beats a constellation of Linear tabs, Cursor threads, and mystery status. AI
-            handles execution; you steer what ships next—even if you are not writing code daily.
+            {copy.subhead}
           </p>
         </div>
         <div className="mt-10 flex flex-wrap gap-4 border-t border-[var(--mk-hairline)] pt-10">
-          <PrimaryCta href={APP_HREF}>Start building</PrimaryCta>
-          <SecondaryCta href={DOWNLOAD_HREF}>Mac app</SecondaryCta>
+          <PrimaryCta href={APP_HREF}>{copy.primaryCta}</PrimaryCta>
+          <SecondaryCta href={DOWNLOAD_HREF}>{copy.secondaryCta}</SecondaryCta>
         </div>
       </section>
       <div className="mx-auto max-w-6xl px-6 lg:px-8">
@@ -463,14 +461,14 @@ function LandingEditorial(): React.ReactElement {
         </p>
         <div className="mt-6 grid gap-8 lg:grid-cols-2">
           <p className="text-[22px] font-medium leading-snug tracking-[-0.02em]">
-            Writing is cheap—keeping ten initiatives moving without dropping context is not.
+            {copy.editorialA ?? copy.valueA}
           </p>
           <p className="text-[22px] font-medium leading-snug tracking-[-0.02em]">
-            Planbooq is the harness: AI does the grind, the board stays honest, merges stay boring.
+            {copy.editorialB ?? copy.valueB}
           </p>
         </div>
       </section>
-      <Philosophy imageFirst={false} />
+      <Philosophy imageFirst={false} copy={copy} />
       <div className="border-t border-[var(--mk-hairline)]">
         <Principles />
       </div>
@@ -479,10 +477,11 @@ function LandingEditorial(): React.ReactElement {
         <div className="grid gap-10 rounded-2xl bg-[var(--mk-beige)] p-10 lg:grid-cols-2 lg:items-center lg:p-14">
           <div>
             <h2 className={serifClassName("text-3xl font-semibold sm:text-4xl")}>
-              Ready when you are.
+              {copy.editorialReadyHead ?? "Ready when you are."}
             </h2>
             <p className="mt-4 text-[16px] text-[var(--mk-muted)]">
-              Hiring, side project, or full sprint—same ritual: open the board, start the next lane.
+              {copy.editorialReadyBody ??
+                "Hiring, side project, or full sprint—same ritual: open the board, start the next lane."}
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <a
@@ -491,7 +490,7 @@ function LandingEditorial(): React.ReactElement {
               >
                 Apply
               </a>
-              <PrimaryCta href={APP_HREF}>Start building</PrimaryCta>
+              <PrimaryCta href={APP_HREF}>{copy.primaryCta}</PrimaryCta>
             </div>
           </div>
           <div className="relative min-h-[220px] overflow-hidden rounded-xl">
@@ -505,7 +504,7 @@ function LandingEditorial(): React.ReactElement {
           </div>
         </div>
       </section>
-      <FinalCta illustration="kanban" />
+      <FinalCta illustration="kanban" copy={copy} />
       <Footer />
     </>
   );
@@ -528,21 +527,27 @@ function ValueLines({ a, b }: { a: string; b: string }): React.ReactElement {
   );
 }
 
-function Philosophy({ imageFirst }: { imageFirst: boolean }): React.ReactElement {
-  const copy = (
+function Philosophy({
+  imageFirst,
+  copy,
+}: {
+  imageFirst: boolean;
+  copy: LandingCopy;
+}): React.ReactElement {
+  const text = (
     <div className="flex flex-col justify-between rounded-2xl bg-[var(--mk-beige)] p-10 lg:p-12">
       <div>
         <h2 className={serifClassName("text-3xl font-semibold sm:text-4xl")}>
-          Everything for a web project—without the tool soup
+          {copy.philosophyHeading}
         </h2>
         <p className="mt-6 text-[16px] leading-[1.7] text-[var(--mk-muted)]">
-          Planbooq folds planning and AI execution into one harness so founders, PMs, designers, and
-          builders keep parallel tickets moving—often ten at a time—without bouncing between Linear
-          and Cursor.
+          {copy.philosophyBody1}
         </p>
-        <p className="mt-4 text-[16px] leading-[1.7] text-[var(--mk-muted)]">
-          Bring your own key when you want, watch agents own the build lane, keep merges boring.
-        </p>
+        {copy.philosophyBody2 ? (
+          <p className="mt-4 text-[16px] leading-[1.7] text-[var(--mk-muted)]">
+            {copy.philosophyBody2}
+          </p>
+        ) : null}
       </div>
       <Link
         href="#learn"
@@ -570,11 +575,11 @@ function Philosophy({ imageFirst }: { imageFirst: boolean }): React.ReactElement
         {imageFirst ? (
           <>
             {photo}
-            {copy}
+            {text}
           </>
         ) : (
           <>
-            {copy}
+            {text}
             {photo}
           </>
         )}
@@ -583,21 +588,20 @@ function Philosophy({ imageFirst }: { imageFirst: boolean }): React.ReactElement
   );
 }
 
-function Trust(): React.ReactElement {
+function Trust({ copy }: { copy: LandingCopy }): React.ReactElement {
   return (
     <section className="mx-auto max-w-6xl px-6 py-20 lg:px-8 lg:py-28">
       <div className="grid gap-12 lg:grid-cols-[1fr_auto_1fr] lg:items-center lg:gap-8">
         <p className="text-balance text-xl font-medium leading-snug lg:text-right lg:text-2xl">
-          No “wait, which tab had the truth?”
+          {copy.trustHeadA}
         </p>
         <HandsTrustIllustration className="mx-auto h-auto w-full max-w-[280px] text-[var(--mk-ink)] lg:max-w-[320px]" />
         <p className="text-balance text-xl font-medium leading-snug lg:text-2xl">
-          Status lives on the card where everyone can see it.
+          {copy.trustHeadB ?? copy.trustHeadA}
         </p>
       </div>
       <p className="mx-auto mt-12 max-w-2xl text-center text-[15px] leading-relaxed text-[var(--mk-muted)]">
-        Each ticket stays in its own lane, automation stays visible, review stays a quick glance—so
-        work keeps moving instead of getting lost between apps.
+        {copy.trustBody}
       </p>
     </section>
   );
@@ -716,7 +720,13 @@ function Careers({ reversed }: { reversed?: boolean }): React.ReactElement {
   );
 }
 
-function FinalCta({ illustration }: { illustration: "bull" | "kanban" }): React.ReactElement {
+function FinalCta({
+  illustration,
+  copy,
+}: {
+  illustration: "bull" | "kanban";
+  copy: LandingCopy;
+}): React.ReactElement {
   const art =
     illustration === "bull" ? (
       <BullIllustration className="max-h-[200px] w-full max-w-[220px] text-[var(--mk-ink)]" />
@@ -728,10 +738,10 @@ function FinalCta({ illustration }: { illustration: "bull" | "kanban" }): React.
       <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
         <div>
           <h2 className={serifClassName("text-3xl font-semibold sm:text-4xl lg:text-5xl")}>
-            Your next web push starts on one board.
+            {copy.finalHeading}
           </h2>
           <PrimaryCta href={APP_HREF} className="mt-10">
-            Start building
+            {copy.primaryCta}
           </PrimaryCta>
         </div>
         <div className="flex justify-center lg:justify-end">{art}</div>
