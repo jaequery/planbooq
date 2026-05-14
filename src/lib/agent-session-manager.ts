@@ -86,3 +86,29 @@ export function getRegisteredSessionsForTicket(ticketId: string): string[] {
   }
   return out;
 }
+
+/**
+ * Process-wide dedup for `ticket.workflow.dispatch` handling. The per-ticket
+ * agent panel AND the always-mounted AgentSessionManagerMount both subscribe
+ * to the same Ably channel; both fire on every dispatch event. Whoever calls
+ * `claimWorkflowDispatch` first wins and runs the warm-send. The loser sees
+ * the slot occupied and skips. Required because the panel-only handler used
+ * to miss any dispatch that arrived while the dialog was closed (PLAN-RPL4OB
+ * forensics: 4m25s gap between server-side STEP_STARTED:Build and the Build
+ * AgentJob actually being created, exactly when the user opened the ticket).
+ */
+const claimedDispatches = new Set<string>();
+
+export function claimWorkflowDispatch(stepRunId: string): boolean {
+  if (claimedDispatches.has(stepRunId)) return false;
+  claimedDispatches.add(stepRunId);
+  return true;
+}
+
+export function releaseWorkflowDispatchClaim(stepRunId: string): void {
+  claimedDispatches.delete(stepRunId);
+}
+
+export function lookupAgentJobIdForSession(sessionId: string): string | null {
+  return sessions.get(sessionId)?.jobId ?? null;
+}

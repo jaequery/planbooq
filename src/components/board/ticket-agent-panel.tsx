@@ -19,9 +19,11 @@ import { TicketWorkflowPanel } from "@/components/board/ticket-workflow-panel";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
 import {
+  claimWorkflowDispatch,
   getAgentSessionByTicket,
   markSessionStoppedByUser,
   registerAgentSession,
+  releaseWorkflowDispatchClaim,
   unregisterAgentSession,
 } from "@/lib/agent-session-manager";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
@@ -967,6 +969,13 @@ function DesktopPanel({
         // and Ably replay don't double-fire.
         if (dispatchedStepRunIdsRef.current.has(event.stepRunId)) return;
         if (inFlightWorkflowDispatchRef.current.has(event.stepRunId)) return;
+        // Cross-component dedup: the workspace-level AgentSessionGlobalListener
+        // ALSO subscribes to this event and will warm-send when the panel is
+        // closed (PLAN-RPL4OB-derived fix). Both subscribers race; whichever
+        // calls claimWorkflowDispatch first wins. Without this, opening the
+        // panel mid-dispatch would race the global handler and produce two
+        // warm-sends.
+        if (!claimWorkflowDispatch(event.stepRunId)) return;
         if (busyRef.current || !sendRef.current) {
           if (
             !workflowQueueRef.current.some(
@@ -978,6 +987,10 @@ function DesktopPanel({
               prompt: event.prompt,
             });
           }
+          // Release the claim so the global listener can pick it up if the
+          // panel never drains the queue (e.g., dialog closes before busy
+          // ends). The drain effect re-acquires when it actually sends.
+          releaseWorkflowDispatchClaim(event.stepRunId);
         } else {
           inFlightWorkflowDispatchRef.current.add(event.stepRunId);
           void (async () => {
@@ -988,6 +1001,10 @@ function DesktopPanel({
               });
               if (ok) {
                 dispatchedStepRunIdsRef.current.add(event.stepRunId);
+              } else {
+                // send() failed — let the global listener (or a future
+                // dispatch redelivery) try again.
+                releaseWorkflowDispatchClaim(event.stepRunId);
               }
             } finally {
               inFlightWorkflowDispatchRef.current.delete(event.stepRunId);
