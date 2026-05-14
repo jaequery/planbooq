@@ -4,7 +4,7 @@ import { prisma } from "@/server/db";
 import { inferTicketPriority, runOpenRouterForTicket } from "@/server/openrouter";
 import { mirrorJobTerminal } from "@/server/services/mirror-agent-job";
 import { reconcileBuildingTicket } from "@/server/services/ticket-status";
-import { workflowCommander } from "@/server/services/workflow-commander";
+import { shouldAutoChainAfterStep, workflowCommander } from "@/server/services/workflow-commander";
 
 import { inngest } from "./client";
 
@@ -596,6 +596,20 @@ export const workflowStepCompleted = inngest.createFunction(
     if (!finished) return { ok: false, reason: "step_not_found" };
     if (finished.status !== "SUCCEEDED") return { ok: false, reason: "step_not_succeeded" };
     if (finished.run.status !== "RUNNING") return { ok: false, reason: "run_not_running" };
+
+    // Only auto-dispatch the next step on `autonomous` tickets. For everything
+    // else the contract is: stop at Blocked between steps, let the human glance
+    // at the diff/plan and click Run to advance. The opt-in pairs with
+    // persistTurnEnd's reconcile gate (mirror-agent-job.ts) — both must agree
+    // so the ticket either (autonomous) stays at Running while the next step
+    // warm-sends, or (non-autonomous) demotes to Blocked and no dispatch
+    // races that demotion.
+    const auto = await step.run("check-auto-chain", () =>
+      shouldAutoChainAfterStep(finished.run.ticketId, finished.runId),
+    );
+    if (!auto) {
+      return { ok: true, reason: "auto_chain_disabled" };
+    }
 
     const dispatched = await step.run("dispatch-next-step", () =>
       workflowCommander.dispatchNextStep({ runId: finished.runId, byUserId: null }),

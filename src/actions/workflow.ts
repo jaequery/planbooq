@@ -747,6 +747,12 @@ export async function getTicketWorkflow(ticketId: string): Promise<
      *  within the staleness window. Use this — not the client `running`
      *  state — to decide whether the agent is actually working. */
     agentLive: boolean;
+    /** Name of the WorkflowStepRun currently in `RUNNING` status, if any.
+     *  The workflow panel renders the spinner for this step. Authoritative
+     *  even when the server auto-chained the step (so the local `currentStep`
+     *  hint is stale) — at most one stepRun is RUNNING per workflow at a time
+     *  thanks to the dispatcher's `step_already_running` guard. */
+    runningStepName: string | null;
     steps: Array<{
       id: string | null;
       name: string;
@@ -777,6 +783,16 @@ export async function getTicketWorkflow(ticketId: string): Promise<
   const prUrl = ticketState?.prUrl ?? null;
   const statusKey = ticketState?.status?.key ?? null;
 
+  // Authoritative "which step is running right now" — used by the panel to
+  // render the spinner. Reads after the reconcile above so any just-reaped
+  // stepRun doesn't linger as falsely RUNNING.
+  const runningStep = await prisma.workflowStepRun.findFirst({
+    where: { status: "RUNNING", run: { ticketId, status: "RUNNING" } },
+    orderBy: { position: "asc" },
+    select: { name: true },
+  });
+  const runningStepName = runningStep?.name ?? null;
+
   const overrideSteps = await prisma.workflowStep.findMany({
     where: { ticketId },
     orderBy: { position: "asc" },
@@ -795,6 +811,7 @@ export async function getTicketWorkflow(ticketId: string): Promise<
       templateId: null,
       templateName: null,
       agentLive: live.live,
+      runningStepName,
       steps: overrideSteps.map((s) => ({
         ...s,
         source: "ticket" as const,
@@ -842,6 +859,7 @@ export async function getTicketWorkflow(ticketId: string): Promise<
     templateId: tpl?.id ?? null,
     templateName: tpl?.name ?? null,
     agentLive: live.live,
+    runningStepName,
     steps: tplSteps.map((s) => ({
       id: s.id,
       name: s.name,

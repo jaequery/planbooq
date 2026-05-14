@@ -11,7 +11,7 @@ import {
 } from "@/server/services/agent-job-outcome";
 import { getOrCreateConversationForTicket } from "@/server/services/conversations";
 import { reconcileBuildingTicket } from "@/server/services/ticket-status";
-import { workflowCommander } from "@/server/services/workflow-commander";
+import { shouldAutoChainAfterStep, workflowCommander } from "@/server/services/workflow-commander";
 
 // =============================================================================
 // Mirror layer for AgentJob → Conversation/Message.
@@ -892,18 +892,44 @@ async function persistTurnEnd(job: AgentJob, outcome: TurnEndOutcome): Promise<v
   // Reconcile only on success. The failure path already routes through the
   // NOTE write in applyClaudeLine and mirrorJobTerminal; running reconcile
   // here would race with those.
+  //
+  // Auto-chain carve-out: when the ticket is `autonomous` and the workflow
+  // has more PENDING steps, skip the Blocked demotion. The
+  // workflow-step-completed Inngest handler will dispatch the next step
+  // within ~100ms and the desktop client will warm-send its prompt into the
+  // still-alive Claude session. Demoting to Blocked here would race that
+  // dispatch: the desktop panel's "external move to Blocked = kill the
+  // session" handler (ticket-agent-panel.tsx:938) SIGTERMs the process
+  // mid-warm-send, the cancel gets mis-credited to the just-warm-sent step
+  // by resolveTerminalStepRunId (mirror-agent-job.ts:1054), and the
+  // staleness reaper (workflow.ts:693) finishes off the WorkflowRun. See
+  // PLAN-LYVQV8 for the full forensics. Non-autonomous tickets still demote
+  // — the Inngest handler also gates on the same predicate, so the
+  // dispatch won't fire and the user clicks Run to advance manually.
   if (outcome.kind === "success") {
-    await reconcileBuildingTicket({
-      ticketId: job.ticketId,
-      byUserId: job.userId,
-      excludeJobId: job.id,
-      jobStatus: "SUCCEEDED",
-    }).catch((err: unknown) => {
-      logger.warn("mirror.turn-end.reconcile.failed", {
-        jobId: job.id,
-        error: err instanceof Error ? err.message : String(err),
+    const autoChaining =
+      stepRunTransitioned && completion.runId
+        ? await shouldAutoChainAfterStep(job.ticketId, completion.runId).catch((err: unknown) => {
+            logger.warn("mirror.turn-end.auto-chain-check.failed", {
+              jobId: job.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            return false;
+          })
+        : false;
+    if (!autoChaining) {
+      await reconcileBuildingTicket({
+        ticketId: job.ticketId,
+        byUserId: job.userId,
+        excludeJobId: job.id,
+        jobStatus: "SUCCEEDED",
+      }).catch((err: unknown) => {
+        logger.warn("mirror.turn-end.reconcile.failed", {
+          jobId: job.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
-    });
+    }
   }
 }
 

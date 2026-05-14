@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, Loader2, Play } from "lucide-react";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { getProjectLocalPath } from "@/actions/project";
 import {
@@ -25,6 +25,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useBoardChannel } from "@/lib/realtime/use-board-channel";
+import type { AblyChannelEvent } from "@/lib/types";
 import { getDesktopBridge } from "@/lib/use-is-desktop";
 
 type WorkflowState = {
@@ -32,6 +34,10 @@ type WorkflowState = {
   templateId: string | null;
   templateName: string | null;
   agentLive: boolean;
+  /** Authoritative server-side "which step is currently RUNNING." Beats the
+   *  local `currentStep` heuristic when the server auto-chained to the next
+   *  step (heuristic only tracks steps THIS panel dispatched). */
+  runningStepName: string | null;
   steps: Array<{
     id: string | null;
     name: string;
@@ -81,6 +87,11 @@ export function TicketWorkflowPanel({
     // client-side FIFO heuristic only for steps the server can't classify.
     const step = wf?.steps.find((s) => s.name === name);
     if (step?.completed === true) return "completed";
+    // Authoritative "currently running" from the server's WorkflowStepRun
+    // row. Needed because when the server auto-chains to the next step (the
+    // `autonomous` label flow), the local `currentStep` hint never sees the
+    // transition — only the first step ever entered the local FIFO.
+    if (wf?.runningStepName === name) return "running";
     if (step?.completed === false) {
       // Server explicitly says not done — only a live "running" indicator
       // can override. Don't trust stale local state.
@@ -154,6 +165,7 @@ export function TicketWorkflowPanel({
         templateId: a.templateId,
         templateName: a.templateName,
         agentLive: a.agentLive,
+        runningStepName: a.runningStepName,
         steps: a.steps,
       });
       // Server is the source of truth for whether the agent is actually
@@ -209,15 +221,17 @@ export function TicketWorkflowPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoRun, agentReady, wf, hasLocalPath, running]);
 
-  // While we believe the agent is running, poll the server every 30s so
-  // server-side reconciliation (stale-job sweep) gets exercised even when
-  // no client event arrives. The poll stops as soon as the server reports
-  // agentLive=false (refresh() clears `running` in that case).
+  // Liveness probe while running: kick the server-side
+  // `reconcileTicketAgentState` sweep at a slow cadence so dead AgentJobs
+  // get reaped even when no Ably event arrives. Two minutes is well past
+  // the 90s AGENT_STALE_MS threshold, so we never race a still-live job.
+  // The step spinner does NOT depend on this — that's driven by the
+  // ticket.activity Ably subscription below.
   useEffect(() => {
     if (!running) return;
     const id = setInterval(() => {
       void refresh();
-    }, 30_000);
+    }, 120_000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running, ticketId]);
@@ -244,6 +258,38 @@ export function TicketWorkflowPanel({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
+
+  // Realtime spinner: subscribe to `ticket.activity` so STEP_STARTED /
+  // STEP_COMPLETED flip the running indicator the moment the server writes
+  // them. The 30s poll above is belt-and-suspenders for missed events; this
+  // is the primary signal. Server publishes STEP_STARTED inside the same
+  // transaction as the WorkflowStepRun PENDING→RUNNING CAS
+  // (workflow-commander.ts dispatchNextStep), so when this fires the row IS
+  // RUNNING — no race.
+  const onActivity = useCallback(
+    (event: AblyChannelEvent) => {
+      if (event.name !== "ticket.activity") return;
+      if (event.ticketId !== ticketId) return;
+      const kind = event.activity.kind;
+      if (kind !== "STEP_STARTED" && kind !== "STEP_COMPLETED") return;
+      const payload = event.activity.payload as { name?: unknown } | null;
+      const name = typeof payload?.name === "string" ? payload.name : null;
+      if (!name) return;
+      if (kind === "STEP_STARTED") {
+        setWf((prev) => (prev ? { ...prev, runningStepName: name } : prev));
+      } else {
+        // Only clear if this is the step we believe is running. Out-of-order
+        // delivery (STEP_STARTED for next step arrives before STEP_COMPLETED
+        // for the previous one) is then a no-op — the spinner stays on the
+        // newly-started step instead of flickering off.
+        setWf((prev) =>
+          prev && prev.runningStepName === name ? { ...prev, runningStepName: null } : prev,
+        );
+      }
+    },
+    [ticketId],
+  );
+  useBoardChannel(workspaceId, onActivity);
 
   async function runPrompts(steps: Array<{ name: string; prompt: string }>) {
     if (steps.length === 0) return;
@@ -414,6 +460,7 @@ export function TicketWorkflowPanel({
       templateId: fresh.templateId,
       templateName: fresh.templateName,
       agentLive: fresh.agentLive,
+      runningStepName: fresh.runningStepName,
       steps: fresh.steps,
     };
     setWf(next);

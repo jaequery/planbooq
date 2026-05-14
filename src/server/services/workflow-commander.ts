@@ -403,4 +403,29 @@ export async function dispatchNextWorkflowStep(
   }
 }
 
+// Auto-chain gate: the server should only run the "demote ticket → Blocked AND
+// fire `dispatchNextStep` in parallel" sequence when the workflow is meant to
+// drain without human intervention. The user opt-in is the `autonomous` ticket
+// label; everything else stops between steps and waits for a manual Run click.
+//
+// Returns true iff the ticket carries the `autonomous` label AND the run has
+// at least one PENDING step left. Both callers (persistTurnEnd's reconcile,
+// the Inngest workflow-step-completed handler's dispatch) must agree, or the
+// two halves race and the desktop bridge's Blocked-handler SIGTERMs the
+// still-warm Claude session that just warm-sent the next step. See the
+// PLAN-LYVQV8 forensics for the exact race.
+export async function shouldAutoChainAfterStep(ticketId: string, runId: string): Promise<boolean> {
+  const [ticket, pendingCount] = await Promise.all([
+    prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: { labels: { select: { name: true } } },
+    }),
+    prisma.workflowStepRun.count({
+      where: { runId, status: "PENDING" },
+    }),
+  ]);
+  if (!ticket || pendingCount === 0) return false;
+  return ticket.labels.some((l) => l.name.trim().toLowerCase() === "autonomous");
+}
+
 export type { WorkflowStepRunSnapshot };
