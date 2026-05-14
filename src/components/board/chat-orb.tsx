@@ -223,6 +223,18 @@ export function ChatOrb({
     });
   }, []);
 
+  // Switch the pill on/off without opening the picker. "On" means the
+  // selection matches the project default (the only state where auto-run can
+  // actually fire); "off" clears the selection.
+  const toggleAutoExecute = useCallback((): void => {
+    if (defaultWorkflowTemplateId === null) return;
+    setSelectedWorkflowId((prev) => {
+      const next = prev === defaultWorkflowTemplateId ? null : defaultWorkflowTemplateId;
+      writeAutoRunId(next);
+      return next;
+    });
+  }, [defaultWorkflowTemplateId]);
+
   useEffect(() => {
     function handle(event: KeyboardEvent): void {
       if (!(event.metaKey || event.ctrlKey)) return;
@@ -516,21 +528,21 @@ export function ChatOrb({
               <ImageIcon className="h-3.5 w-3.5" aria-hidden />
             </button>
             <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-              <PopoverAnchor asChild>
+              <div className="inline-flex flex-shrink-0 items-center gap-1.5 self-center">
                 <button
                   type="button"
-                  aria-haspopup="dialog"
-                  aria-expanded={pickerOpen}
-                  aria-label="Open auto-run workflows"
-                  disabled={pending}
-                  onClick={() => setPickerOpen(true)}
-                  className="inline-flex flex-shrink-0 items-center gap-1.5 self-center rounded-full px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50 disabled:hover:text-muted-foreground"
+                  role="switch"
+                  aria-checked={effectiveAutoExecute}
+                  aria-label={effectiveAutoExecute ? "Disable auto-run" : "Enable auto-run"}
+                  disabled={pending || defaultWorkflowTemplateId === null}
+                  onClick={toggleAutoExecute}
+                  className="inline-flex flex-shrink-0 items-center rounded-full p-0.5 transition-colors hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
                   title={
                     defaultWorkflowTemplateId === null
-                      ? "Open workflows — no default workflow set"
+                      ? "No default workflow set — auto-run can't fire"
                       : effectiveAutoExecute
-                        ? "Auto-run: on — open workflows"
-                        : "Auto-run: off — open workflows"
+                        ? "Auto-run: on — click to disable"
+                        : "Auto-run: off — click to enable"
                   }
                 >
                   <span
@@ -545,10 +557,29 @@ export function ChatOrb({
                       }`}
                     />
                   </span>
-                  <span className="max-w-[8rem] truncate">{displayLabel}</span>
-                  <ChevronDown className="h-3 w-3" aria-hidden />
                 </button>
-              </PopoverAnchor>
+                <PopoverAnchor asChild>
+                  <button
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-expanded={pickerOpen}
+                    aria-label="Open auto-run workflows"
+                    disabled={pending}
+                    onClick={() => setPickerOpen(true)}
+                    className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50 disabled:hover:text-muted-foreground"
+                    title={
+                      defaultWorkflowTemplateId === null
+                        ? "Open workflows — no default workflow set"
+                        : effectiveAutoExecute
+                          ? "Auto-run: on — open workflows"
+                          : "Auto-run: off — open workflows"
+                    }
+                  >
+                    <span className="max-w-[8rem] truncate">{displayLabel}</span>
+                    <ChevronDown className="h-3 w-3" aria-hidden />
+                  </button>
+                </PopoverAnchor>
+              </div>
               <PopoverContent align="end" sideOffset={8} className="w-72 p-0">
                 <div className="border-b border-border/70 px-3 py-2">
                   <div className="font-medium text-[12px]">Auto-run workflow</div>
