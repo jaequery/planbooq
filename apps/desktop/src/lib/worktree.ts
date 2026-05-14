@@ -1,9 +1,10 @@
-import { ipcMain, dialog, BrowserWindow } from "electron";
 import { spawn } from "node:child_process";
-import path from "node:path";
 import fs from "node:fs/promises";
+import path from "node:path";
+import { mergePathWithCommonCliDirs, resolveClaudeExecutable } from "@planbooq/claude-resolve";
+import { BrowserWindow, dialog, ipcMain } from "electron";
 import log from "electron-log/main";
-import { WorktreeNameError, formatWorktreeName } from "./worktree-name";
+import { formatWorktreeName, WorktreeNameError } from "./worktree-name";
 
 interface SpawnInput {
   repoPath: string;
@@ -13,18 +14,18 @@ interface SpawnInput {
 }
 
 function isSafeBranch(s: string): boolean {
-  return /^[A-Za-z0-9._/\-]{1,200}$/.test(s) && !s.includes("..");
+  return /^[A-Za-z0-9._/-]{1,200}$/.test(s) && !s.includes("..");
 }
 
 function emit(line: string) {
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send("planbooq:worktree:log", line);
 }
 
-async function run(cmd: string, args: string[], cwd: string) {
+async function run(cmd: string, args: string[], cwd: string, envPatch?: Record<string, string>) {
   return new Promise<{ code: number; stderr: string; stdout: string }>((resolve, reject) => {
     const proc = spawn(cmd, args, {
       cwd,
-      env: process.env,
+      env: envPatch ? { ...process.env, ...envPatch } : process.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stderr = "";
@@ -45,7 +46,10 @@ async function run(cmd: string, args: string[], cwd: string) {
 }
 
 function lastNonEmptyLine(s: string): string {
-  const lines = s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = s
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
   return lines[lines.length - 1] ?? "";
 }
 
@@ -107,7 +111,10 @@ export function registerWorktreeIpc(): void {
 
   ipcMain.handle("planbooq:worktree:spawn", async (_, input: SpawnInput) => {
     if (!input?.repoPath || !input?.branch || !input?.prompt || !input?.ticketIdentifier) {
-      return { ok: false, error: "missing required fields (repoPath, branch, prompt, ticketIdentifier)" };
+      return {
+        ok: false,
+        error: "missing required fields (repoPath, branch, prompt, ticketIdentifier)",
+      };
     }
     if (!isSafeBranch(input.branch)) return { ok: false, error: "invalid branch name" };
     if (!(await isGitRepo(input.repoPath))) return { ok: false, error: "not a git repo" };
@@ -175,13 +182,20 @@ export function registerWorktreeIpc(): void {
     }
 
     // Best-effort: invoke claude CLI if present, otherwise just leave the worktree.
+    const resolved = resolveClaudeExecutable();
     emit(`$ claude --print ${JSON.stringify(input.prompt).slice(0, 60)}...\n`);
-    try {
-      const claudeRes = await run("claude", ["--print", input.prompt], wtPath);
-      if (claudeRes.code !== 0) emit(`(claude exited ${claudeRes.code})\n`);
-    } catch (err) {
-      log.warn("claude not available", err);
-      emit("claude CLI not found in PATH — worktree created, run claude there manually\n");
+    if (!resolved.ok) {
+      emit(`${resolved.message}\n`);
+    } else {
+      try {
+        const claudeRes = await run(resolved.executable, ["--print", input.prompt], wtPath, {
+          PATH: mergePathWithCommonCliDirs(process.env.PATH ?? ""),
+        });
+        if (claudeRes.code !== 0) emit(`(claude exited ${claudeRes.code})\n`);
+      } catch (err) {
+        log.warn("claude not available", err);
+        emit("claude CLI failed to start — worktree created, run claude there manually\n");
+      }
     }
     return { ok: true, worktreePath: wtPath, branch: input.branch };
   });

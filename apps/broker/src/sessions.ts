@@ -4,6 +4,7 @@ import { createWriteStream, type WriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { resolveClaudeExecutable } from "@planbooq/claude-resolve";
 import type { SessionInfo, TicketContext, WireEventOut } from "./protocol";
 
 // =============================================================================
@@ -74,7 +75,7 @@ function closeLogStream(sessionId: string): void {
 // =============================================================================
 
 type Session = {
-  proc: ChildProcess;
+  proc: ChildProcess | null;
   cwd: string;
   ticketId: string | null;
   startedAt: number;
@@ -290,9 +291,60 @@ function userMessageFrame(text: string): string {
   })}\n`;
 }
 
-function spawnClaude(
+function createSessionSkeleton(params: {
+  worktreePath: string;
+  ticket?: TicketContext;
+  jobId?: string;
+  workflowStepRunId?: string | null;
+  proc: ChildProcess | null;
+}): Session {
+  return {
+    proc: params.proc,
+    cwd: params.worktreePath,
+    ticketId: params.ticket?.ticketId ?? null,
+    startedAt: Date.now(),
+    jobId: params.jobId ?? null,
+    apiBaseUrl: params.ticket?.apiBaseUrl ?? null,
+    apiToken: params.ticket?.apiToken ?? null,
+    heartbeatTimer: null,
+    lastPatchAt: 0,
+    appendBuffer: "",
+    appendTimer: null,
+    userStopped: false,
+    terminalSent: false,
+    currentStepRunId: params.workflowStepRunId ?? null,
+  };
+}
+
+/** Immediate failure before any Claude child exists — mirrors spawn `error` cleanup without touching `sessions`. */
+function emitUnresolvedClaudeFailure(
+  sessionId: string,
+  s: Session,
+  reason: string,
+  userVisibleLine: string,
+): void {
+  logLine(sessionId, "spawn-error", { error: reason });
+  const stderrLine = `[spawn error] ${reason}\n`;
+  emit({ type: "stderr", sessionId, line: stderrLine });
+  enqueueAppend(
+    s,
+    sessionId,
+    serializeWire({
+      kind: "stderr",
+      line: stderrLine,
+      stepRunId: s.currentStepRunId,
+    }),
+  );
+  patchUserMessage(s, sessionId, userVisibleLine);
+  patchTerminal(s, sessionId, 127);
+  emit({ type: "exit", sessionId, code: 127 });
+  closeLogStream(sessionId);
+}
+
+function spawnClaudeProcess(
   cwd: string,
   sessionId: string,
+  executable: string,
   opts: { resumeId?: string; ticket?: TicketContext },
 ): ChildProcess {
   const args = [
@@ -311,13 +363,14 @@ function spawnClaude(
     env.PLANBOOQ_TOKEN = opts.ticket.apiToken;
     env.PLANBOOQ_TICKET_ID = opts.ticket.ticketId;
   }
-  const proc = spawn("claude", args, {
+  const proc = spawn(executable, args, {
     cwd,
     env,
     stdio: ["pipe", "pipe", "pipe"],
   });
   logLine(sessionId, "spawn", {
     cwd,
+    executable,
     args,
     pid: proc.pid,
     resume: opts.resumeId ?? null,
@@ -410,23 +463,28 @@ export type StartParams = {
 
 export function startSession(params: StartParams): { sessionId: string } {
   const sessionId = randomUUID();
-  const proc = spawnClaude(params.worktreePath, sessionId, { ticket: params.ticket });
-  const s: Session = {
+  const resolved = resolveClaudeExecutable();
+  if (!resolved.ok) {
+    const s = createSessionSkeleton({
+      worktreePath: params.worktreePath,
+      ticket: params.ticket,
+      jobId: params.jobId,
+      workflowStepRunId: params.workflowStepRunId ?? null,
+      proc: null,
+    });
+    emitUnresolvedClaudeFailure(sessionId, s, resolved.message, params.firstMessage);
+    return { sessionId };
+  }
+  const proc = spawnClaudeProcess(params.worktreePath, sessionId, resolved.executable, {
+    ticket: params.ticket,
+  });
+  const s = createSessionSkeleton({
+    worktreePath: params.worktreePath,
+    ticket: params.ticket,
+    jobId: params.jobId,
+    workflowStepRunId: params.workflowStepRunId ?? null,
     proc,
-    cwd: params.worktreePath,
-    ticketId: params.ticket?.ticketId ?? null,
-    startedAt: Date.now(),
-    jobId: params.jobId ?? null,
-    apiBaseUrl: params.ticket?.apiBaseUrl ?? null,
-    apiToken: params.ticket?.apiToken ?? null,
-    heartbeatTimer: null,
-    lastPatchAt: 0,
-    appendBuffer: "",
-    appendTimer: null,
-    userStopped: false,
-    terminalSent: false,
-    currentStepRunId: params.workflowStepRunId ?? null,
-  };
+  });
   sessions.set(sessionId, s);
   if (s.jobId && s.apiBaseUrl && s.apiToken) startHeartbeat(s, sessionId);
   proc.stdin?.write(userMessageFrame((params.claudePreamble ?? "") + params.firstMessage));
@@ -447,26 +505,29 @@ export type ResumeParams = {
 
 export function resumeSession(params: ResumeParams): { sessionId: string } {
   const sessionId = randomUUID();
-  const proc = spawnClaude(params.worktreePath, sessionId, {
+  const resolved = resolveClaudeExecutable();
+  if (!resolved.ok) {
+    const s = createSessionSkeleton({
+      worktreePath: params.worktreePath,
+      ticket: params.ticket,
+      jobId: params.jobId,
+      workflowStepRunId: params.workflowStepRunId ?? null,
+      proc: null,
+    });
+    emitUnresolvedClaudeFailure(sessionId, s, resolved.message, params.message);
+    return { sessionId };
+  }
+  const proc = spawnClaudeProcess(params.worktreePath, sessionId, resolved.executable, {
     resumeId: params.claudeSessionId,
     ticket: params.ticket,
   });
-  const s: Session = {
+  const s = createSessionSkeleton({
+    worktreePath: params.worktreePath,
+    ticket: params.ticket,
+    jobId: params.jobId,
+    workflowStepRunId: params.workflowStepRunId ?? null,
     proc,
-    cwd: params.worktreePath,
-    ticketId: params.ticket?.ticketId ?? null,
-    startedAt: Date.now(),
-    jobId: params.jobId ?? null,
-    apiBaseUrl: params.ticket?.apiBaseUrl ?? null,
-    apiToken: params.ticket?.apiToken ?? null,
-    heartbeatTimer: null,
-    lastPatchAt: 0,
-    appendBuffer: "",
-    appendTimer: null,
-    userStopped: false,
-    terminalSent: false,
-    currentStepRunId: params.workflowStepRunId ?? null,
-  };
+  });
   sessions.set(sessionId, s);
   if (s.jobId && s.apiBaseUrl && s.apiToken) startHeartbeat(s, sessionId);
   proc.stdin?.write(userMessageFrame((params.claudePreamble ?? "") + params.message));
@@ -481,6 +542,7 @@ export function sendToSession(
 ): { ok: boolean; error?: string } {
   const s = sessions.get(sessionId);
   if (!s) return { ok: false, error: "session not found" };
+  if (!s.proc) return { ok: false, error: "session has no agent process" };
   if (workflowStepRunId !== undefined) {
     s.currentStepRunId = workflowStepRunId;
   }
@@ -492,6 +554,7 @@ export function sendToSession(
 export function stopSession(sessionId: string): { ok: boolean; error?: string } {
   const s = sessions.get(sessionId);
   if (!s) return { ok: false, error: "session not found" };
+  if (!s.proc) return { ok: false, error: "session has no agent process" };
   logLine(sessionId, "stop", { source: "user" });
   s.userStopped = true;
   clearHeartbeat(s);
@@ -508,7 +571,7 @@ export function listSessions(): SessionInfo[] {
       jobId: s.jobId,
       cwd: s.cwd,
       startedAt: s.startedAt,
-      busy: !s.terminalSent && !s.proc.killed,
+      busy: !s.terminalSent && !!s.proc && !s.proc.killed,
     });
   }
   return out;
@@ -528,9 +591,14 @@ export function oneshot(
   timeoutMs: number,
 ): Promise<{ ok: boolean; text?: string; error?: string }> {
   return new Promise((resolve) => {
+    const resolved = resolveClaudeExecutable();
+    if (!resolved.ok) {
+      resolve({ ok: false, error: resolved.message });
+      return;
+    }
     let proc: ChildProcess;
     try {
-      proc = spawn("claude", ["--print", "--output-format", "text"], {
+      proc = spawn(resolved.executable, ["--print", "--output-format", "text"], {
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (err) {

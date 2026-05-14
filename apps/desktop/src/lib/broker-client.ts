@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { mergePathWithCommonCliDirs } from "@planbooq/claude-resolve";
 import { app } from "electron";
 import log from "electron-log/main";
 
@@ -126,6 +127,7 @@ async function spawnBrokerDetached(): Promise<void> {
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "1",
+      PATH: mergePathWithCommonCliDirs(process.env.PATH ?? ""),
       // Strip Electron-specific flags that confuse plain Node.
       NODE_OPTIONS: process.env.NODE_OPTIONS ?? "",
     },

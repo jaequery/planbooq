@@ -24,7 +24,7 @@
     "desktop:make": "pnpm broker:build && pnpm --filter @planbooq/desktop make",
     "desktop:publish": "pnpm broker:build && pnpm --filter @planbooq/desktop publish",
     "desktop:typecheck": "pnpm --filter @planbooq/desktop typecheck",
-    "broker:build": "pnpm --filter @planbooq/broker build",
+    "broker:build": "pnpm --filter @planbooq/claude-resolve build && pnpm --filter @planbooq/broker build",
     "broker:typecheck": "pnpm --filter @planbooq/broker typecheck",
     "pr": "scripts/pr.sh",
     "pair": "node packages/agent/bin/planbooq-agent.mjs login",

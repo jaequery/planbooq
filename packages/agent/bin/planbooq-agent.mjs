@@ -9,8 +9,10 @@ const HOOK_PATH = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../hooks/post-tool-use.mjs",
 );
+
 import { stdin as input, stdout as output } from "node:process";
 import readline from "node:readline/promises";
+import { mergePathWithCommonCliDirs, resolveClaudeExecutable } from "@planbooq/claude-resolve";
 import * as Ably from "ably";
 
 const CONFIG_DIR = path.join(os.homedir(), ".planbooq");
@@ -86,9 +88,7 @@ function ensureClaudeHook(repoRoot) {
       hooks: [{ type: "command", command: `node ${JSON.stringify(HOOK_PATH).slice(1, -1)}` }],
     };
     const existing = Array.isArray(cfg.hooks.PostToolUse) ? cfg.hooks.PostToolUse : [];
-    const filtered = existing.filter(
-      (h) => !JSON.stringify(h).includes("post-tool-use.mjs"),
-    );
+    const filtered = existing.filter((h) => !JSON.stringify(h).includes("post-tool-use.mjs"));
     cfg.hooks.PostToolUse = [...filtered, desired];
     writeFileSync(file, JSON.stringify(cfg, null, 2));
   } catch (e) {
@@ -98,9 +98,16 @@ function ensureClaudeHook(repoRoot) {
 
 function execClaude(prompt, repoRoot, env, onChunk) {
   return new Promise((resolve) => {
-    const child = spawn("claude", ["-p", prompt, "--output-format", "stream-json"], {
+    const resolved = resolveClaudeExecutable();
+    if (!resolved.ok) {
+      onChunk(`\n[agent] ${resolved.message}\n`);
+      resolve(127);
+      return;
+    }
+    const pathMerged = mergePathWithCommonCliDirs(process.env.PATH ?? "");
+    const child = spawn(resolved.executable, ["-p", prompt, "--output-format", "stream-json"], {
       cwd: repoRoot,
-      env: { ...process.env, ...env },
+      env: { ...process.env, ...env, PATH: pathMerged },
     });
     child.stdout.on("data", (b) => onChunk(b.toString("utf8")));
     child.stderr.on("data", (b) => onChunk(b.toString("utf8")));
