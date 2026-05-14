@@ -58,7 +58,7 @@ export function Footer(): React.ReactElement {
           <FooterColumn
             heading="Product"
             links={[
-              { label: "How it works", href: "/#learn" },
+              { label: "How it works", href: "/learn" },
               { label: "Pricing", href: "/pricing" },
               { label: "Download", href: DOWNLOAD_HREF },
               { label: "Start building", href: APP_HREF },
