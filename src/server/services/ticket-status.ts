@@ -33,6 +33,10 @@ export async function moveTicketToStatusId(args: {
   beforeTicketId?: string | null;
   afterTicketId?: string | null;
   cleanup?: MoveCleanup | null;
+  // Optional discriminator that flows through onto the published
+  // `ticket.moved` event so subscribers can tell *why* the move happened.
+  // Only `"step-ship"` is wired up today (see AblyChannelEvent.ticket.moved).
+  reason?: "step-ship";
 }): Promise<TicketMoveResult> {
   const ticket = await prisma.ticket.findUnique({
     where: { id: args.ticketId },
@@ -147,6 +151,7 @@ export async function moveTicketToStatusId(args: {
     position,
     by: args.by,
     cleanup: args.cleanup,
+    reason: args.reason,
   });
 
   await recordStatusChangedActivity({
@@ -174,6 +179,7 @@ export async function moveTicketToStatusKey(args: {
   ticketId: string;
   toStatusKey: string;
   byUserId: string;
+  reason?: "step-ship";
 }): Promise<TicketMoveResult | null> {
   const ticket = await prisma.ticket.findUnique({
     where: { id: args.ticketId },
@@ -203,6 +209,7 @@ export async function moveTicketToStatusKey(args: {
     toStatusId: target.id,
     by: args.byUserId,
     activityByUserId: args.byUserId,
+    reason: args.reason,
   });
 }
 

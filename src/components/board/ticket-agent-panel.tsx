@@ -935,6 +935,19 @@ function DesktopPanel({
           statusKeyRef.current = toKey;
           return;
         }
+        // Server-initiated end-of-step transition. `pbq ship` flips the
+        // ticket Building → Review from inside the same Claude subprocess
+        // that's mid-clean-exit; the latch can't cover this because the
+        // panel never initiated the write. Killing here SIGTERMs the
+        // shipping process (exit 143) and the Issue PR step gets
+        // mis-credited as "Agent job canceled" even though the PR landed.
+        // See PLAN-S2Q8SX / PLAN-HOQTXA / PLAN-N4THY7. The natural SDK
+        // `result` event drives the regular exit handler (busy=false,
+        // workflow queue drain, status SUCCEEDED).
+        if (event.reason === "step-ship") {
+          statusKeyRef.current = toKey;
+          return;
+        }
         // External move out of building — treat as a user-driven stop.
         statusKeyRef.current = toKey;
         if (toKey === "blocked") {

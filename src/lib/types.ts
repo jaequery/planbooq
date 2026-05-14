@@ -114,6 +114,15 @@ export type AblyChannelEvent =
         worktreePath: string;
         branch: string | null;
       } | null;
+      // Why the transition was published. Subscribers that would otherwise
+      // interpret a move out of `building` as a user-driven stop (e.g. the
+      // agent panel SIGTERMing the live session) must NOT do so when the
+      // reason marks a server-initiated end-of-step transition.
+      //   - "step-ship": `pbq ship` moved Building → Review while the same
+      //     Claude process is mid-clean-exit (PLAN-S2Q8SX, forensics
+      //     PLAN-HOQTXA / PLAN-N4THY7).
+      // Optional; legacy publishers omit it.
+      reason?: "step-ship";
     }
   | {
       name: "ticket.updated";

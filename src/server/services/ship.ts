@@ -106,6 +106,11 @@ export async function shipTicketSvc(
       ticketId: ticket.id,
       toStatusKey: "review",
       byUserId: userId,
+      // Marks this transition as server-initiated end-of-step so the agent
+      // panel won't SIGTERM the very Claude process that just shipped on the
+      // round-tripped `ticket.moved` event. See PLAN-S2Q8SX / forensics
+      // PLAN-HOQTXA + PLAN-N4THY7.
+      reason: "step-ship",
     });
     if (!moved) {
       // moveTicketToStatusKey returns null when the workspace has no
