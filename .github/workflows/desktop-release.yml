@@ -155,7 +155,11 @@ jobs:
             find apps/desktop/out -type f >&2 || true
             exit 1
           fi
-          renamed="Planbooq-${VERSION}-${{ matrix.arch }}.dmg"
+          # Unversioned filename so https://github.com/.../releases/latest/download/Planbooq-<arch>.dmg
+          # stays a stable direct link from the landing page across releases.
+          # Version still lives in the release tag (v0.1.<n>) and in the DMG's
+          # Info.plist (CFBundleShortVersionString), so nothing is lost.
+          renamed="Planbooq-${{ matrix.arch }}.dmg"
           cp "$dmg" "/tmp/${renamed}"
           # --clobber tolerates re-runs / mid-flight retries for the same arch.
           gh release upload "$TAG" "/tmp/${renamed}" --clobber

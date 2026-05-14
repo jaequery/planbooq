@@ -22,7 +22,7 @@ export const LANDING_COPY: LandingCopy = {
   subhead:
     "Plan the work, fan it across AI agents, watch tickets ship in parallel. No more terminal-by-terminal babysitting, no more mystery status.",
   primaryCta: "Start building",
-  secondaryCta: "Mac app",
+  secondaryCta: "Download for Mac",
   valueA:
     "We merged the best parts of modern vibe coding—planning plus harnessed execution—so speed and output stay in one loop.",
   valueB: "We routinely keep ten tickets moving at once; parallel beats babysitting one thread.",
