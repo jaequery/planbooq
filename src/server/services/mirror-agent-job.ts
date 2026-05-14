@@ -1083,10 +1083,35 @@ async function resolveTerminalStepRunId(job: AgentJob): Promise<string | null> {
     .findFirst({
       where: { agentJobId: job.id, role: "USER" },
       orderBy: { createdAt: "desc" },
-      select: { body: true, workflowStepRunId: true },
+      select: { id: true, body: true, workflowStepRunId: true, createdAt: true },
     })
     .catch(() => null);
-  if (lastUser?.workflowStepRunId) return lastUser.workflowStepRunId;
+  if (lastUser?.workflowStepRunId) {
+    // Warm-send cancel guard: a single AgentJob can span multiple workflow
+    // steps when the desktop client warm-sends the next step's prompt into
+    // the still-alive Claude session. That writes a fresh USER row tagged to
+    // the *next* step's WorkflowStepRun. If the job is then terminated
+    // (CANCELED/FAILED) before the agent has produced any output for that
+    // newly-queued prompt, crediting `lastUser.workflowStepRunId` would flip
+    // the next step PENDING/RUNNING → FAILED for work it never started. So:
+    // only honor the lastUser FK if at least one non-USER message exists for
+    // this job with createdAt strictly after lastUser. Otherwise fall back to
+    // the cold-start `job.workflowStepRunId` (the step the job was bound to
+    // at start), whose CAS in completeStep will short-circuit if it has
+    // already terminated. See PLAN-N4THY7 / PLAN-LYVQV8 forensics.
+    const followUp = await prisma.message
+      .findFirst({
+        where: {
+          agentJobId: job.id,
+          role: { not: "USER" },
+          id: { not: lastUser.id },
+          createdAt: { gt: lastUser.createdAt },
+        },
+        select: { id: true },
+      })
+      .catch(() => null);
+    if (followUp) return lastUser.workflowStepRunId;
+  }
   if (job.workflowStepRunId) return job.workflowStepRunId;
 
   const stepName = lastUser?.body?.match(/^\[Workflow(?:\s+\d+\/\d+)?:\s*([^\]]+)\]/)?.[1]?.trim();
