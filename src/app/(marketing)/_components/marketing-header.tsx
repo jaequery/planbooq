@@ -19,28 +19,7 @@ function navIdFromHash(): string {
 
 function LogoMark(): React.ReactElement {
   return (
-    <Link href="/" className="group flex items-center gap-3 justify-self-start outline-none">
-      <span
-        className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--mk-hairline-strong)] bg-[var(--mk-surface)] transition group-hover:border-[var(--mk-hairline)]"
-        aria-hidden="true"
-      >
-        <svg
-          className="h-[1.4rem] w-[1.4rem] text-[var(--mk-ink)]"
-          viewBox="0 0 32 32"
-          fill="none"
-          aria-hidden="true"
-        >
-          <circle cx="16" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.2" />
-          <path
-            stroke="currentColor"
-            strokeWidth="1"
-            strokeLinecap="round"
-            d="M10 24c2 3 5 5 6 5s4-2 6-5"
-          />
-          <circle cx="13" cy="9.5" r="0.7" fill="currentColor" />
-          <circle cx="19" cy="9.5" r="0.7" fill="currentColor" />
-        </svg>
-      </span>
+    <Link href="/" className="justify-self-start outline-none">
       <span
         className={serifClassName(
           "text-[20px] font-semibold tracking-[0.06em] text-[var(--mk-ink)] uppercase sm:text-[22px]",
