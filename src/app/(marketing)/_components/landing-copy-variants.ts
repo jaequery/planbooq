@@ -36,9 +36,9 @@ export const LANDING_COPY_VARIANTS = [
     label: "Classic split",
     layout: "classic",
     copy: {
-      headline: "Ship web projects without juggling Linear and Cursor.",
+      headline: "Stop juggling Linear and Cursor. Ship from one board.",
       subhead:
-        "One board where you plan the work and AI runs the builds. Built for solo founders, PMs, and designers—not only engineers.",
+        "Plan the work, dispatch AI agents, ship every ticket from a single board. Built for founders, PMs, and designers—not only engineers.",
       primaryCta: "Start building",
       secondaryCta: "Mac app",
       valueA:
@@ -63,9 +63,9 @@ export const LANDING_COPY_VARIANTS = [
     layout: "noir",
     copy: {
       eyebrow: "One harness",
-      headline: "More shipping. Fewer tabs.",
+      headline: "Ship more. Tab less.",
       subhead:
-        "The workflow founders, PMs, and designers actually want: plan the board, let AI crank on tickets, stay fast without losing the plot.",
+        "Plan on the board, dispatch to AI, ship without losing the plot. The workflow founders, PMs, and designers have been waiting for.",
       primaryCta: "Start building",
       secondaryCta: "Mac app",
       valueA: "Parallel lanes beat one linear thread—we dogfood with many tickets in flight.",
@@ -87,9 +87,9 @@ export const LANDING_COPY_VARIANTS = [
     label: "Magazine",
     layout: "magazine",
     copy: {
-      headline: "Your web project deserves better than “Linear here, Cursor there.”",
+      headline: "One board replaces Linear, Cursor, and the chaos between them.",
       subhead:
-        "Planbooq ties planning and AI execution together so you can run the harness, fan out work, and keep momentum—even if you are not living in a terminal.",
+        "Plan the work, fan it across AI agents, watch tickets ship in parallel. No more terminal-by-terminal babysitting, no more mystery status.",
       primaryCta: "Start building",
       secondaryCta: "Mac app",
       valueA:
@@ -116,9 +116,9 @@ export const LANDING_COPY_VARIANTS = [
     label: "Alternate",
     layout: "alternate",
     copy: {
-      headline: "One flow for every ticket on your web project.",
+      headline: "Every ticket gets a branch, an agent, and a finish line.",
       subhead:
-        "Stack the best of vibe coding—plan, harness, execute—so AI maxes speed while you keep the board honest.",
+        "Plan, harness, ship in one place. AI maxes throughput while you keep the queue honest—every lane visible, every status live.",
       primaryCta: "Start building",
       secondaryCta: "Mac app",
       valueA: "Founders, PMs, designers, and operators—everyone sees the same live board.",
@@ -137,9 +137,9 @@ export const LANDING_COPY_VARIANTS = [
     label: "Editorial",
     layout: "editorial",
     copy: {
-      headline: "Plan. Harness. Ship the web thing.",
+      headline: "Plan it. Dispatch it. Ship it.",
       subhead:
-        "One board beats a constellation of Linear tabs, Cursor threads, and mystery status. AI handles execution; you steer what ships next—even if you are not writing code daily.",
+        "AI handles execution. You steer what ships next. One board, ten parallel lanes, zero stale tabs—even if you are not writing code daily.",
       primaryCta: "Start building",
       secondaryCta: "Mac app",
       valueA:
@@ -170,9 +170,9 @@ export const LANDING_COPY_VARIANTS = [
     label: "Solo founder",
     layout: "alternate",
     copy: {
-      headline: "Ship like a team of ten, alone.",
+      headline: "Ship like a team of ten. Alone.",
       subhead:
-        "Open a board, fan out ten tickets, let AI crank on the build lane while you stay close to the customer. Solo, not slow.",
+        "Fan out ten tickets, let AI crank the build lane, stay close to the customer. Solo, never slow—and never another tab to chase.",
       primaryCta: "Start building",
       secondaryCta: "Mac app",
       valueA:
@@ -193,9 +193,9 @@ export const LANDING_COPY_VARIANTS = [
     label: "AI-first PM",
     layout: "classic",
     copy: {
-      headline: "The board your AI agents actually understand.",
+      headline: "Every ticket runs itself. You drive the queue.",
       subhead:
-        "Tickets are GitHub-shaped, agents run in their own worktrees, status lands back on the card. You drive product; the harness drives execution.",
+        "GitHub-shaped tickets, a worktree per agent, CI status back on the card. You set direction; the harness ships the code.",
       primaryCta: "Run a ticket",
       secondaryCta: "Mac app",
       valueA:
@@ -221,7 +221,7 @@ export const LANDING_COPY_VARIANTS = [
       eyebrow: "Side project speed",
       headline: "Ten side projects in flight. Zero burned-out tabs.",
       subhead:
-        "BYOK keeps the bill yours. The harness keeps the chaos contained. You keep shipping past the dip.",
+        "BYOK keeps the bill yours. The harness keeps the chaos contained. Ship past the dip—every single weekend, every single idea.",
       primaryCta: "Start building",
       secondaryCta: "Mac app",
       valueA: "Bring your own key, your own pace—Planbooq is the harness, not the meter.",
@@ -244,9 +244,9 @@ export const LANDING_COPY_VARIANTS = [
     label: "Designer-friendly",
     layout: "magazine",
     copy: {
-      headline: "From Figma flick to shipped feature, on one board.",
+      headline: "From Figma to shipped, on one board.",
       subhead:
-        "Drop a ticket, sketch the intent, let AI rough-cut the code while you keep taste in the loop. No Cursor required—unless you want it.",
+        "Drop a ticket, sketch the intent, dispatch an AI agent. You keep taste in the loop while the code writes itself—no Cursor required.",
       primaryCta: "Start building",
       secondaryCta: "Mac app",
       valueA: "Designers and PMs steer the board; AI handles the keystrokes.",
@@ -271,9 +271,9 @@ export const LANDING_COPY_VARIANTS = [
     label: "Engineering lead",
     layout: "editorial",
     copy: {
-      headline: "Parallel agents. One trustworthy queue.",
+      headline: "Ten agents in parallel. One trustworthy queue.",
       subhead:
-        "Stop babysitting one terminal. Stand up a worktree per ticket, fan agents across the build lane, and watch CI roll status back to the card.",
+        "Stop babysitting one terminal. Spin a worktree per ticket, dispatch agents across the build lane, and let CI roll status back to the card.",
       primaryCta: "Start building",
       secondaryCta: "Mac app",
       valueA: "Ten tickets, ten worktrees, ten agents—your queue, not a screenful of stale tabs.",
