@@ -602,11 +602,14 @@ export const workflowStepCompleted = inngest.createFunction(
     // it when no PENDING steps are left, otherwise the run sits at RUNNING
     // forever (HOQTXA/N4THY7 zombie symptom).
     //
-    // The autonomous gate applies only to the "dispatch next" path: for
-    // non-autonomous tickets we stop at Blocked between steps and the human
-    // clicks Run to advance. This pairs with persistTurnEnd's reconcile gate
-    // in mirror-agent-job.ts — both must agree, or the demote-to-Blocked
-    // races the auto-dispatch and SIGTERMs the warm session.
+    // The auto-chain gate applies only to the "dispatch next" path: when
+    // the finished step's `decision` isn't AUTO (or — pre-protocol — the
+    // ticket lacks the `autonomous` label), we stop at Blocked between
+    // steps and the human clicks Run to advance. This pairs with
+    // persistTurnEnd's reconcile gate in mirror-agent-job.ts — both must
+    // agree, or the demote-to-Blocked races the auto-dispatch and
+    // SIGTERMs the warm session. Both halves read the same persisted
+    // decision column, so they can't diverge.
     const pending = await step.run("count-pending", () =>
       prisma.workflowStepRun.count({
         where: { runId: finished.runId, status: "PENDING" },
@@ -614,7 +617,11 @@ export const workflowStepCompleted = inngest.createFunction(
     );
     if (pending > 0) {
       const auto = await step.run("check-auto-chain", () =>
-        shouldAutoChainAfterStep(finished.run.ticketId, finished.runId),
+        shouldAutoChainAfterStep({
+          ticketId: finished.run.ticketId,
+          runId: finished.runId,
+          finishedStepRunId: finished.id,
+        }),
       );
       if (!auto) {
         return { ok: true, reason: "auto_chain_disabled" };

@@ -501,6 +501,17 @@ model WorkflowRun {
   @@index([workspaceId, createdAt])
 }
 
+// Structured step-finish decision. Replaces the legacy `autonomous` ticket
+// label as the gate for "should the next step auto-dispatch?". Written by
+// agents through `POST /workflow-runs/:runId/finish` (a.k.a.
+// `pbq workflow finish`). Null until the agent emits a decision; the
+// auto-chain gate falls back to the label only while `decision IS NULL`.
+enum StepDecision {
+  AUTO
+  BLOCK
+  SHIP
+}
+
 model WorkflowStepRun {
   id         String            @id @default(cuid())
   runId      String
@@ -508,6 +519,7 @@ model WorkflowStepRun {
   name       String
   prompt     String            @db.Text
   status     WorkflowRunStatus @default(PENDING)
+  decision   StepDecision?
   output     String            @default("") @db.Text
   startedAt  DateTime?
   finishedAt DateTime?

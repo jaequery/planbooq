@@ -893,23 +893,30 @@ async function persistTurnEnd(job: AgentJob, outcome: TurnEndOutcome): Promise<v
   // NOTE write in applyClaudeLine and mirrorJobTerminal; running reconcile
   // here would race with those.
   //
-  // Auto-chain carve-out: when the ticket is `autonomous` and the workflow
-  // has more PENDING steps, skip the Blocked demotion. The
-  // workflow-step-completed Inngest handler will dispatch the next step
-  // within ~100ms and the desktop client will warm-send its prompt into the
-  // still-alive Claude session. Demoting to Blocked here would race that
-  // dispatch: the desktop panel's "external move to Blocked = kill the
-  // session" handler (ticket-agent-panel.tsx:938) SIGTERMs the process
-  // mid-warm-send, the cancel gets mis-credited to the just-warm-sent step
-  // by resolveTerminalStepRunId (mirror-agent-job.ts:1054), and the
-  // staleness reaper (workflow.ts:693) finishes off the WorkflowRun. See
-  // PLAN-LYVQV8 for the full forensics. Non-autonomous tickets still demote
-  // — the Inngest handler also gates on the same predicate, so the
-  // dispatch won't fire and the user clicks Run to advance manually.
+  // Auto-chain carve-out: when the just-finished step declared
+  // `decision === AUTO` (via `pbq workflow finish`, or — during the
+  // migration window — the ticket carries the legacy `autonomous` label)
+  // and the workflow has more PENDING steps, skip the Blocked demotion.
+  // The workflow-step-completed Inngest handler will dispatch the next
+  // step within ~100ms and the desktop client will warm-send its prompt
+  // into the still-alive Claude session. Demoting to Blocked here would
+  // race that dispatch: the desktop panel's "external move to Blocked =
+  // kill the session" handler (ticket-agent-panel.tsx:938) SIGTERMs the
+  // process mid-warm-send, the cancel gets mis-credited to the
+  // just-warm-sent step by resolveTerminalStepRunId
+  // (mirror-agent-job.ts:1054), and the staleness reaper
+  // (workflow.ts:693) finishes off the WorkflowRun. See PLAN-LYVQV8 for
+  // the full forensics. Non-auto-chaining steps still demote — the
+  // Inngest handler reads the same decision so the dispatch won't fire
+  // and the user clicks Run to advance manually.
   if (outcome.kind === "success") {
     const autoChaining =
       stepRunTransitioned && completion.runId
-        ? await shouldAutoChainAfterStep(job.ticketId, completion.runId).catch((err: unknown) => {
+        ? await shouldAutoChainAfterStep({
+            ticketId: job.ticketId,
+            runId: completion.runId,
+            finishedStepRunId: stepRunIdToClose,
+          }).catch((err: unknown) => {
             logger.warn("mirror.turn-end.auto-chain-check.failed", {
               jobId: job.id,
               error: err instanceof Error ? err.message : String(err),
