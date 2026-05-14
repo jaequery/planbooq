@@ -120,7 +120,7 @@ export function NewTicketDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>New ticket</DialogTitle>
           <DialogDescription>
