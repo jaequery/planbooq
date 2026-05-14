@@ -462,9 +462,9 @@ function StepRow({
     <li
       ref={setNodeRef}
       style={style}
-      className="group flex flex-col border-b border-border/40 py-0.5 last:border-b-0"
+      className="group flex min-w-0 flex-col border-b border-border/40 py-0.5 last:border-b-0"
     >
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         <button
           type="button"
           {...attributes}
@@ -513,7 +513,7 @@ function StepRow({
               nameRef.current?.blur();
             }
           }}
-          className={`flex-1 bg-transparent py-1 text-[13px] outline-none placeholder:text-muted-foreground/50 ${
+          className={`min-w-0 flex-1 bg-transparent py-1 text-[13px] outline-none placeholder:text-muted-foreground/50 ${
             step.enabled ? "" : "text-muted-foreground line-through"
           }`}
         />
@@ -523,7 +523,7 @@ function StepRow({
           aria-label={expanded ? "Hide instructions" : "Show instructions"}
           aria-expanded={expanded}
           title={expanded ? "Hide instructions" : "Show instructions"}
-          className="text-muted-foreground/40 transition-colors hover:text-foreground"
+          className="shrink-0 text-muted-foreground/40 transition-colors hover:text-foreground"
         >
           {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
         </button>
@@ -533,7 +533,7 @@ function StepRow({
             onClick={onRun}
             aria-label="Run this step"
             title="Run this step"
-            className="text-muted-foreground/40 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+            className="shrink-0 text-muted-foreground/40 opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
           >
             <Play className="size-3" />
           </button>
@@ -542,26 +542,28 @@ function StepRow({
           type="button"
           onClick={onRemove}
           aria-label="Delete step"
-          className="text-muted-foreground/40 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+          className="shrink-0 text-muted-foreground/40 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
         >
           <Trash2 className="size-3" />
         </button>
       </div>
       <div
-        className={`grid transition-[grid-template-rows] duration-150 ease-out group-focus-within:grid-rows-[1fr] ${
+        className={`grid min-w-0 transition-[grid-template-rows] duration-150 ease-out group-focus-within:grid-rows-[1fr] ${
           expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
         }`}
       >
-        <Textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onBlur={() => {
-            if (prompt.trim() && prompt !== step.prompt) onUpdate({ prompt: prompt.trim() });
-          }}
-          rows={2}
-          className="ml-12 min-h-0 resize-none overflow-hidden border-0 bg-transparent px-0 py-0 text-xs text-muted-foreground shadow-none focus-visible:ring-0"
-          placeholder="Instructions for this step"
-        />
+        <div className="min-h-0 min-w-0 overflow-hidden">
+          <Textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onBlur={() => {
+              if (prompt.trim() && prompt !== step.prompt) onUpdate({ prompt: prompt.trim() });
+            }}
+            rows={2}
+            className="ml-12 min-h-0 w-full max-w-full field-sizing-fixed resize-none break-words border-0 bg-transparent px-0 py-0 text-xs text-muted-foreground shadow-none focus-visible:ring-0"
+            placeholder="Instructions for this step"
+          />
+        </div>
       </div>
     </li>
   );
