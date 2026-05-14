@@ -559,8 +559,7 @@ function StepRow({
             onBlur={() => {
               if (prompt.trim() && prompt !== step.prompt) onUpdate({ prompt: prompt.trim() });
             }}
-            rows={2}
-            className="ml-12 min-h-0 w-full max-w-full field-sizing-fixed resize-none break-words border-0 bg-transparent px-0 py-0 text-xs text-muted-foreground shadow-none focus-visible:ring-0"
+            className="ml-12 min-h-0 w-full max-w-full field-sizing-content resize-none break-words border-0 bg-transparent px-0 py-0 text-xs text-muted-foreground shadow-none focus-visible:ring-0"
             placeholder="Instructions for this step"
           />
         </div>
