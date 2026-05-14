@@ -11,6 +11,7 @@
     "login": "node bin/planbooq-agent.mjs login"
   },
   "dependencies": {
+    "@planbooq/claude-resolve": "workspace:*",
     "ably": "^2.21.0"
   }
 }

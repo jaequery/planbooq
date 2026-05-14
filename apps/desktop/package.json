@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@planbooq/claude-resolve": "workspace:*",
     "ably": "^2.21.0",
     "electron-squirrel-startup": "^1.0.1",
     "electron-updater": "^6.3.9",

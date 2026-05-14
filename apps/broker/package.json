@@ -8,7 +8,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check src"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@planbooq/claude-resolve": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^22.9.0",
     "typescript": "^5.7.2",
