@@ -2,22 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
 import { APP_HREF, serifClassName } from "./landing-parts";
 
 const NAV_ITEMS = [
   { id: "product", label: "Product", href: "/#product" },
-  { id: "learn", label: "Learn", href: "/#learn" },
+  { id: "learn", label: "Learn", href: "/learn" },
   { id: "pricing", label: "Pricing", href: "/pricing" },
   { id: "help", label: "Help", href: "https://github.com/planbooq" },
 ] as const;
-
-function navIdFromHash(): string {
-  if (typeof window === "undefined") return "product";
-  const h = window.location.hash.slice(1);
-  if (h === "learn") return "learn";
-  return "product";
-}
 
 function LogoMark(): React.ReactElement {
   return (
@@ -35,16 +27,15 @@ function LogoMark(): React.ReactElement {
 
 export function Header(): React.ReactElement {
   const pathname = usePathname();
-  const [hashId, setHashId] = useState<string>("product");
 
-  useEffect(() => {
-    setHashId(navIdFromHash());
-    const onHash = () => setHashId(navIdFromHash());
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
-
-  const activeId = pathname === "/pricing" ? "pricing" : pathname === "/" ? hashId : null;
+  const activeId =
+    pathname === "/pricing"
+      ? "pricing"
+      : pathname === "/learn"
+        ? "learn"
+        : pathname === "/"
+          ? "product"
+          : null;
 
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--mk-hairline)] bg-[var(--mk-bg)]/90 backdrop-blur-md">

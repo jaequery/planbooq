@@ -3,15 +3,12 @@ import Link from "next/link";
 import { LANDING_COPY, type LandingCopy } from "./landing-copy-variants";
 import {
   APP_HREF,
-  BustIllustration,
-  ChevronIcon,
   DOWNLOAD_HREF,
   Footer,
   HandsTrustIllustration,
   IMG_MEETING,
   IMG_OFFICE,
   KanbanStacksIllustration,
-  PRINCIPLES,
   PrimaryCta,
   SecondaryCta,
   SkyscraperIllustration,
@@ -58,7 +55,6 @@ export function LandingExperience(): React.ReactElement {
       </div>
       <Philosophy copy={copy} />
       <Trust copy={copy} />
-      <Principles />
       <Team />
       <Careers reversed />
       <FinalCta copy={copy} />
@@ -96,7 +92,7 @@ function Philosophy({ copy }: { copy: LandingCopy }): React.ReactElement {
             ) : null}
           </div>
           <Link
-            href="#learn"
+            href="/learn"
             className="mt-10 inline-flex h-11 w-fit items-center rounded-lg bg-[var(--mk-ink)] px-6 text-[14px] font-semibold text-[var(--mk-bg)] transition hover:opacity-90"
           >
             How it works
@@ -122,40 +118,6 @@ function Trust({ copy }: { copy: LandingCopy }): React.ReactElement {
       <p className="mx-auto mt-12 max-w-2xl text-center text-[15px] leading-relaxed text-[var(--mk-muted)]">
         {copy.trustBody}
       </p>
-    </section>
-  );
-}
-
-function Principles(): React.ReactElement {
-  return (
-    <section id="learn" className="mx-auto max-w-6xl scroll-mt-20 px-6 py-16 lg:px-8 lg:py-24">
-      <div className="grid gap-14 lg:grid-cols-2 lg:gap-20">
-        <div className="flex flex-col items-start">
-          <BustIllustration className="mb-10 w-32 text-[var(--mk-ink)]" />
-          <h2 className={serifClassName("max-w-sm text-3xl font-semibold sm:text-4xl")}>
-            How we think about Planbooq
-          </h2>
-          <Link
-            href="https://github.com/planbooq"
-            className="mt-8 inline-flex h-11 items-center rounded-lg bg-[var(--mk-ink)] px-6 text-[14px] font-semibold text-[var(--mk-bg)] transition hover:opacity-90"
-          >
-            Read the repo
-          </Link>
-        </div>
-        <ul className="flex flex-col divide-y divide-[var(--mk-hairline-strong)]">
-          {PRINCIPLES.map((line) => (
-            <li key={line}>
-              <a
-                href={APP_HREF}
-                className="group flex items-center justify-between gap-4 py-6 text-left text-[17px] font-medium transition hover:opacity-70"
-              >
-                <span>{line}</span>
-                <ChevronIcon className="h-5 w-5 shrink-0 opacity-50 transition group-hover:translate-x-0.5 group-hover:opacity-100" />
-              </a>
-            </li>
-          ))}
-        </ul>
-      </div>
     </section>
   );
 }
