@@ -2,7 +2,14 @@ import Link from "next/link";
 import { MarketingThemeToggle } from "./theme-toggle";
 
 export const APP_HREF = "/welcome";
-export const DOWNLOAD_HREF = "/api/download/mac";
+// Direct link to the actual DMG binary. GitHub's `releases/latest/download/<asset>`
+// alias always resolves to the latest published release's asset of that exact
+// name — the desktop-release workflow uploads `Planbooq-arm64.dmg` on every push
+// to main, so this URL stays valid without per-release edits. arm64 is the
+// default (~95% of Macs since 2021); Intel users can grab the x64 build from
+// the releases page if needed.
+export const DOWNLOAD_HREF =
+  "https://github.com/jaequery/planbooq/releases/latest/download/Planbooq-arm64.dmg";
 
 export const PRINCIPLES = [
   "We dogfood parallel shipping: we have kept ten tickets moving at once—because serial work wastes wall-clock time.",

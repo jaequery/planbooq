@@ -86,10 +86,12 @@ without them):
 - `KEYCHAIN_PASSWORD` — any random string; password for the ephemeral CI keychain
 
 Each push produces a real, published release tagged `v0.1.<commit-count>`
-(monotonically increasing from `git rev-list --count HEAD`). The landing
-page's `/api/download/mac` resolves to the latest release's per-arch
-`.dmg`, so the download CTA tracks `main` automatically — no human flip
-required.
+(monotonically increasing from `git rev-list --count HEAD`). Assets are
+uploaded with stable, unversioned names (`Planbooq-arm64.dmg`,
+`Planbooq-x64.dmg`) so the landing page's "Download for Mac" CTA points
+directly at
+`https://github.com/jaequery/planbooq/releases/latest/download/Planbooq-arm64.dmg`
+and tracks `main` automatically — no human flip required.
 
 ## Why this shape (vs. fully native)
 
