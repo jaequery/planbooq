@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronRight, ExternalLink, Loader2, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
@@ -241,17 +241,10 @@ export function WorkflowManagerDialog({
             </Button>
           </form>
 
-          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+          <div className="flex items-center text-[11px] text-muted-foreground">
             <span>
               {templates ? `${templates.length} workflow${templates.length === 1 ? "" : "s"}` : ""}
             </span>
-            <a
-              href="/settings?tab=workflows"
-              className="inline-flex items-center gap-1 underline-offset-2 hover:text-foreground hover:underline"
-            >
-              Open in Settings
-              <ExternalLink className="size-3" aria-hidden />
-            </a>
           </div>
         </div>
       </DialogContent>
