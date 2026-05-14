@@ -90,11 +90,15 @@ export function mapErrorToStatus(code: string): number {
     case "invalid_status":
     case "comment_not_found":
     case "preview_not_found":
+    case "step_not_found":
     case "not_found":
       return 404;
     case "rate_limited":
       return 429;
     case "duplicate_title":
+    case "step_not_finishable":
+    case "decision_conflict":
+    case "no_running_step":
       return 409;
     case "validation_error":
     case "invalid_assignee":

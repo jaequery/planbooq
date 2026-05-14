@@ -188,6 +188,7 @@ Usage:
   ./.planbooq/pbq comment '{"body":"..."}'         # add a comment
   ./.planbooq/pbq ship '{"prUrl":"...","summary":"...","branch":"...","targetBranch":"..."}'
   ./.planbooq/pbq error '{"reason":"...","where":"..."}'
+  ./.planbooq/pbq workflow finish '{"next":"auto"|"block"|"ship"}'  # end the current workflow step
   ./.planbooq/pbq raw <METHOD> <path-after-/api/v1> [json]
 Fields accepted by 'update': title, description, statusId, priority, assigneeId, dueAt
 EOF
@@ -221,6 +222,17 @@ case "$cmd" in
     [ -z "$1" ] && { echo "missing JSON body — need at least {\\"reason\\":\\"...\\"}" >&2; exit 2; }
     curl -sS -X POST -H "$H_AUTH" -H "$H_JSON" -d "$1" \\
       "$PLANBOOQ_API/api/v1/tickets/$PLANBOOQ_TICKET_ID/error"
+    ;;
+  workflow)
+    sub="$1"; shift
+    case "$sub" in
+      finish)
+        [ -z "$1" ] && { echo "missing JSON body — need {\\"next\\":\\"auto|block|ship\\"}" >&2; exit 2; }
+        curl -sS -X POST -H "$H_AUTH" -H "$H_JSON" -d "$1" \\
+          "$PLANBOOQ_API/api/v1/tickets/$PLANBOOQ_TICKET_ID/workflow-finish"
+        ;;
+      *) echo "workflow: unknown subcommand '$sub' (try: finish)" >&2; exit 2 ;;
+    esac
     ;;
   raw)
     method="$1"; subpath="$2"; data="$3"
@@ -258,6 +270,10 @@ Use \`./.planbooq/pbq\` to read or mutate it via the Planbooq REST API:
   (see "Shipping" below)
 - \`./.planbooq/pbq error '{"reason":"..."}'\` — surface a build failure;
   ticket stays in Building, gets the \`error\` label, and a failure comment
+- \`./.planbooq/pbq workflow finish '{"next":"auto"|"block"|"ship"}'\` —
+  end the current workflow step. \`auto\` chains the next step,
+  \`block\` waits for a human Run click, \`ship\` is the PR-flow path.
+  REQUIRED at the end of every step; prose like "Autonomy: YES" is ignored.
 - \`./.planbooq/pbq raw GET tickets\` — generic call (path is appended to /api/v1/)
 
 The wrapper hard-codes the ticket id, base URL, and a 7-day API token, so you

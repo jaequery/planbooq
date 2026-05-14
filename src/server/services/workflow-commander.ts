@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Prisma, TicketActivityKind, WorkflowRunStatus } from "@prisma/client";
+import type { Prisma, StepDecision, TicketActivityKind, WorkflowRunStatus } from "@prisma/client";
 import { logger } from "@/lib/logger";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
@@ -36,6 +36,7 @@ export function withWorkflowStepBoundary(args: {
   total: number;
   prompt: string;
 }): string {
+  const isLast = args.position + 1 >= args.total;
   return [
     `You are executing exactly one Planbooq workflow step: "${args.stepName}" (${args.position + 1}/${args.total}).`,
     "",
@@ -44,6 +45,21 @@ export function withWorkflowStepBoundary(args: {
     "- Do not begin, preview, implement, commit, push, open a PR, ship, or otherwise perform any later workflow step unless this step's prompt explicitly asks for that exact action.",
     "- When this step is complete, say what you completed and then stop. Do not continue into the next step. Planbooq will dispatch the next workflow step in a separate prompt.",
     "- If the next step seems obvious, still stop and wait for Planbooq to dispatch it.",
+    "",
+    "Step-finish decision (REQUIRED — replaces the legacy `autonomous` label):",
+    "Before stopping, you MUST call `./.planbooq/pbq workflow finish` with one of:",
+    '  - `{"next":"auto"}`  → tell Planbooq to auto-dispatch the next step',
+    "                          (use only for low-risk continuations where you don't",
+    "                          need a human to look at the result first).",
+    '  - `{"next":"block"}` → stop here; the ticket lands in Blocked and waits',
+    "                          for a human to click Run.",
+    '  - `{"next":"ship"}`  → you\'re about to call `pbq ship` (PR-flow path).',
+    "                          Use this on the Issue-PR step or whenever the",
+    "                          terminal call is `pbq ship`.",
+    'Prose like "Autonomy decision: YES" is ignored — only the tool call counts.',
+    isLast
+      ? 'This is the last step; `next:"auto"` here is a no-op (no further step exists).'
+      : "Pick `auto` deliberately — it skips human review of this step's output.",
     "",
     args.prompt,
   ].join("\n");
@@ -504,6 +520,81 @@ export const workflowCommander = {
     return { transitioned: cas.count > 0, runId: stepRun.runId };
   },
 
+  /**
+   * Record the agent's structured step-finish decision (AUTO | BLOCK | SHIP).
+   * Replaces the legacy `autonomous` ticket label as the auto-chain gate.
+   *
+   * The decision is the *intent* the agent is declaring; the actual step
+   * status (PENDING → RUNNING → SUCCEEDED) is still driven by the turn-end
+   * mirror as before. Both halves of the auto-chain gate (`persistTurnEnd`
+   * in mirror-agent-job.ts and the `workflow/step.completed` Inngest
+   * handler) read this column via `shouldAutoChainAfterStep` and must
+   * agree — the column is the single source of truth so they always do.
+   *
+   * Idempotent: re-applying the same decision is a no-op; applying a
+   * different one fails with `decision_conflict` to surface accidental
+   * double-finish from warm-sends / retries.
+   */
+  async finishStep(args: {
+    stepRunId: string;
+    decision: StepDecision;
+    byUserId: string | null;
+  }): Promise<
+    | {
+        ok: true;
+        alreadyFinished: boolean;
+        stepRun: {
+          id: string;
+          runId: string;
+          name: string;
+          ticketId: string;
+          workspaceId: string;
+        };
+      }
+    | { ok: false; reason: "step_not_found" | "step_not_finishable" | "decision_conflict" }
+  > {
+    return prisma.$transaction(async (tx) => {
+      const stepRun = await tx.workflowStepRun.findUnique({
+        where: { id: args.stepRunId },
+        select: {
+          id: true,
+          runId: true,
+          name: true,
+          status: true,
+          decision: true,
+          run: { select: { ticketId: true, workspaceId: true } },
+        },
+      });
+      if (!stepRun) return { ok: false as const, reason: "step_not_found" as const };
+      // The agent may emit finish either while the step is still RUNNING
+      // (the common case — finish lands before the turn-end mirror flips
+      // it to SUCCEEDED) or just after it already SUCCEEDED (a late
+      // finish, e.g. a warm-send race). Both are acceptable; FAILED /
+      // CANCELED steps aren't.
+      if (!(["PENDING", "RUNNING", "SUCCEEDED"] as WorkflowRunStatus[]).includes(stepRun.status)) {
+        return { ok: false as const, reason: "step_not_finishable" as const };
+      }
+      const shaped = {
+        id: stepRun.id,
+        runId: stepRun.runId,
+        name: stepRun.name,
+        ticketId: stepRun.run.ticketId,
+        workspaceId: stepRun.run.workspaceId,
+      };
+      if (stepRun.decision && stepRun.decision !== args.decision) {
+        return { ok: false as const, reason: "decision_conflict" as const };
+      }
+      if (stepRun.decision === args.decision) {
+        return { ok: true as const, alreadyFinished: true, stepRun: shaped };
+      }
+      await tx.workflowStepRun.update({
+        where: { id: args.stepRunId },
+        data: { decision: args.decision },
+      });
+      return { ok: true as const, alreadyFinished: false, stepRun: shaped };
+    });
+  },
+
   async cancelRun(args: { runId: string; reason: string }): Promise<{ canceled: boolean }> {
     const finishedAt = new Date();
     const result = await prisma.$transaction(async (tx) => {
@@ -532,26 +623,44 @@ export async function dispatchNextWorkflowStep(
 
 // Auto-chain gate: the server should only run the "demote ticket → Blocked AND
 // fire `dispatchNextStep` in parallel" sequence when the workflow is meant to
-// drain without human intervention. The user opt-in is the `autonomous` ticket
-// label; everything else stops between steps and waits for a manual Run click.
+// drain without human intervention. Both callers (persistTurnEnd's reconcile
+// in mirror-agent-job.ts and the Inngest workflow-step-completed handler's
+// dispatch) must agree, or the two halves race and the desktop bridge's
+// Blocked-handler SIGTERMs the still-warm Claude session that just warm-sent
+// the next step. See PLAN-LYVQV8 forensics for the exact race.
 //
-// Returns true iff the ticket carries the `autonomous` label AND the run has
-// at least one PENDING step left. Both callers (persistTurnEnd's reconcile,
-// the Inngest workflow-step-completed handler's dispatch) must agree, or the
-// two halves race and the desktop bridge's Blocked-handler SIGTERMs the
-// still-warm Claude session that just warm-sent the next step. See the
-// PLAN-LYVQV8 forensics for the exact race.
-export async function shouldAutoChainAfterStep(ticketId: string, runId: string): Promise<boolean> {
-  const [ticket, pendingCount] = await Promise.all([
+// Decision-first protocol (PLAN-5AXJCL): the agent declares intent by writing
+// a `StepDecision` on `WorkflowStepRun.decision` via `pbq workflow finish`.
+// `AUTO` → chain; `BLOCK` / `SHIP` → don't chain (BLOCK demotes to Blocked;
+// SHIP routes through `pbq ship`). If `decision IS NULL` the agent never
+// emitted one — fall back to the legacy `autonomous` ticket label so
+// pre-protocol clients keep working for one release.
+export async function shouldAutoChainAfterStep(args: {
+  ticketId: string;
+  runId: string;
+  finishedStepRunId: string | null;
+}): Promise<boolean> {
+  const [stepRun, ticket, pendingCount] = await Promise.all([
+    args.finishedStepRunId
+      ? prisma.workflowStepRun.findUnique({
+          where: { id: args.finishedStepRunId },
+          select: { decision: true },
+        })
+      : Promise.resolve(null),
     prisma.ticket.findUnique({
-      where: { id: ticketId },
+      where: { id: args.ticketId },
       select: { labels: { select: { name: true } } },
     }),
     prisma.workflowStepRun.count({
-      where: { runId, status: "PENDING" },
+      where: { runId: args.runId, status: "PENDING" },
     }),
   ]);
   if (!ticket || pendingCount === 0) return false;
+  if (stepRun?.decision) {
+    return stepRun.decision === "AUTO";
+  }
+  // Legacy fallback: the agent never emitted a structured decision. Honor
+  // the autonomous label until the protocol fully rolls out.
   return ticket.labels.some((l) => l.name.trim().toLowerCase() === "autonomous");
 }
 
