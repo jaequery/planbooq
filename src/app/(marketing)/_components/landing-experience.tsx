@@ -32,7 +32,7 @@ import {
 import { Header } from "./marketing-header";
 
 const STORAGE_KEY = "planbooqLandingVariation";
-const DEFAULT_VARIATION: LandingVariantIndex = 3;
+const DEFAULT_VARIATION: LandingVariantIndex = 8;
 
 export { LANDING_COPY_VARIANTS };
 
