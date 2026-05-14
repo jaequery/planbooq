@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { APP_HREF, serifClassName } from "./landing-parts";
 
 const NAV_ITEMS = [
-  { id: "product", label: "Product", href: "#product" },
-  { id: "learn", label: "Learn", href: "#learn" },
+  { id: "product", label: "Product", href: "/#product" },
+  { id: "learn", label: "Learn", href: "/#learn" },
+  { id: "pricing", label: "Pricing", href: "/pricing" },
   { id: "help", label: "Help", href: "https://github.com/planbooq" },
 ] as const;
 
@@ -32,14 +34,17 @@ function LogoMark(): React.ReactElement {
 }
 
 export function Header(): React.ReactElement {
-  const [activeId, setActiveId] = useState<string>("product");
+  const pathname = usePathname();
+  const [hashId, setHashId] = useState<string>("product");
 
   useEffect(() => {
-    setActiveId(navIdFromHash());
-    const onHash = () => setActiveId(navIdFromHash());
+    setHashId(navIdFromHash());
+    const onHash = () => setHashId(navIdFromHash());
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
+
+  const activeId = pathname === "/pricing" ? "pricing" : pathname === "/" ? hashId : null;
 
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--mk-hairline)] bg-[var(--mk-bg)]/90 backdrop-blur-md">
@@ -53,7 +58,7 @@ export function Header(): React.ReactElement {
           <div className="inline-flex rounded-full border border-[var(--mk-hairline)] bg-[var(--mk-surface-2)] p-1">
             <div className="flex items-center gap-0.5">
               {NAV_ITEMS.map((item) => {
-                const isActive = activeId === item.id && item.href.startsWith("#");
+                const isActive = activeId === item.id;
                 return (
                   <a
                     key={item.id}
