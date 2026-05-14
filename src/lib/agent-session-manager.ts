@@ -72,3 +72,17 @@ export function getAgentSessionByTicket(ticketId: string): string | null {
   }
   return null;
 }
+
+/**
+ * Return every registered sessionId for a ticket. Used by the workspace-level
+ * `ticket.workflow.completed` listener so it can stop every CLI bound to the
+ * ticket, not just the first match — warm-send chains can register multiple
+ * sessions over a workflow's lifetime.
+ */
+export function getRegisteredSessionsForTicket(ticketId: string): string[] {
+  const out: string[] = [];
+  for (const [sessionId, reg] of sessions) {
+    if (reg.ticketId === ticketId) out.push(sessionId);
+  }
+  return out;
+}
