@@ -2,7 +2,6 @@ import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
 import { VitePlugin } from "@electron-forge/plugin-vite";
-import { PublisherGithub } from "@electron-forge/publisher-github";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 
 const signingIdentity = process.env.APPLE_SIGNING_IDENTITY;
@@ -59,18 +58,10 @@ const config: ForgeConfig = {
       renderer: [{ name: "main_window", config: "vite.renderer.config.ts" }],
     }),
   ],
-  publishers: [
-    new PublisherGithub({
-      repository: {
-        owner: process.env.GH_REPO_OWNER ?? "jaequery",
-        name: process.env.GH_REPO_NAME ?? "planbooq",
-      },
-      // Drafts on every main-branch build so users on auto-update don't pick
-      // it up until a human publishes the release in the GitHub UI.
-      prerelease: false,
-      draft: true,
-    }),
-  ],
+  // No publishers: CI assembles releases via gh CLI (see
+  // .github/workflows/desktop-release.yml). The matrix builds run `make` and
+  // upload .dmgs to a pre-created release, sidestepping forge's check-then-
+  // create race when two arch jobs publish to the same non-draft release.
 };
 
 export default config;

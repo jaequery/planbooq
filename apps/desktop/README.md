@@ -39,16 +39,15 @@ Outputs `apps/desktop/out/make/` with arm64 + x64 dmg artifacts (run on each arc
 
 ## Publishing (auto-update)
 
-`electron-updater` reads from GitHub Releases via the `electron-forge` `PublisherGithub` config in `forge.config.ts`. Set:
+`electron-updater` reads from GitHub Releases. CI assembles each release via the
+`gh` CLI (see `.github/workflows/desktop-release.yml`) — `forge.config.ts` no
+longer carries a publisher block because the matrix builds upload to a
+release that's pre-created in a serial `prepare` job, sidestepping the
+race forge's `PublisherGithub` hits on parallel non-draft writes.
 
-```bash
-export GH_TOKEN=...                    # personal access token with repo scope
-export GH_REPO_OWNER=jaequery
-export GH_REPO_NAME=planbooq
-pnpm --filter @planbooq/desktop publish
-```
-
-Drafts a release; mark it published when ready and existing installs auto-update on next launch.
+Releases are real (not draft). Every push to `main` that touches the desktop
+wrapper produces a new `v0.1.<commit-count>` release with both `arm64` and
+`x64` `.dmg`s attached. Existing installs auto-update on next launch.
 
 ## Code-signing & notarization
 
@@ -86,9 +85,11 @@ without them):
 - `APPLE_CERTIFICATE_PASSWORD` — the `.p12` password
 - `KEYCHAIN_PASSWORD` — any random string; password for the ephemeral CI keychain
 
-The release ships as a **draft** (see `PublisherGithub.draft: true`). A human
-flips it to Published in the GitHub UI when ready, and only then does the
-auto-updater pick it up.
+Each push produces a real, published release tagged `v0.1.<commit-count>`
+(monotonically increasing from `git rev-list --count HEAD`). The landing
+page's `/api/download/mac` resolves to the latest release's per-arch
+`.dmg`, so the download CTA tracks `main` automatically — no human flip
+required.
 
 ## Why this shape (vs. fully native)
 
