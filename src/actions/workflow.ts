@@ -761,12 +761,32 @@ async function reconcileTicketAgentState(
   // could still be stranded in `building`. Run one belt-and-suspenders
   // reconcile for the current ticket so historical strandings self-heal on
   // the next workflow read.
+  //
+  // Suppress the reconcile when a PENDING or RUNNING AgentJob exists. The
+  // `isLive` check above only treats RUNNING-within-90s as live, which misses
+  // two windows that produced the Running → Blocked → Running flicker on
+  // every fresh ticket: (1) a freshly-inserted AgentJob still in PENDING
+  // before the desktop bridge attaches and flips it to RUNNING, and (2) the
+  // desktop-bridge path (`executeTicketDesktop`) where the AgentJob row is
+  // created by the bridge after the ticket has already moved to `building`,
+  // so `lastJob` is null entirely. Either case demoted the ticket to
+  // `blocked`, then the bridge attached and the panel's `busy` effect wrote
+  // back to `building` — broadcasting a spurious `ticket.moved → blocked`
+  // Ably event to every connected client in between. The belt-and-suspenders
+  // is meant to heal *historical strandings* (prior agent terminated without
+  // transitioning), which are characterised by a terminal `lastJob` and zero
+  // live jobs — not by a fresh start with a job in flight.
   if (!seen.has(ticketId)) {
-    await reconcileBuildingTicket({
-      ticketId,
-      byUserId,
-      jobStatus: lastJob?.status === "FAILED" ? "FAILED" : null,
-    }).catch(() => undefined);
+    const liveOrPending = await prisma.agentJob.count({
+      where: { ticketId, status: { in: ["PENDING", "RUNNING"] } },
+    });
+    if (liveOrPending === 0) {
+      await reconcileBuildingTicket({
+        ticketId,
+        byUserId,
+        jobStatus: lastJob?.status === "FAILED" ? "FAILED" : null,
+      }).catch(() => undefined);
+    }
   }
 
   return { live: false };
