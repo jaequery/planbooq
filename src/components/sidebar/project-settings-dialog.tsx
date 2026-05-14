@@ -223,8 +223,8 @@ export function ProjectSettingsDialog({
               ))}
             </select>
             <span className="text-[12px] text-muted-foreground">
-              Tickets in this project use this workflow by default. Manage templates in Settings →
-              Workflows.
+              Tickets in this project use this workflow by default. Manage templates from the
+              auto-run picker on the board.
             </span>
           </div>
           <div className="flex flex-col gap-2">

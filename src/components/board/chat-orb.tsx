@@ -636,13 +636,17 @@ export function ChatOrb({
                   ) : (
                     <div className="px-3 py-3 text-[12px] text-muted-foreground">
                       No workflows yet.{" "}
-                      <a
-                        href="/settings/workflows"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPickerOpen(false);
+                          setManagerOpen(true);
+                        }}
                         className="underline underline-offset-2 hover:text-foreground"
                       >
                         Create one
-                      </a>{" "}
-                      in Settings.
+                      </button>
+                      .
                     </div>
                   )}
                 </div>
