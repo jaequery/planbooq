@@ -126,6 +126,15 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (method === "POST" && url === "/shutdown") {
+      send(res, 200, { ok: true });
+      // Flush the response, then exit so Electron can spawn a fresh broker
+      // off the on-disk broker.cjs. Same handler as SIGTERM (see bottom of
+      // file) — leave the socket file for the next broker's clearStaleSocket.
+      setTimeout(() => process.exit(0), 50);
+      return;
+    }
+
     if (method === "GET" && url === "/sessions") {
       const body: ListSessionsResponse = { ok: true, sessions: listSessions() };
       send(res, 200, body);

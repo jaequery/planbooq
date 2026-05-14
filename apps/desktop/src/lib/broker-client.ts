@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { mergePathWithCommonCliDirs } from "@planbooq/claude-resolve";
 import { app } from "electron";
 import log from "electron-log/main";
@@ -110,6 +111,51 @@ async function isBrokerAlive(): Promise<boolean> {
   }
 }
 
+// When did the currently-running broker start? Used to detect a broker that
+// predates the on-disk broker.cjs and needs replacing. Returns null if the
+// broker is unreachable or its /ping response is malformed; null is treated
+// upstream as "definitely stale" because brokers shipped before this code
+// always returned a numeric uptime.
+async function getBrokerStartedAt(): Promise<number | null> {
+  try {
+    const r = await httpRequest("GET", "/ping", undefined, 2000);
+    if (r.status !== 200) return null;
+    const body = JSON.parse(r.body) as { uptime?: number };
+    if (typeof body.uptime !== "number") return null;
+    return Date.now() - body.uptime * 1000;
+  } catch {
+    return null;
+  }
+}
+
+async function brokerIsStale(): Promise<boolean> {
+  try {
+    const stat = await fs.stat(brokerEntryPath());
+    const startedAt = await getBrokerStartedAt();
+    if (startedAt === null) return true;
+    // 1s grace window absorbs clock skew between fs.stat (filesystem time)
+    // and Date.now() (system time on the same machine — usually identical
+    // but cheap insurance).
+    return stat.mtimeMs > startedAt + 1_000;
+  } catch {
+    return false;
+  }
+}
+
+async function shutdownBroker(): Promise<void> {
+  // Fire the shutdown POST. Brokers that have the /shutdown route reply 200
+  // and exit; brokers shipped before this fix 404 — in which case the next
+  // call below polls forever and we fall through after the deadline. That's
+  // fine: the spawn step will fail loudly via clearStaleSocket → "another
+  // instance is already running", and the user can pkill manually.
+  await httpRequest("POST", "/shutdown", undefined, 2000).catch(() => undefined);
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if (!(await isBrokerAlive())) return;
+    await delay(100);
+  }
+}
+
 async function spawnBrokerDetached(): Promise<void> {
   const entry = brokerEntryPath();
   try {
@@ -152,6 +198,16 @@ async function waitForBroker(timeoutMs: number): Promise<void> {
 export async function ensureBrokerRunning(): Promise<void> {
   if (brokerStarted && (await isBrokerAlive())) return;
   if (await isBrokerAlive()) {
+    // A daemon outlives Electron quits, so the running broker may be older
+    // than the broker.cjs that ships with the freshly-launched desktop app.
+    // Stale brokers run pre-fix code (e.g. spawning "claude" without merging
+    // CLI install dirs into PATH) and fail silently. Replace them.
+    if (await brokerIsStale()) {
+      log.info("broker.respawn", { reason: "version-drift" });
+      await shutdownBroker();
+      await spawnBrokerDetached();
+      await waitForBroker(5_000);
+    }
     brokerStarted = true;
     return;
   }
