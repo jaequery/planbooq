@@ -157,7 +157,7 @@ function LandingClassic({ copy }: { copy: LandingCopy }): React.ReactElement {
         <div>
           <h1
             className={serifClassName(
-              "text-balance text-[2.35rem] leading-[1.12] sm:text-5xl lg:text-[3.25rem]",
+              "text-balance text-[2.35rem] font-bold leading-[1.12] sm:text-5xl lg:text-[3.25rem]",
             )}
           >
             {copy.headline}
@@ -200,7 +200,7 @@ function LandingNoir({ copy }: { copy: LandingCopy }): React.ReactElement {
             </p>
             <h1
               className={serifClassName(
-                "mt-4 text-balance text-[2.35rem] leading-[1.12] sm:text-5xl lg:text-[3.25rem]",
+                "mt-4 text-balance text-[2.35rem] font-bold leading-[1.12] sm:text-5xl lg:text-[3.25rem]",
               )}
             >
               {copy.headline}
@@ -245,7 +245,7 @@ function LandingMagazine({ copy }: { copy: LandingCopy }): React.ReactElement {
       <section className="mx-auto max-w-3xl px-6 pt-20 pb-8 text-center lg:px-8 lg:pt-28">
         <h1
           className={serifClassName(
-            "text-balance text-[2.5rem] leading-[1.1] sm:text-6xl sm:leading-[1.05]",
+            "text-balance text-[2.5rem] font-bold leading-[1.1] sm:text-6xl sm:leading-[1.05]",
           )}
         >
           {copy.headline}
@@ -294,7 +294,7 @@ function LandingAlternate({ copy }: { copy: LandingCopy }): React.ReactElement {
         <div className="flex flex-col justify-center bg-[var(--mk-beige)] px-6 py-20 lg:px-12 lg:py-24">
           <h1
             className={serifClassName(
-              "max-w-xl text-balance text-[2.4rem] leading-[1.08] sm:text-5xl lg:text-[3.1rem]",
+              "max-w-xl text-balance text-[2.4rem] font-bold leading-[1.08] sm:text-5xl lg:text-[3.1rem]",
             )}
           >
             {copy.headline}
@@ -436,7 +436,7 @@ function LandingEditorial({ copy }: { copy: LandingCopy }): React.ReactElement {
         <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
           <h1
             className={serifClassName(
-              "max-w-[18ch] text-[2.6rem] leading-[1.05] sm:text-6xl lg:text-[4rem]",
+              "max-w-[18ch] text-[2.6rem] font-bold leading-[1.05] sm:text-6xl lg:text-[4rem]",
             )}
           >
             {copy.headline}
