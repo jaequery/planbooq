@@ -316,10 +316,25 @@ function looksLikeAwaitingUser(text: string): boolean {
   // Strip fenced code blocks so a trailing "?" inside code doesn't trigger.
   const stripped = text.replace(/```[\s\S]*?```/g, "").trim();
   if (!stripped) return false;
-  // Widen the window — agents often pose a question, list options, then close
-  // with a declarative "Default is A unless you say otherwise." footer.
+  // "?" signal — anchor to the message's final sentence/line, not the
+  // trailing 1200-char window. The wide window fired on rhetorical asides
+  // ("I asked: how do we X? Decided to do Y.") the agent had already
+  // answered, parking healthy cards in Blocked. The split keeps each
+  // sentence with its own terminator; the last non-empty segment is the
+  // message's true ending, and only a "?" there means the agent ended on
+  // a question.
+  const sentences = stripped.match(/[^.!?\n]+[.!?\n]?/g) ?? [];
+  const lastSentence =
+    sentences
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .pop() ?? "";
+  if (/\?/.test(lastSentence)) return true;
+  // Phrase signals survive even when the agent ends on a declarative footer
+  // like "Default is A unless you say otherwise." Kept on the wide tail
+  // because these phrases are intrinsically "needs human" regardless of
+  // where they appear in the closing paragraph.
   const tail = stripped.slice(-1200);
-  if (/\?/.test(tail)) return true;
   return /\b(should i|would you like|do you want|let me know|please (confirm|advise|clarify|provide|let me know|choose|pick|decide)|which (one|option|approach|do you)|need (your|you to) (input|confirmation|approval|decision|answer)|waiting (on|for) you|ready for you to|confirm( |\?|$)|approve( |\?|$)|default is\b[^.]*\bunless\b|unless you (say|tell|specify|prefer|want|choose)|say otherwise|tell me which|pick (one|a|an option))/i.test(
     tail,
   );
@@ -1178,11 +1193,11 @@ function DesktopPanel({
           return;
         }
         // End-of-turn: always evaluate where the ticket should land. Workflow
-        // steps no longer auto-chain, so there is no "queue still draining"
-        // case to bail out for. If a workflow had remaining steps queued, the
-        // drain effect drops them and the ticket lands in Blocked here so the
-        // user can review and click Run to start the next step.
-        const hadQueuedNextStep = workflowQueueRef.current.length > 0;
+        // steps no longer auto-chain; if a workflow had remaining queued steps,
+        // they're dropped here. The agent declares intent explicitly via the
+        // structured step-finish protocol (`WorkflowStepRun.decision`), so we
+        // no longer force-flip to Blocked just because a queue had entries —
+        // that turned every clean workflow end into a Blocked card.
         const wasBuilding = statusKeyRef.current === "building";
         // Always scan for an awaiting-user question on turn end — including
         // wire.kind === "exit" with code 0, which is the *normal* end of a
@@ -1190,19 +1205,10 @@ function DesktopPanel({
         // on every exit stranded tickets in Running whenever the model asked
         // a question right before the process exited cleanly.
         setBlockedIfAwaiting();
-        // If there were queued workflow steps OR the heuristic didn't catch
-        // a question, still gate on the human: force Blocked. Erring toward
-        // Blocked is intentional — a stranded Running card is invisible; a
-        // Blocked card the user dismisses with one click is not.
-        if (hadQueuedNextStep && statusKeyRef.current === "building") {
-          statusKeyRef.current = "blocked";
-          markSelfStatusWrite("blocked");
-          void applyWorkflowStatusSuggestion(ticketId, "blocked").catch(() => {});
-        }
-        // If neither the regex nor the workflow-gate moved us, fall back to
-        // the PR-based decision (open → review, merged → completed, conflict
-        // → blocked). Without this, clean runs that finish with no question
-        // and no PR would strand the card in Running forever.
+        // Fall back to the PR-based decision (open → review, merged →
+        // completed, conflict → blocked). The server-side reconcile defaults
+        // no-PR/no-signal to `todo`, so clean runs that finish without a
+        // question and without a PR park there instead of inflating Blocked.
         if (wasBuilding && statusKeyRef.current === "building") {
           void decideEndOfRun();
         }
