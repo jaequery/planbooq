@@ -58,8 +58,16 @@ export async function recordStatusChangedActivity(args: {
       },
     });
   } catch (error) {
-    logger.warn("ticketActivity.status-changed.failed", {
+    // Elevated from warn to error: a missed STATUS_CHANGED row leaves the
+    // activity log inconsistent with the DB (the canonical move already
+    // committed in moveTicketToStatusId). The two IDs make the lost
+    // transition greppable against the ticket's row.
+    logger.error("ticketActivity.status-changed.failed", {
       ticketId: args.ticketId,
+      workspaceId: args.workspaceId,
+      fromStatusId: args.fromStatusId,
+      toStatusId: args.toStatusId,
+      byUserId: args.byUserId,
       error: error instanceof Error ? error.message : String(error),
     });
   }

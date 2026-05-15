@@ -3,10 +3,12 @@
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { logger } from "@/lib/logger";
 import { publishWorkspaceEvent } from "@/server/ably";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 import { getPrStatusForUser, parseGitHubPrUrl } from "@/server/services/github-pr";
+import { createMessageSvc } from "@/server/services/messages";
 import { mirrorJobTerminal } from "@/server/services/mirror-agent-job";
 import { moveTicketToStatusKey, reconcileBuildingTicket } from "@/server/services/ticket-status";
 import {
@@ -1206,13 +1208,26 @@ export async function triggerWorkflowRun(
     steps?: Array<{ name: string; prompt: string }>;
   },
 ): Promise<Result<{ runId: string; stepCount: number; stepRunIds: string[] }>> {
+  // Trace which early-return fires when a caller can't actually start a run.
+  // The renderer's auto-run path swallows failures (ticket-workflow-panel.tsx)
+  // and the ticket can end up demoted to Blocked with no chat content; without
+  // this log there is no signal at all post-mortem. See PLAN-ALP5ZK forensics.
   const ticket = await loadTicket(ticketId);
-  if (!ticket) return { ok: false, error: "not_found" };
+  if (!ticket) {
+    logger.warn("workflow.trigger.ticket_not_found", { ticketId });
+    return { ok: false, error: "not_found" };
+  }
   const ctx = await requireMember(ticket.workspaceId);
-  if (!ctx.ok) return ctx;
+  if (!ctx.ok) {
+    logger.warn("workflow.trigger.forbidden", { ticketId, error: ctx.error });
+    return ctx;
+  }
 
   const wf = await getTicketWorkflow(ticketId);
-  if (!wf.ok) return wf;
+  if (!wf.ok) {
+    logger.warn("workflow.trigger.workflow_load_failed", { ticketId, error: wf.error });
+    return wf;
+  }
   // Caller-supplied steps take precedence so runStep (single step) and
   // runAll (N steps) both flow through the same path and the WorkflowStepRun
   // rows mirror exactly what the panel queued. Falling back to the workflow
@@ -1228,12 +1243,23 @@ export async function triggerWorkflowRun(
             : enabled.map((s) => ({ name: s.name, prompt: s.prompt }));
         })();
 
-  const run = await workflowCommander.startRun({
-    ticketId,
-    workspaceId: ticket.workspaceId,
-    templateId: wf.templateId,
-    steps: recorded,
-  });
+  let run: Awaited<ReturnType<typeof workflowCommander.startRun>>;
+  try {
+    run = await workflowCommander.startRun({
+      ticketId,
+      workspaceId: ticket.workspaceId,
+      templateId: wf.templateId,
+      steps: recorded,
+    });
+  } catch (error) {
+    logger.error("workflow.trigger.start_run_failed", {
+      ticketId,
+      templateId: wf.templateId,
+      stepCount: recorded.length,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, error: "start_run_failed" };
+  }
   const stepRunIds = run.stepRunIds;
 
   // Move the ticket to the right status. The client picks the status with
@@ -1294,6 +1320,65 @@ export async function getRunningWorkflowDispatchForTicketAction(
   if (!ctx.ok) return ctx;
   const payload = await getRunningWorkflowDispatchForTicket(ticketId);
   return { ok: true, payload };
+}
+
+const RecordWorkflowStartFailureSchema = z
+  .object({
+    ticketId: z.string().min(1),
+    // Short machine-friendly hint plus optional one-line human detail. Both end
+    // up in the SYSTEM message body — the hint anchors any future matchers,
+    // the detail gives the human something to act on.
+    reason: z.string().min(1).max(200),
+    detail: z.string().max(500).optional(),
+  })
+  .strict();
+
+/**
+ * Surface a renderer-side workflow-start failure into the ticket's chat as a
+ * SYSTEM message. Without this the auto-run path can drop a ticket into
+ * Blocked with an empty conversation — see PLAN-ALP5ZK forensics.
+ *
+ * Idempotent on the action's responsibility only: callers should debounce
+ * their own retries. The underlying `createMessageSvc` always upserts on a
+ * fresh idempotency key, so two parallel calls produce two messages — that's
+ * fine, two failures are two failures.
+ */
+export async function recordWorkflowStartFailure(
+  input: z.infer<typeof RecordWorkflowStartFailureSchema>,
+): Promise<Result<Empty>> {
+  const data = RecordWorkflowStartFailureSchema.parse(input);
+  const ticket = await loadTicket(data.ticketId);
+  if (!ticket) return { ok: false, error: "not_found" };
+  const ctx = await requireMember(ticket.workspaceId);
+  if (!ctx.ok) return ctx;
+
+  const body = workflowStartFailureMessageBody(data.reason, data.detail);
+  const result = await createMessageSvc(
+    { actorUserId: null, trust: "system" },
+    { ticketId: data.ticketId, body, role: "SYSTEM" },
+  );
+  if (!result.ok) {
+    logger.warn("workflow.start-failure.message.failed", {
+      ticketId: data.ticketId,
+      reason: data.reason,
+      error: result.error,
+    });
+    return { ok: false, error: result.error };
+  }
+  return { ok: true };
+}
+
+function workflowStartFailureMessageBody(reason: string, detail?: string): string {
+  const lines = [
+    "**Workflow didn't start.**",
+    "",
+    "The Default workflow tried to run on this ticket but couldn't begin, so no agent session was created and the chat is empty.",
+    "",
+    `_Reason: ${reason}${detail ? ` — ${detail}` : ""}_`,
+    "",
+    "Click **Run** to retry, or open a session manually with the orb.",
+  ];
+  return lines.join("\n");
 }
 
 /**
@@ -1409,6 +1494,40 @@ export async function decideEndOfRunStatus(ticketId: string): Promise<Result<End
   });
   revalidatePath("/");
   return { ok: true, kind: "moved", statusKey: target };
+}
+
+/**
+ * Explicit, user-driven escape hatch for the terminal-status guard in
+ * `applyWorkflowStatusSuggestion`. That guard exists for a reason — it stops
+ * the chat panel's "force Running while busy" effect from rubber-banding a
+ * just-shipped ticket back into the Running column (FRED-NX1RLS). But once
+ * the human types a new chat turn on a Completed ticket they're explicitly
+ * asking to resume work, so we *do* want to demote it back to `building`.
+ *
+ * Scope: only `completed` → `building`. `review` is left alone — that column
+ * means "PR is open, waiting on a human merge" and rubber-banding it back is
+ * still wrong. Any other current status is a no-op success so callers don't
+ * have to branch.
+ */
+export async function resumeCompletedTicket(ticketId: string): Promise<Result<{ moved: boolean }>> {
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: { workspaceId: true, status: { select: { key: true } } },
+  });
+  if (!ticket) return { ok: false, error: "not_found" };
+  const ctx = await requireMember(ticket.workspaceId);
+  if (!ctx.ok) return ctx;
+
+  if (ticket.status?.key !== "completed") {
+    return { ok: true, moved: false };
+  }
+  await moveTicketToStatusKey({
+    ticketId,
+    toStatusKey: "building",
+    byUserId: ctx.userId,
+  });
+  revalidatePath("/");
+  return { ok: true, moved: true };
 }
 
 export async function logWorkflowActivity(input: {

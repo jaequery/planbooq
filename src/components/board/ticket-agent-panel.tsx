@@ -14,6 +14,7 @@ import {
   getTicketWorkflow,
   getWorkflowStatusContext,
   logWorkflowActivity,
+  resumeCompletedTicket,
 } from "@/actions/workflow";
 import { TicketWorkflowPanel } from "@/components/board/ticket-workflow-panel";
 import { Button } from "@/components/ui/button";
@@ -518,6 +519,31 @@ function DesktopPanel({
   }, [statusKey]);
   const messagesRef = useRef<ChatMsg[]>([]);
   const messageSequencesRef = useRef<Map<string, number>>(new Map());
+  // Round-trip every status rubber-band through one logger so failures aren't
+  // silent. Without this, a rejected applyWorkflowStatusSuggestion (forbidden,
+  // invalid_status, network error, etc.) would leave the panel's local
+  // statusKeyRef diverged from the DB — exactly the "activity shows
+  // Running→Blocked but Status pill says Running" symptom from FRED-NX1RLS.
+  const commitStatusSuggestion = async (target: string, reason: string): Promise<void> => {
+    try {
+      const result = await applyWorkflowStatusSuggestion(ticketId, target);
+      if (!result.ok) {
+        console.warn("planbooq.status-suggestion.rejected", {
+          ticketId,
+          target,
+          reason,
+          error: result.error,
+        });
+      }
+    } catch (error) {
+      console.warn("planbooq.status-suggestion.threw", {
+        ticketId,
+        target,
+        reason,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
   const setBlockedIfAwaiting = () => {
     if (statusKeyRef.current !== "building") return;
     // Concatenate every assistant message since the last user message.
@@ -542,7 +568,7 @@ function DesktopPanel({
     if (!turnText || !looksLikeAwaitingUser(turnText)) return;
     statusKeyRef.current = "blocked";
     markSelfStatusWrite("blocked");
-    void applyWorkflowStatusSuggestion(ticketId, "blocked").catch(() => {});
+    void commitStatusSuggestion("blocked", "setBlockedIfAwaiting");
   };
   const clearBlocked = () => {
     if (statusKeyRef.current !== "blocked") return;
@@ -552,7 +578,7 @@ function DesktopPanel({
     if (userBlockedRef.current) return;
     statusKeyRef.current = "building";
     markSelfStatusWrite("building");
-    void applyWorkflowStatusSuggestion(ticketId, "building").catch(() => {});
+    void commitStatusSuggestion("building", "clearBlocked");
   };
 
   // Called when the agent finishes a run with no pending workflow steps and
@@ -647,7 +673,7 @@ function DesktopPanel({
       if (choice === statusKeyRef.current) return;
       statusKeyRef.current = choice;
       markSelfStatusWrite(choice);
-      await applyWorkflowStatusSuggestion(ticketId, choice).catch(() => {});
+      await commitStatusSuggestion(choice, "decideEndOfRun-llm");
     } catch {
       // tolerated
     }
@@ -1183,7 +1209,7 @@ function DesktopPanel({
           if (statusKeyRef.current !== "blocked") {
             statusKeyRef.current = "blocked";
             markSelfStatusWrite("blocked");
-            void applyWorkflowStatusSuggestion(ticketId, "blocked").catch(() => {});
+            void commitStatusSuggestion("blocked", "errorEnd");
           }
           const summary = r.errorEnd.summary.replace(/\s+/g, " ").trim();
           const note = summary
@@ -1392,12 +1418,21 @@ function DesktopPanel({
     // to building. The ticket already shipped; a follow-up chat turn must not
     // pull it back into the Running column. Server-side has the same guard
     // (applyWorkflowStatusSuggestion) — this skip just avoids the round-trip.
+    //
+    // Also honor the userBlockedRef latch: when an external writer (server
+    // reconcile, board DnD, status picker, another tab) just moved the ticket
+    // to Blocked, this effect must not undo that move on the next busy flip
+    // / queue tick. Without this check, the server's "no-pr-unknown" reconcile
+    // demotion races a still-true `busy` here and the ticket bounces
+    // Blocked → Running within ~1.5s (FRED-NX1RLS forensics). The latch is
+    // cleared the next time the user sends a message (`send()`), which is the
+    // right semantic for "user resumed work."
     const cur = statusKeyRef.current;
     const terminal = cur === "review" || cur === "completed";
-    if (running && cur !== "building" && !terminal) {
+    if (running && cur !== "building" && !terminal && !userBlockedRef.current) {
       statusKeyRef.current = "building";
       markSelfStatusWrite("building");
-      void applyWorkflowStatusSuggestion(ticketId, "building").catch(() => {});
+      void commitStatusSuggestion("building", "force-running-while-busy");
     }
   }, [busy, ticketId]);
 
@@ -1415,6 +1450,25 @@ function DesktopPanel({
     // otherwise clearBlocked() would refuse to demote the status.
     userBlockedRef.current = false;
     clearBlocked();
+
+    // Explicit completed→Running resume. The auto-rubber-band effect skips
+    // terminal statuses on purpose (FRED-NX1RLS); typing a new chat turn on a
+    // shipped ticket is the deliberate counterpart. We update the local ref
+    // synchronously so the busy-flip effect at line ~1424 sees `building` and
+    // short-circuits instead of double-writing the status. If the worktree
+    // was cleaned up after merge, `agentResume` falls through to `agentStart`
+    // below and spins up a fresh worktree — that's intended; each fix session
+    // ships as its own new PR.
+    if (statusKeyRef.current === "completed") {
+      statusKeyRef.current = "building";
+      markSelfStatusWrite("building");
+      void resumeCompletedTicket(ticketId).catch((error) => {
+        console.warn("planbooq.resume-completed.threw", {
+          ticketId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
 
     if (typeof bridge.agentStart !== "function" || typeof bridge.agentSend !== "function") {
       toast.error("Desktop app is out of date — quit and relaunch Planbooq");
