@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, HelpCircle, ImageIcon, Loader2, Settings2, X } from "lucide-react";
+import { Check, ChevronDown, HelpCircle, Loader2, Settings2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { quickCreateTicket } from "@/actions/ticket";
@@ -28,7 +28,6 @@ type WorkflowTemplateRow = {
   stepCount: number;
 };
 
-const ACCEPTED_MIME_TYPES = "image/png,image/jpeg,image/webp,image/gif";
 const MAX_SIZE_BYTES = 5 * 1024 * 1024;
 const IMAGE_MARKDOWN_RE = /!\[[^\]]*\]\([^)]*\)/g;
 
@@ -133,7 +132,6 @@ export function ChatOrb({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [pending, startTransition] = useTransition();
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const uploadCounterRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -309,11 +307,6 @@ export function ChatOrb({
   const handleFiles = (files: FileList | File[]): void => {
     const arr = Array.from(files).filter((f) => f.type.startsWith("image/"));
     for (const f of arr) void uploadFile(f);
-  };
-
-  const onFileInputChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    if (e.target.files) handleFiles(e.target.files);
-    e.target.value = "";
   };
 
   const onPaste: React.ClipboardEventHandler<HTMLTextAreaElement> = (e) => {
@@ -509,24 +502,6 @@ export function ChatOrb({
               disabled={pending}
               className="field-sizing-content max-h-60 min-h-6 flex-1 resize-none bg-transparent text-[13px] leading-6 outline-none placeholder:text-muted-foreground disabled:opacity-60"
             />
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ACCEPTED_MIME_TYPES}
-              multiple
-              className="hidden"
-              onChange={onFileInputChange}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={pending}
-              className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center self-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-              aria-label="Attach image"
-              title="Attach image"
-            >
-              <ImageIcon className="h-3.5 w-3.5" aria-hidden />
-            </button>
             <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
               <div className="inline-flex flex-shrink-0 items-center gap-1.5 self-center">
                 <button
