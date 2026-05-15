@@ -249,9 +249,12 @@ export async function autoTransitionPlanningToTodo(args: {
  *   - PR present: outcome of the PR (review/completed/blocked).
  *   - No PR, jobStatus=CANCELED: user explicitly stopped → `todo`.
  *   - No PR, jobStatus=SUCCEEDED or FAILED (or unknown): the agent yielded
- *     its turn without shipping a PR, which in this product can only mean
- *     "waiting on the human" → `blocked`. Erring toward `blocked` over `todo`
- *     keeps stranded cards visible instead of silently bucketed.
+ *     its turn without shipping a PR and we have no positive "needs human"
+ *     signal here → `todo`. `blocked` is reserved for callers with a real
+ *     signal (PR closed/conflict above, the panel's `errorEnd` / awaiting-user
+ *     heuristic, or the agent's explicit `WorkflowStepRun.decision = BLOCK`).
+ *     The previous default (`blocked`) made every clean turn end look like a
+ *     question; users had to dismiss healthy cards out of the Blocked column.
  */
 export async function reconcileBuildingTicket(args: {
   ticketId: string;
@@ -329,14 +332,15 @@ export async function reconcileBuildingTicket(args: {
 
   if (!target) {
     // No PR (or PR lookup failed). The triggering job's status decides the
-    // fallback: an explicit user-Stop = `todo`; any other terminal state
-    // (clean turn end with no PR, hard process failure, unknown) = `blocked`,
-    // because the agent has stopped and a human needs to look at the card.
+    // fallback. We have no positive "needs human" signal at this point (the
+    // PR-closed / PR-conflict branches above already handled those), so the
+    // default is `todo` — the card is parked, not stranded on a question.
+    // `blocked` only wins if the workspace lacks a `todo` column entirely.
     if (args.jobStatus === "CANCELED") {
       target = pick("todo");
       reason = `${reason}-canceled`;
     } else {
-      target = pick("blocked") ?? pick("todo");
+      target = pick("todo") ?? pick("blocked");
       reason = `${reason}-${args.jobStatus?.toLowerCase() ?? "unknown"}`;
     }
   }
