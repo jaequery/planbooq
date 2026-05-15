@@ -1537,6 +1537,12 @@ function DesktopPanel({
         }
       } catch {}
 
+      // If resume fails because the worktree was cleaned up after PR merge,
+      // fall through to agentStart to spin a fresh worktree on a new branch —
+      // that's the documented intent (see the "agentResume falls through to
+      // agentStart" comment above) and the user-visible fix for the "agent
+      // went stale (90s)" symptom when re-running a completed ticket whose
+      // worktree was GC'd.
       if (canResume) {
         // Worktree exists — write any new attachments and rewrite URLs before
         // the message reaches Claude.
@@ -1553,20 +1559,31 @@ function DesktopPanel({
             jobId: jobIdRef.current ?? undefined,
             workflowStepRunId: opts?.workflowStepRunId ?? null,
           });
-          if (!res.ok || !res.sessionId) {
+          if (res.ok && res.sessionId) {
+            setSessionId(res.sessionId);
+            if (jobIdRef.current) {
+              registerAgentSession(res.sessionId, {
+                jobId: jobIdRef.current,
+                workspaceId,
+                ticketId,
+              });
+            }
+            return true;
+          }
+          // Worktree was removed (typical post-merge cleanup) — clear the
+          // stale local state and fall through to agentStart below. The new
+          // agentStart will allocate a fresh worktree + branch and patchJob
+          // will update this AgentJob row's worktreePath to match, so the
+          // server doesn't 90s-reap an orphan resume.
+          if (res.error === "worktree no longer exists") {
+            setWorktreePath(null);
+            setClaudeSessionId(null);
+            // intentional fall-through to agentStart below
+          } else {
             toast.error(res.error ?? "Resume failed");
             setBusy(false);
             return false;
           }
-          setSessionId(res.sessionId);
-          if (jobIdRef.current) {
-            registerAgentSession(res.sessionId, {
-              jobId: jobIdRef.current,
-              workspaceId,
-              ticketId,
-            });
-          }
-          return true;
         } catch (err) {
           toast.error(err instanceof Error ? err.message : "Resume failed");
           setBusy(false);
