@@ -8,6 +8,7 @@ import { publishWorkspaceEvent } from "@/server/ably";
 import { prisma } from "@/server/db";
 import { getOrCreateConversationForTicket } from "@/server/services/conversations";
 import { dispatchAgentMentions } from "@/server/services/mention-dispatch";
+import { moveTicketToStatusKey } from "@/server/services/ticket-status";
 
 const MESSAGE_INCLUDE = {
   authorUser: { select: { id: true, name: true, email: true, image: true } },
@@ -123,7 +124,13 @@ export async function createMessageSvc(
 
     const ticket = await prisma.ticket.findUnique({
       where: { id: input.ticketId },
-      select: { id: true, workspaceId: true, projectId: true, archivedAt: true },
+      select: {
+        id: true,
+        workspaceId: true,
+        projectId: true,
+        archivedAt: true,
+        status: { select: { key: true } },
+      },
     });
     if (!ticket) return { ok: false, error: "ticket_not_found" };
     if (ticket.archivedAt) return { ok: false, error: "ticket_archived" };
@@ -200,6 +207,31 @@ export async function createMessageSvc(
         })),
       }).catch((err) => {
         logger.error("dispatchAgentMentions.failed", {
+          messageId: message.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
+
+    // REST/skill parity for the desktop client's `resumeCompletedTicket` call:
+    // a new USER message on a Completed ticket is the explicit signal to bring
+    // the ticket back into Running so the agent can pick up the new turn. Only
+    // fires for user-authored messages — agent self-replies and SYSTEM rows
+    // would loop. `review` stays terminal on purpose (PR awaiting human merge).
+    if (
+      ctx.trust === "user_session" &&
+      message.role === "USER" &&
+      ticket.status?.key === "completed" &&
+      ctx.actorUserId
+    ) {
+      const byUserId = ctx.actorUserId;
+      void moveTicketToStatusKey({
+        ticketId: ticket.id,
+        toStatusKey: "building",
+        byUserId,
+      }).catch((err) => {
+        logger.error("resumeCompletedTicket.fromMessage.failed", {
+          ticketId: ticket.id,
           messageId: message.id,
           error: err instanceof Error ? err.message : String(err),
         });
