@@ -1496,6 +1496,40 @@ export async function decideEndOfRunStatus(ticketId: string): Promise<Result<End
   return { ok: true, kind: "moved", statusKey: target };
 }
 
+/**
+ * Explicit, user-driven escape hatch for the terminal-status guard in
+ * `applyWorkflowStatusSuggestion`. That guard exists for a reason — it stops
+ * the chat panel's "force Running while busy" effect from rubber-banding a
+ * just-shipped ticket back into the Running column (FRED-NX1RLS). But once
+ * the human types a new chat turn on a Completed ticket they're explicitly
+ * asking to resume work, so we *do* want to demote it back to `building`.
+ *
+ * Scope: only `completed` → `building`. `review` is left alone — that column
+ * means "PR is open, waiting on a human merge" and rubber-banding it back is
+ * still wrong. Any other current status is a no-op success so callers don't
+ * have to branch.
+ */
+export async function resumeCompletedTicket(ticketId: string): Promise<Result<{ moved: boolean }>> {
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: { workspaceId: true, status: { select: { key: true } } },
+  });
+  if (!ticket) return { ok: false, error: "not_found" };
+  const ctx = await requireMember(ticket.workspaceId);
+  if (!ctx.ok) return ctx;
+
+  if (ticket.status?.key !== "completed") {
+    return { ok: true, moved: false };
+  }
+  await moveTicketToStatusKey({
+    ticketId,
+    toStatusKey: "building",
+    byUserId: ctx.userId,
+  });
+  revalidatePath("/");
+  return { ok: true, moved: true };
+}
+
 export async function logWorkflowActivity(input: {
   ticketId: string;
   text: string;

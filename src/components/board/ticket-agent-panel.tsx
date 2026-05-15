@@ -14,6 +14,7 @@ import {
   getTicketWorkflow,
   getWorkflowStatusContext,
   logWorkflowActivity,
+  resumeCompletedTicket,
 } from "@/actions/workflow";
 import { TicketWorkflowPanel } from "@/components/board/ticket-workflow-panel";
 import { Button } from "@/components/ui/button";
@@ -1443,6 +1444,25 @@ function DesktopPanel({
     // otherwise clearBlocked() would refuse to demote the status.
     userBlockedRef.current = false;
     clearBlocked();
+
+    // Explicit completed→Running resume. The auto-rubber-band effect skips
+    // terminal statuses on purpose (FRED-NX1RLS); typing a new chat turn on a
+    // shipped ticket is the deliberate counterpart. We update the local ref
+    // synchronously so the busy-flip effect at line ~1424 sees `building` and
+    // short-circuits instead of double-writing the status. If the worktree
+    // was cleaned up after merge, `agentResume` falls through to `agentStart`
+    // below and spins up a fresh worktree — that's intended; each fix session
+    // ships as its own new PR.
+    if (statusKeyRef.current === "completed") {
+      statusKeyRef.current = "building";
+      markSelfStatusWrite("building");
+      void resumeCompletedTicket(ticketId).catch((error) => {
+        console.warn("planbooq.resume-completed.threw", {
+          ticketId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
 
     if (typeof bridge.agentStart !== "function" || typeof bridge.agentSend !== "function") {
       toast.error("Desktop app is out of date — quit and relaunch Planbooq");
