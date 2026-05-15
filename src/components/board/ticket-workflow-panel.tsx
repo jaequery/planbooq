@@ -11,6 +11,7 @@ import {
   getTicketWorkflow,
   getWorkflowStatusContext,
   listWorkflowTemplates,
+  recordWorkflowStartFailure,
   removeTicketStep,
   reorderTicketSteps,
   setTicketWorkflowFromTemplate,
@@ -295,12 +296,34 @@ export function TicketWorkflowPanel({
     if (steps.length === 0) return;
     // The server creates the WorkflowRun, marks the first step as started,
     // writes STEP_STARTED activity, and publishes ticket.workflow.dispatch.
+    //
+    // We used to swallow both throws and { ok: false } here, which left the
+    // ticket stranded in Building with an empty chat when the trigger silently
+    // failed (see PLAN-ALP5ZK forensics). Now we surface failures as a SYSTEM
+    // message on the ticket so the user has a real signal instead of a
+    // mysteriously-Blocked card.
+    let triggerError: { reason: string; detail?: string } | null = null;
     try {
-      await triggerWorkflowRun(ticketId, {
+      const result = await triggerWorkflowRun(ticketId, {
         steps: steps.map((s) => ({ name: s.name, prompt: s.prompt })),
       });
-    } catch {
-      // tolerated — status refinement below is best-effort too
+      if (!result.ok) {
+        triggerError = { reason: result.error };
+      }
+    } catch (err) {
+      triggerError = {
+        reason: "trigger_threw",
+        detail: err instanceof Error ? err.message : String(err),
+      };
+    }
+    if (triggerError) {
+      void recordWorkflowStartFailure({
+        ticketId,
+        reason: triggerError.reason,
+        ...(triggerError.detail ? { detail: triggerError.detail } : {}),
+      }).catch(() => {});
+      // Status refinement below assumes the run started — skip it on failure.
+      return;
     }
     // Ask local Claude Code in the background for a smarter status pick than
     // the deterministic backlog|todo → building that triggerWorkflowRun
