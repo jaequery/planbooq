@@ -191,11 +191,6 @@ export function TicketCard({
                 {ticket.title}
               </div>
             </div>
-            {ticket.description ? (
-              <p className="mt-1 line-clamp-2 break-words text-[14px] leading-snug text-muted-foreground">
-                {ticket.description}
-              </p>
-            ) : null}
           </div>
           {!isOverlay && ticket.assignee ? (
             <AssigneeAvatar
