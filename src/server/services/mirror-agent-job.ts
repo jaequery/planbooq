@@ -896,19 +896,23 @@ async function persistTurnEnd(job: AgentJob, outcome: TurnEndOutcome): Promise<v
   // Auto-chain carve-out: when the just-finished step declared
   // `decision === AUTO` (via `pbq workflow finish`, or — during the
   // migration window — the ticket carries the legacy `autonomous` label)
-  // and the workflow has more PENDING steps, skip the Blocked demotion.
-  // The workflow-step-completed Inngest handler will dispatch the next
-  // step within ~100ms and the desktop client will warm-send its prompt
-  // into the still-alive Claude session. Demoting to Blocked here would
-  // race that dispatch: the desktop panel's "external move to Blocked =
-  // kill the session" handler (ticket-agent-panel.tsx:938) SIGTERMs the
-  // process mid-warm-send, the cancel gets mis-credited to the
-  // just-warm-sent step by resolveTerminalStepRunId
-  // (mirror-agent-job.ts:1054), and the staleness reaper
-  // (workflow.ts:693) finishes off the WorkflowRun. See PLAN-LYVQV8 for
-  // the full forensics. Non-auto-chaining steps still demote — the
-  // Inngest handler reads the same decision so the dispatch won't fire
-  // and the user clicks Run to advance manually.
+  // and the workflow has more PENDING steps, skip the Blocked demotion
+  // and dispatch the next step inline so the chain doesn't depend on
+  // Inngest being healthy. The `workflow/step.completed` event above
+  // still fires as a defense-in-depth retry path, but dispatchNextStep
+  // is idempotent on the PENDING→RUNNING CAS so the duplicate is a
+  // safe no-op. Doing it inline closes the bug where Inngest dev was
+  // down (or the send was dropped) and the workflow froze at Running
+  // with the step decision=AUTO and no next-step dispatch.
+  //
+  // Demoting to Blocked here would race that dispatch: the desktop
+  // panel's "external move to Blocked = kill the session" handler
+  // (ticket-agent-panel.tsx:938) SIGTERMs the process mid-warm-send,
+  // the cancel gets mis-credited to the just-warm-sent step by
+  // resolveTerminalStepRunId (mirror-agent-job.ts:1054), and the
+  // staleness reaper (workflow.ts:693) finishes off the WorkflowRun.
+  // See PLAN-LYVQV8 for the full forensics. Non-auto-chaining steps
+  // still demote.
   if (outcome.kind === "success") {
     const autoChaining =
       stepRunTransitioned && completion.runId
@@ -924,7 +928,17 @@ async function persistTurnEnd(job: AgentJob, outcome: TurnEndOutcome): Promise<v
             return false;
           })
         : false;
-    if (!autoChaining) {
+    if (autoChaining && completion.runId) {
+      await workflowCommander
+        .dispatchNextStep({ runId: completion.runId, byUserId: null })
+        .catch((err: unknown) => {
+          logger.warn("mirror.turn-end.dispatch-next.failed", {
+            jobId: job.id,
+            runId: completion.runId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    } else {
       await reconcileBuildingTicket({
         ticketId: job.ticketId,
         byUserId: job.userId,
