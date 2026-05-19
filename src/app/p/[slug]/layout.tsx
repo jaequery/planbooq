@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { AgentSessionGlobalListener } from "@/components/agent-session-global-listener";
 import { AgentSessionManagerMount } from "@/components/agent-session-manager-mount";
 import { ProjectHeaderMenu } from "@/components/board/project-header-menu";
+import { PillarNav } from "@/components/pillars/pillar-nav";
 import { SettingsContent } from "@/components/settings/settings-content";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { SidebarProvider } from "@/components/sidebar/sidebar-state";
@@ -115,6 +116,8 @@ export default async function ProjectLayout({
                   projectDescription={project.description}
                   projectLocalPath={project.localPath}
                 />
+                <span className="mx-2 h-4 w-px bg-border/60" aria-hidden="true" />
+                <PillarNav slug={slug} />
               </div>
               <div className="flex items-center gap-1">
                 <UserMenu

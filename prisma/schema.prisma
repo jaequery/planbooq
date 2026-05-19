@@ -37,6 +37,7 @@ model User {
   agentProfiles   AgentProfile[]  @relation("AgentProfileCreator")
   authoredMessages   Message[]         @relation("MessageAuthorUser")
   messageReactions   MessageReaction[] @relation("MessageReactionUser")
+  contextDocs        ContextDoc[]      @relation("ContextDocCreator")
 }
 
 model ApiKey {
@@ -123,6 +124,8 @@ model Workspace {
   agentProfiles AgentProfile[]
   conversations Conversation[]
   messages      Message[]
+  contextDocs   ContextDoc[]
+  skills        Skill[]
 }
 
 model Project {
@@ -145,6 +148,7 @@ model Project {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   tickets   Ticket[]
   defaultWorkflowTemplate WorkflowTemplate? @relation("ProjectDefaultWorkflow", fields: [defaultWorkflowTemplateId], references: [id], onDelete: SetNull)
+  contextDocs ContextDoc[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, position])
@@ -221,6 +225,8 @@ model Ticket {
   agentProfileLinks TicketAgentProfile[]
   pullRequests TicketPullRequest[]
   conversation Conversation?
+  contextDocLinks TicketContextDoc[]
+  skillLinks      TicketSkill[]
 
   @@index([workspaceId, statusId, position])
   @@index([projectId, statusId, position])
@@ -552,6 +558,7 @@ model AgentProfile {
   workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy   User                 @relation("AgentProfileCreator", fields: [createdById], references: [id], onDelete: Restrict)
   ticketLinks TicketAgentProfile[]
+  skillLinks  AgentProfileSkill[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId, isActive])
@@ -731,4 +738,104 @@ model MessageReaction {
   @@unique([messageId, userId, emoji])
   @@unique([messageId, agentId, emoji])
   @@index([messageId])
+}
+
+// -----------------------------
+// Context pillar (workspace- or project-scoped knowledge)
+// -----------------------------
+
+enum ContextDocKind {
+  SCOPE
+  DECISION
+  ARCHITECTURE
+  DEPENDENCY
+  CONSTRAINT
+  PATTERN
+  OTHER
+}
+
+model ContextDoc {
+  id          String         @id @default(cuid())
+  workspaceId String
+  // null = workspace-global; set = project-scoped.
+  projectId   String?
+  title       String
+  body        String         @db.Text
+  kind        ContextDocKind @default(OTHER)
+  position    Float
+  createdById String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  archivedAt  DateTime?
+
+  workspace   Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User               @relation("ContextDocCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  ticketLinks TicketContextDoc[]
+
+  @@index([workspaceId, position])
+  @@index([workspaceId, projectId, position])
+  @@index([workspaceId, kind])
+}
+
+model TicketContextDoc {
+  ticketId     String
+  contextDocId String
+  position     Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  ticket     Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  contextDoc ContextDoc @relation(fields: [contextDocId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, contextDocId])
+  @@index([contextDocId])
+}
+
+// -----------------------------
+// Skills pillar (workspace-scoped capabilities, attachable to AgentProfile + Ticket)
+// -----------------------------
+
+model Skill {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  slug        String
+  description String?
+  color       String   @default("#7c3aed")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace         Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agentProfileLinks AgentProfileSkill[]
+  ticketLinks       TicketSkill[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, name])
+}
+
+model AgentProfileSkill {
+  agentProfileId String
+  skillId        String
+  // 1..5 — optional rough proficiency. UI may surface this as a chip suffix
+  // (e.g. "TypeScript · 4"). Null when the user hasn't rated.
+  level          Int?
+  createdAt      DateTime @default(now())
+
+  agentProfile AgentProfile @relation(fields: [agentProfileId], references: [id], onDelete: Cascade)
+  skill        Skill        @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([agentProfileId, skillId])
+  @@index([skillId])
+}
+
+model TicketSkill {
+  ticketId  String
+  skillId   String
+  createdAt DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  skill  Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, skillId])
+  @@index([skillId])
 }
