@@ -17,7 +17,9 @@ import { PriorityPicker } from "@/components/board/priority-picker";
 import { type StatusOption, StatusPicker } from "@/components/board/status-picker";
 import { TicketActionsMenu } from "@/components/board/ticket-actions-menu";
 import { TicketAgentPanel } from "@/components/board/ticket-agent-panel";
+import { TicketContextPicker } from "@/components/board/ticket-context-picker";
 import { TicketPreviewsPanel } from "@/components/board/ticket-previews-panel";
+import { TicketSkillsPicker } from "@/components/board/ticket-skills-picker";
 import { TicketTimeline } from "@/components/board/ticket-timeline";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -162,7 +164,6 @@ export function TicketDetailDialog({
 
   const ticketPrUrl = ticket.prUrl;
   const showPrStatus = open && isGitHubPrUrl(ticketPrUrl);
-
 
   const loadStatus = useCallback((): void => {
     startStatusTransition(async () => {
@@ -818,6 +819,18 @@ export function TicketDetailDialog({
             <div className="flex items-center gap-2">
               <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Agents</span>
               <AgentProfilesPicker ticketId={ticket.id} workspaceId={ticket.workspaceId} />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Skills</span>
+              <TicketSkillsPicker ticketId={ticket.id} workspaceId={ticket.workspaceId} />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Context</span>
+              <TicketContextPicker
+                ticketId={ticket.id}
+                workspaceId={ticket.workspaceId}
+                projectId={ticket.projectId}
+              />
             </div>
             <div className="flex items-center gap-2">
               <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Project</span>

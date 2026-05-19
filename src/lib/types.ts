@@ -83,6 +83,58 @@ export type TicketAgentProfileLink = {
   profile: AgentProfileSummary;
 };
 
+export type ContextDocKind =
+  | "SCOPE"
+  | "DECISION"
+  | "ARCHITECTURE"
+  | "DEPENDENCY"
+  | "CONSTRAINT"
+  | "PATTERN"
+  | "OTHER";
+
+export type ContextDocSummary = {
+  id: string;
+  workspaceId: string;
+  projectId: string | null;
+  title: string;
+  kind: ContextDocKind;
+  position: number;
+  createdAt: Date;
+  updatedAt: Date;
+  archivedAt: Date | null;
+};
+
+export type ContextDocFull = ContextDocSummary & { body: string };
+
+export type TicketContextDocLink = {
+  contextDocId: string;
+  position: number;
+  contextDoc: ContextDocSummary;
+};
+
+export type SkillSummary = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  color: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type AgentProfileSkillLink = {
+  agentProfileId: string;
+  skillId: string;
+  level: number | null;
+  skill: SkillSummary;
+};
+
+export type TicketSkillLink = {
+  skillId: string;
+  skill: SkillSummary;
+};
+
 export type AblyChannelEvent =
   | {
       name: "ticket.created";
@@ -330,6 +382,63 @@ export type AblyChannelEvent =
       workspaceId: string;
       ticketId: string;
       profileIds: string[];
+      by: string;
+    }
+  | {
+      name: "contextDoc.created";
+      workspaceId: string;
+      doc: ContextDocSummary;
+      by: string;
+    }
+  | {
+      name: "contextDoc.updated";
+      workspaceId: string;
+      doc: ContextDocSummary;
+      by: string;
+    }
+  | {
+      name: "contextDoc.deleted";
+      workspaceId: string;
+      docId: string;
+      by: string;
+    }
+  | {
+      name: "ticket.contextDocs.updated";
+      workspaceId: string;
+      ticketId: string;
+      contextDocIds: string[];
+      by: string;
+    }
+  | {
+      name: "skill.created";
+      workspaceId: string;
+      skill: SkillSummary;
+      by: string;
+    }
+  | {
+      name: "skill.updated";
+      workspaceId: string;
+      skill: SkillSummary;
+      by: string;
+    }
+  | {
+      name: "skill.deleted";
+      workspaceId: string;
+      skillId: string;
+      by: string;
+    }
+  | {
+      name: "agentProfile.skills.updated";
+      workspaceId: string;
+      agentProfileId: string;
+      skillIds: string[];
+      by: string;
+    }
+  | {
+      name: "ticket.skills.updated";
+      workspaceId: string;
+      ticketId: string;
+      skillIds: string[];
       by: string;
     }
   | {
