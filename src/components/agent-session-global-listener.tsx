@@ -8,6 +8,7 @@ import {
   releaseWorkflowDispatchClaim,
 } from "@/lib/agent-session-manager";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
+import { playSound } from "@/lib/sounds";
 import type { AblyChannelEvent } from "@/lib/types";
 import { getDesktopBridge } from "@/lib/use-is-desktop";
 
@@ -39,6 +40,7 @@ import { getDesktopBridge } from "@/lib/use-is-desktop";
 export function AgentSessionGlobalListener({ workspaceId }: { workspaceId: string }): null {
   const onEvent = useCallback((event: AblyChannelEvent) => {
     if (event.name === "ticket.workflow.completed") {
+      playSound("shipped");
       const bridge = getDesktopBridge();
       if (!bridge?.agentStop) return;
 
