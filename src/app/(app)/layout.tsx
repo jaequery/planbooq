@@ -8,7 +8,7 @@ import { SidebarToggle } from "@/components/sidebar/sidebar-toggle";
 import { UserMenu } from "@/components/user-menu";
 import { extractShortcuts, extractSidebarSectionState } from "@/lib/shortcuts/defaults";
 import { ShortcutsProvider } from "@/lib/shortcuts/provider";
-import type { AgentProfileSummary, ProjectSummary, SkillSummary } from "@/lib/types";
+import type { ProjectSummary } from "@/lib/types";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 
@@ -36,7 +36,7 @@ export default async function AppLayout({
   const shortcuts = extractShortcuts(currentUser?.preferences);
   const sectionState = extractSidebarSectionState(currentUser?.preferences);
 
-  const [projectRows, statusRows, agentRows, skillRows] = await Promise.all([
+  const [projectRows, statusRows] = await Promise.all([
     prisma.project.findMany({
       where: { workspaceId: membership.workspaceId },
       orderBy: { position: "asc" },
@@ -55,35 +55,6 @@ export default async function AppLayout({
         key: { in: ["review", "building", "blocked"] },
       },
       select: { id: true, key: true },
-    }),
-    prisma.agentProfile.findMany({
-      where: { workspaceId: membership.workspaceId, isActive: true, archivedAt: null },
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        workspaceId: true,
-        name: true,
-        slug: true,
-        description: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        archivedAt: true,
-      },
-    }),
-    prisma.skill.findMany({
-      where: { workspaceId: membership.workspaceId },
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        workspaceId: true,
-        name: true,
-        slug: true,
-        description: true,
-        color: true,
-        createdAt: true,
-        updatedAt: true,
-      },
     }),
   ]);
 
@@ -114,9 +85,6 @@ export default async function AppLayout({
     return { ...p, reviewCount, buildingCount, blockedCount };
   });
 
-  const agents: AgentProfileSummary[] = agentRows;
-  const skills: SkillSummary[] = skillRows;
-
   return (
     <SidebarProvider>
       <ShortcutsProvider shortcuts={shortcuts}>
@@ -125,8 +93,6 @@ export default async function AppLayout({
           <AgentSessionGlobalListener workspaceId={membership.workspaceId} />
           <Sidebar
             projects={allProjects}
-            agents={agents}
-            skills={skills}
             workspaceId={membership.workspaceId}
             sectionState={sectionState}
           />

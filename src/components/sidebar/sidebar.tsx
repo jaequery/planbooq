@@ -1,30 +1,20 @@
 "use client";
 
 import { ProjectHotkeys } from "@/components/sidebar/project-hotkeys";
-import { SidebarAgentsSection } from "@/components/sidebar/sidebar-agents-section";
 import { SidebarProjectsSection } from "@/components/sidebar/sidebar-projects-section";
-import { SidebarSkillsSection } from "@/components/sidebar/sidebar-skills-section";
 import { useSidebarState } from "@/components/sidebar/sidebar-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { SidebarSectionState } from "@/lib/shortcuts/defaults";
-import type { AgentProfileSummary, ProjectSummary, SkillSummary } from "@/lib/types";
+import type { ProjectSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
   projects: ReadonlyArray<ProjectSummary>;
-  agents: ReadonlyArray<AgentProfileSummary>;
-  skills: ReadonlyArray<SkillSummary>;
   workspaceId: string;
   sectionState: SidebarSectionState;
 };
 
-export function Sidebar({
-  projects,
-  agents,
-  skills,
-  workspaceId,
-  sectionState,
-}: Props): React.ReactElement {
+export function Sidebar({ projects, workspaceId, sectionState }: Props): React.ReactElement {
   const { collapsed } = useSidebarState();
 
   return (
@@ -44,8 +34,6 @@ export function Sidebar({
               workspaceId={workspaceId}
               initialExpanded={sectionState.PROJECTS.expanded}
             />
-            <SidebarAgentsSection agents={agents} initialExpanded={sectionState.AGENTS.expanded} />
-            <SidebarSkillsSection skills={skills} initialExpanded={sectionState.SKILLS.expanded} />
           </div>
         </ScrollArea>
       </div>
