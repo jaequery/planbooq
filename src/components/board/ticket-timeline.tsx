@@ -17,7 +17,6 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { toast } from "sonner";
 import { createComment, deleteComment, listTicketComments } from "@/actions/comment";
 import { AssigneeAvatar } from "@/components/board/assignee-picker";
-import { Button } from "@/components/ui/button";
 import { ImageUploadTextarea } from "@/components/ui/image-upload-textarea";
 import { Markdown } from "@/components/ui/markdown";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
@@ -432,13 +431,13 @@ export function TicketTimeline({
       )}
 
       {loaded ? (
-        <div className="space-y-2 pt-2">
+        <div className="space-y-1.5 pt-2">
           <ImageUploadTextarea
             workspaceId={workspaceId}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && canSubmit) {
                 e.preventDefault();
                 submit();
               }
@@ -450,10 +449,8 @@ export function TicketTimeline({
             aria-label="New comment"
             className="text-[13px]"
           />
-          <div className="flex items-center justify-end">
-            <Button type="button" size="sm" onClick={submit} disabled={!canSubmit}>
-              {isSubmitting ? "Posting…" : "Comment"}
-            </Button>
+          <div className="text-[11px] text-muted-foreground">
+            {isSubmitting ? "Posting…" : "Enter to send · Shift+Enter for newline"}
           </div>
         </div>
       ) : null}
