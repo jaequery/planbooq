@@ -56,7 +56,6 @@ export function ContextListClient({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [scope, setScope] = useState<"project" | "global">("project");
   const [kind, setKind] = useState<ContextDocKind>("OTHER");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -64,7 +63,6 @@ export function ContextListClient({
 
   const resetForm = useCallback(() => {
     setEditingId(null);
-    setScope("project");
     setKind("OTHER");
     setTitle("");
     setBody("");
@@ -82,11 +80,10 @@ export function ContextListClient({
             title: title.trim(),
             body: body.trim(),
             kind,
-            projectId: scope === "project" ? projectId : null,
           })
         : await createContextDoc({
             workspaceId,
-            projectId: scope === "project" ? projectId : null,
+            projectId,
             title: title.trim(),
             body: body.trim(),
             kind,
@@ -100,7 +97,7 @@ export function ContextListClient({
       resetForm();
       router.refresh();
     });
-  }, [editingId, title, body, kind, scope, projectId, workspaceId, router, resetForm]);
+  }, [editingId, title, body, kind, projectId, workspaceId, router, resetForm]);
 
   const handleDelete = useCallback(
     (id: string) => {
@@ -125,7 +122,6 @@ export function ContextListClient({
 
   const openEdit = async (doc: ContextDocSummary): Promise<void> => {
     setEditingId(doc.id);
-    setScope(doc.projectId ? "project" : "global");
     setKind(doc.kind);
     setTitle(doc.title);
     // Need the body — list query omits it. Fetch via the get action.
@@ -143,8 +139,8 @@ export function ContextListClient({
         <div>
           <h1 className="text-lg font-medium">Context</h1>
           <p className="text-[12px] text-muted-foreground">
-            Reference docs scoped to{" "}
-            <span className="font-medium text-foreground">{projectName}</span> or workspace-wide.
+            Reference docs for <span className="font-medium text-foreground">{projectName}</span>.
+            Mirrors canonical repo files so agents see them through the worktree.
           </p>
         </div>
         <Button onClick={openCreate} size="sm">
@@ -181,9 +177,6 @@ export function ContextListClient({
                       <Badge variant="secondary" className="text-[10px]">
                         {KIND_LABEL[doc.kind]}
                       </Badge>
-                      <span className="text-[11px] text-muted-foreground">
-                        {doc.projectId ? "Project" : "Workspace"}
-                      </span>
                     </div>
                   </button>
                   <Button
@@ -229,34 +222,20 @@ export function ContextListClient({
                 placeholder="e.g. Auth: NextAuth v5 + magic link"
               />
             </div>
-            <div className="flex gap-3">
-              <div className="flex flex-1 flex-col gap-1.5">
-                <Label htmlFor="ctx-kind">Kind</Label>
-                <select
-                  id="ctx-kind"
-                  className="h-9 rounded-md border border-input bg-background px-3 text-[13px]"
-                  value={kind}
-                  onChange={(e) => setKind(e.target.value as ContextDocKind)}
-                >
-                  {KINDS.map((k) => (
-                    <option key={k} value={k}>
-                      {KIND_LABEL[k]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-1 flex-col gap-1.5">
-                <Label htmlFor="ctx-scope">Scope</Label>
-                <select
-                  id="ctx-scope"
-                  className="h-9 rounded-md border border-input bg-background px-3 text-[13px]"
-                  value={scope}
-                  onChange={(e) => setScope(e.target.value as "project" | "global")}
-                >
-                  <option value="project">Project: {projectName}</option>
-                  <option value="global">Workspace-wide</option>
-                </select>
-              </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ctx-kind">Kind</Label>
+              <select
+                id="ctx-kind"
+                className="h-9 rounded-md border border-input bg-background px-3 text-[13px]"
+                value={kind}
+                onChange={(e) => setKind(e.target.value as ContextDocKind)}
+              >
+                {KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {KIND_LABEL[k]}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="ctx-body">Body (markdown)</Label>

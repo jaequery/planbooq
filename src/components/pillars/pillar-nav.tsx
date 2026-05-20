@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, FileText, Kanban } from "lucide-react";
+import { FileText, Kanban } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -10,7 +10,6 @@ type Props = { slug: string };
 const PILLARS = [
   { key: "tasks", label: "Tasks", suffix: "", icon: Kanban },
   { key: "context", label: "Context", suffix: "/context", icon: FileText },
-  { key: "agents", label: "Agents", suffix: "/agents", icon: Bot },
 ] as const;
 
 export function PillarNav({ slug }: Props): React.ReactElement {
