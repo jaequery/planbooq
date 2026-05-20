@@ -1067,6 +1067,31 @@ function DesktopPanel({
         }
         return;
       }
+      if (event.name === "agent.action" && event.ticketId === ticketId) {
+        // Ephemeral intermediate-step event from the server-side mirror.
+        // Not in the DB — render as a transient system row so the user sees
+        // the agent's tool calls / thinking in real time. Deduped by actionId
+        // in case Ably redelivers within a session. Bridge-side wire parsing
+        // (applyWireEvent) already pushes the same text from local desktop
+        // events under different ids; the same-text within-10s filter below
+        // absorbs that overlap.
+        const prev = messagesRef.current;
+        if (prev.some((m) => m.id === event.actionId)) return;
+        const text =
+          event.kind === "thinking" && !event.text.startsWith("… ")
+            ? `… ${event.text}`
+            : event.text;
+        const createdAt = event.at ?? Date.now();
+        const filtered = prev.filter(
+          (m) =>
+            !(m.role === "system" && m.text === text && Math.abs(m.createdAt - createdAt) < 10_000),
+        );
+        const next: ChatMsg = { id: event.actionId, role: "system", text, createdAt };
+        const merged = [...filtered, next].sort((a, b) => a.createdAt - b.createdAt);
+        messagesRef.current = merged;
+        setMessages(merged);
+        return;
+      }
       if (event.name === "message.created" && event.ticketId === ticketId) {
         const next = messageEventToChat(event.message);
         if (!next) return;

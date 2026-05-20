@@ -165,6 +165,7 @@ type AssistantBlock = {
   text?: string;
   name?: string;
   input?: Record<string, unknown>;
+  thinking?: string;
 };
 type ParsedClaude = {
   type?: string;
@@ -476,72 +477,35 @@ function formatToolUse(name: string, input: Record<string, unknown> | undefined)
   return trimmed ? `→ ${name}: ${trimmed}` : `→ ${name}`;
 }
 
-async function emitToolCall(
+async function emitAgentAction(
   job: AgentJob,
   state: WireJobState,
+  kind: "tool" | "thinking",
   text: string,
   at?: number,
 ): Promise<void> {
-  // Tool calls land between assistant text turns. Each is its own short
-  // SYSTEM-style message so the thread reads as a sequence of small actions
-  // rather than a wall of agent output.
+  // Intermediate steps (tool calls, thinking) are ephemeral: published over
+  // Ably so the chat panel can render them inline during the agent's run, but
+  // NOT written to the Message table. The history GET stays free of action
+  // clutter and reloads show only user + assistant turns.
+  //
+  // actionId is the same `tool:N` slot we'd previously used as an
+  // idempotencyKey, so client-side dedupe survives Ably redelivery within
+  // a session. We don't need cross-restart monotonicity: events are not
+  // re-emitted after a crash.
   const seq = state.toolSeq;
   state.toolSeq += 1;
-  const idempotencyKey = `agent-job:${job.id}:tool:${seq}`;
-  const role: MessageRole = job.agentId ? "AGENT" : "SYSTEM";
-  const created = await prisma.message.upsert({
-    where: { idempotencyKey },
-    create: {
-      idempotencyKey,
-      conversationId: state.conversationId,
-      workspaceId: job.workspaceId!,
-      role,
-      authorAgentId: role === "AGENT" ? job.agentId : null,
-      agentJobId: job.id,
-      workflowStepRunId: state.currentStepRunId ?? null,
-      body: text,
-      status: "COMPLETE",
-      createdAt: at ? new Date(at) : undefined,
-    },
-    update: {},
-    select: {
-      id: true,
-      conversationId: true,
-      workspaceId: true,
-      role: true,
-      status: true,
-      body: true,
-      authorUserId: true,
-      authorAgentId: true,
-      agentJobId: true,
-      parentId: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+  const actionId = `agent-job:${job.id}:${kind}:${seq}`;
   await publishWorkspaceEvent(job.workspaceId!, {
-    name: "message.created",
+    name: "agent.action",
     workspaceId: job.workspaceId!,
     conversationId: state.conversationId,
     ticketId: job.ticketId,
-    message: {
-      id: created.id,
-      conversationId: created.conversationId,
-      workspaceId: created.workspaceId,
-      role: created.role,
-      status: created.status,
-      body: created.body,
-      authorUserId: created.authorUserId,
-      authorAgentId: created.authorAgentId,
-      agentJobId: created.agentJobId,
-      parentId: created.parentId,
-      createdAt: created.createdAt,
-      updatedAt: created.updatedAt,
-      authorUser: null,
-      authorAgent: null,
-      mentions: [],
-    },
-    by: job.agentId ? `agent:${job.agentId}` : "system",
+    agentJobId: job.id,
+    actionId,
+    kind,
+    text,
+    at,
   });
 }
 
@@ -617,8 +581,12 @@ async function applyClaudeLine(
           state.agentMessageId = null;
           state.agentBody = "";
         }
-        await emitToolCall(job, state, formatToolUse(b.name, b.input), at);
+        await emitAgentAction(job, state, "tool", formatToolUse(b.name, b.input), at);
         state.toolUses += 1;
+      } else if (b.type === "thinking" && typeof b.thinking === "string" && b.thinking) {
+        // Thinking blocks are ephemeral too — surfaced inline as a system-line
+        // so users can see the agent's reasoning without polluting history.
+        await emitAgentAction(job, state, "thinking", b.thinking, at);
       }
     }
     return { textAppended, turnEnded };
