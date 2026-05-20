@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { ProjectDocsPanel } from "@/components/board/project-docs-panel";
 import { ContextListClient } from "@/components/context/context-list-client";
 import type { ContextDocSummary } from "@/lib/types";
 import { auth } from "@/server/auth";
@@ -19,7 +20,7 @@ export default async function ContextPage({ params }: Props): Promise<React.Reac
 
   const project = await prisma.project.findUnique({
     where: { workspaceId_slug: { workspaceId: membership.workspaceId, slug } },
-    select: { id: true, name: true },
+    select: { id: true, name: true, localPath: true },
   });
   if (!project) notFound();
 
@@ -47,6 +48,7 @@ export default async function ContextPage({ params }: Props): Promise<React.Reac
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <ProjectDocsPanel projectId={project.id} localPath={project.localPath ?? null} />
       <ContextListClient
         workspaceId={membership.workspaceId}
         projectId={project.id}
