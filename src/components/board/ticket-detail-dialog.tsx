@@ -539,7 +539,7 @@ export function TicketDetailDialog({
 
         <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/60 px-4">
           <div className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5">
+            <span className="inline-flex shrink-0 items-center gap-1.5">
               <span
                 aria-hidden
                 className="h-2.5 w-2.5 rounded-sm"
@@ -547,12 +547,21 @@ export function TicketDetailDialog({
               />
               <span className="truncate">{projectName}</span>
             </span>
-            <span className="text-muted-foreground/40">/</span>
-            <span className="font-mono text-[11px] uppercase opacity-80">{ticketIdLabel}</span>
+            <span className="shrink-0 text-muted-foreground/40">/</span>
+            <span className="shrink-0 font-mono text-[11px] uppercase opacity-80">
+              {ticketIdLabel}
+            </span>
+            <span className="shrink-0 text-muted-foreground/40">·</span>
+            <span
+              className="min-w-0 flex-1 truncate text-foreground"
+              title={isEditingTitle ? titleDraft : ticket.title}
+            >
+              {isEditingTitle ? titleDraft : ticket.title}
+            </span>
             {assignee ? (
               <>
-                <span className="text-muted-foreground/40">·</span>
-                <span className="inline-flex items-center gap-1.5">
+                <span className="shrink-0 text-muted-foreground/40">·</span>
+                <span className="inline-flex shrink-0 items-center gap-1.5">
                   <AssigneeAvatar
                     name={assignee.name}
                     email={assignee.email}
