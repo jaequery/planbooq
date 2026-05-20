@@ -17,6 +17,7 @@ import {
   resumeCompletedTicket,
 } from "@/actions/workflow";
 import { TicketWorkflowPanel } from "@/components/board/ticket-workflow-panel";
+import { WorkflowBoundaryRow } from "@/components/conversation/workflow-boundary-row";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
 import {
@@ -28,6 +29,7 @@ import {
   unregisterAgentSession,
 } from "@/lib/agent-session-manager";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
+import { isWorkflowBoundaryMessage } from "@/lib/system-chat";
 import type { AblyChannelEvent, MessageEventPayload } from "@/lib/types";
 import { type AgentEvent, getDesktopBridge, useIsDesktop } from "@/lib/use-is-desktop";
 
@@ -729,12 +731,6 @@ function DesktopPanel({
   // the same render).
   const [atBottom, setAtBottom] = useState(true);
   const didInitialScrollRef = useRef(false);
-  // The chat panel lives inside the ticket dialog's outer overflow-y-auto
-  // left column, below the title/description/plan. The inner pin above scrolls
-  // the chat scroller to its own bottom, but the outer column still starts
-  // at scrollTop=0 — so on a ticket with long history the chat is below the
-  // fold. One-shot scrollIntoView on first hydration brings the chat into view.
-  const didInitialOuterScrollRef = useRef(false);
   const currentAssistantId = useRef<string | null>(null);
   const jobIdRef = useRef<string | null>(null);
   jobIdRef.current = jobId;
@@ -848,7 +844,6 @@ function DesktopPanel({
     messagesRef.current = [];
     messageSequencesRef.current = new Map();
     didInitialScrollRef.current = false;
-    didInitialOuterScrollRef.current = false;
     atBottomRef.current = true;
 
     void (async () => {
@@ -1312,6 +1307,11 @@ function DesktopPanel({
   // on subsequent message changes ONLY if the user is already at the
   // bottom. Anyone who has scrolled up to read history is left alone.
   //
+  // `repoPathLoaded` is in the deps because this component returns null
+  // until the project local path resolves — if messages hydrate first, the
+  // scroller div isn't in the DOM yet so the pin would no-op. Re-firing
+  // once the scroller mounts catches that race.
+  //
   // We set `scroller.scrollTop = scroller.scrollHeight` directly instead
   // of calling `scrollIntoView()` — scrollIntoView is recursive and would
   // also scroll the dialog's outer overflow-y-auto container, causing the
@@ -1338,19 +1338,6 @@ function DesktopPanel({
     if (!didInitialScrollRef.current) {
       didInitialScrollRef.current = true;
       pin();
-      // Also scroll the chat panel into view in the dialog's outer
-      // overflow-y-auto left column so the latest message is visible without
-      // the user manually scrolling past the title/description/plan. One-shot
-      // per ticket open; reset in the hydration effect when ticketId changes.
-      // scrollIntoView is recursive but the dialog itself is overflow-hidden,
-      // so only the left-column scroller moves.
-      if (!didInitialOuterScrollRef.current) {
-        didInitialOuterScrollRef.current = true;
-        scroller.scrollIntoView({ block: "end", behavior: "auto" });
-        // Re-pin: scrollIntoView may have moved the inner scroller as a side
-        // effect of aligning ancestors. Force it back to the bottom.
-        scroller.scrollTop = scroller.scrollHeight;
-      }
       return;
     }
     const nearBottom =
@@ -1363,7 +1350,7 @@ function DesktopPanel({
       atBottomRef.current = false;
       setAtBottom(false);
     }
-  }, [messages]);
+  }, [messages, repoPathLoaded]);
 
   const pickRepo = async (): Promise<string | null> => {
     const bridge = getDesktopBridge();
@@ -1864,6 +1851,9 @@ function DesktopPanel({
                   m.role === "user" ? "You" : m.role === "assistant" ? "Claude" : "System";
                 const align = m.role === "user" ? "self-end items-end" : "self-start items-start";
                 const time = formatDistanceToNowStrict(new Date(m.createdAt), { addSuffix: true });
+                if (m.role === "user" && isWorkflowBoundaryMessage(m.text)) {
+                  return <WorkflowBoundaryRow key={m.id} body={m.text} align="self-end" />;
+                }
                 return (
                   <div key={m.id} className={`flex max-w-[85%] flex-col gap-1 ${align}`}>
                     <div className="flex items-center gap-2 text-[11px] text-muted-foreground">

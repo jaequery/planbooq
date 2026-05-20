@@ -106,14 +106,14 @@ export async function getContextDocSvc(
 export const CreateContextDocSchema = z
   .object({
     workspaceId: z.string().min(1),
-    projectId: z.string().min(1).nullable().optional(),
+    projectId: z.string().min(1),
     title: z.string().trim().min(1).max(TITLE_MAX),
     body: z.string().min(1).max(BODY_MAX),
     kind: KindSchema.optional(),
   })
   .strict();
 
-async function nextPosition(workspaceId: string, projectId: string | null): Promise<number> {
+async function nextPosition(workspaceId: string, projectId: string): Promise<number> {
   const last = await prisma.contextDoc.findFirst({
     where: { workspaceId, projectId },
     orderBy: { position: "desc" },
@@ -130,22 +130,19 @@ export async function createContextDocSvc(
     const data = CreateContextDocSchema.parse(input);
     await requireMembership(data.workspaceId, userId);
 
-    const projectId = data.projectId ?? null;
-    if (projectId) {
-      const project = await prisma.project.findUnique({
-        where: { id: projectId },
-        select: { workspaceId: true },
-      });
-      if (!project || project.workspaceId !== data.workspaceId) {
-        return { ok: false, error: "invalid_project" };
-      }
+    const project = await prisma.project.findUnique({
+      where: { id: data.projectId },
+      select: { workspaceId: true },
+    });
+    if (!project || project.workspaceId !== data.workspaceId) {
+      return { ok: false, error: "invalid_project" };
     }
 
-    const position = await nextPosition(data.workspaceId, projectId);
+    const position = await nextPosition(data.workspaceId, data.projectId);
     const row = await prisma.contextDoc.create({
       data: {
         workspaceId: data.workspaceId,
-        projectId,
+        projectId: data.projectId,
         title: data.title,
         body: data.body,
         kind: data.kind ?? "OTHER",
@@ -178,7 +175,7 @@ export const UpdateContextDocSchema = z
     title: z.string().trim().min(1).max(TITLE_MAX).optional(),
     body: z.string().min(1).max(BODY_MAX).optional(),
     kind: KindSchema.optional(),
-    projectId: z.string().min(1).nullable().optional(),
+    projectId: z.string().min(1).optional(),
     archived: z.boolean().optional(),
   })
   .strict();
@@ -211,9 +208,7 @@ export async function updateContextDocSvc(
     if (data.body !== undefined) updateData.body = data.body;
     if (data.kind !== undefined) updateData.kind = data.kind;
     if (data.projectId !== undefined) {
-      updateData.project = data.projectId
-        ? { connect: { id: data.projectId } }
-        : { disconnect: true };
+      updateData.project = { connect: { id: data.projectId } };
     }
     if (data.archived !== undefined) {
       updateData.archivedAt = data.archived ? new Date() : null;
