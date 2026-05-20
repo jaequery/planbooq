@@ -5,7 +5,7 @@ Project Context is composed of four files in each project repository, no more, n
 1. `CONTEXT.md` — the project glossary (human-edited).
 2. `docs/adr/*.md` — decisions, including `proposed`-status entries for open questions (human-edited, append-only).
 3. `AGENTS.md` — coding conventions, rules, and anti-patterns (human-edited, single source of truth).
-4. `.planbooq/learnings.md` — surprising durable facts surfaced by Workers (Worker proposes at PR time; reviewer-gated on merge).
+4. `docs/learnings.md` — surprising durable facts surfaced by Workers (Worker proposes at PR time; reviewer-gated on merge). The path moved from `.planbooq/learnings.md`; see [`2026-05-20-learnings-live-under-docs.md`](2026-05-20-learnings-live-under-docs.md) for the rationale.
 
 ## Why this set
 

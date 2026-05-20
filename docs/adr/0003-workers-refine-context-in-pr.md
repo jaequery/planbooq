@@ -1,6 +1,6 @@
 # Workers refine Project Context as part of the ticket PR
 
-When a Worker has insights worth promoting into Project Context, it edits the four canonical artifacts (`CONTEXT.md`, `docs/adr/*.md`, `AGENTS.md`, `.planbooq/learnings.md`) directly as additional commits on the ticket branch, prefixed `context:`. The reviewer sees the proposed context diff in the same PR as the code diff. Merging the PR ships code and knowledge atomically.
+When a Worker has insights worth promoting into Project Context, it edits the four canonical artifacts (`CONTEXT.md`, `docs/adr/*.md`, `AGENTS.md`, `docs/learnings.md`) directly as additional commits on the ticket branch, prefixed `context:`. The reviewer sees the proposed context diff in the same PR as the code diff. Merging the PR ships code and knowledge atomically.
 
 ## Why
 
@@ -10,7 +10,7 @@ The whole product is built around one review surface — glance at a ticket, shi
 
 - Use the `context:` commit prefix for any change to a Project Context artifact, separate from code commits.
 - ADRs may only be authored in `proposed` status by Workers; promotion to `accepted` is a human act.
-- `.planbooq/learnings.md` is append-only. Workers must never rewrite prior entries; Planbooq's diff view warns on edits to existing lines in that file.
+- `docs/learnings.md` is append-only. Workers must never rewrite prior entries; Planbooq's diff view warns on edits to existing lines in that file.
 - Do not edit `.planbooq/codebase-snapshot.md` — it is regenerated at worktree creation and never committed.
 
 ## Reviewer surface (net-new UI in Planbooq)

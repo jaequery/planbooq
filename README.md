@@ -61,9 +61,9 @@ Planbooq treats every connected repo's living knowledge as a first-class concern
 - [`CONTEXT.md`](CONTEXT.md) — the project glossary.
 - [`docs/adr/`](docs/adr/) — architecture decision records.
 - [`AGENTS.md`](AGENTS.md) — coding conventions for AI agents (open standard; `CLAUDE.md` symlinks here).
-- `.planbooq/learnings.md` — append-only stream of surprising durable facts surfaced by past tickets.
+- [`docs/learnings.md`](docs/learnings.md) — append-only stream of surprising durable facts surfaced by past tickets.
 
-See [`docs/adr/0001-project-context-files-are-canonical.md`](docs/adr/0001-project-context-files-are-canonical.md) for the design.
+See [`docs/README.md`](docs/README.md) for the full documentation map, and [`docs/adr/0001-project-context-files-are-canonical.md`](docs/adr/0001-project-context-files-are-canonical.md) for the design.
 
 ## Tech Stack
 

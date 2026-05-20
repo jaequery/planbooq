@@ -29,7 +29,7 @@ The number of useful changes shipped per unit time. The thing Planbooq optimises
 _Avoid_: Velocity (overloaded with sprint velocity), speed
 
 **Project Context**:
-The living, shared knowledge of a project, composed of exactly four artifacts in the repository: `CONTEXT.md` (glossary), `docs/adr/*.md` (decisions), `AGENTS.md` (conventions), and `.planbooq/learnings.md` (curated learnings). Every Worker inherits it on ticket start; refinements ride the PR back into shared state. The mechanism that lets parallel Workers stay coherent instead of drifting. See [ADR-0002](docs/adr/0002-project-context-artifacts.md).
+The living, shared knowledge of a project, composed of exactly four artifacts in the repository: `CONTEXT.md` (glossary), `docs/adr/*.md` (decisions), `AGENTS.md` (conventions), and `docs/learnings.md` (curated learnings). Every Worker inherits it on ticket start; refinements ride the PR back into shared state. The mechanism that lets parallel Workers stay coherent instead of drifting. See [ADR-0002](docs/adr/0002-project-context-artifacts.md).
 _Avoid_: Docs, knowledge base, memory, rules
 
 **AGENTS.md**:
@@ -37,7 +37,7 @@ The cross-vendor coding-conventions file (open standard at agents.md). In Planbo
 _Avoid_: CLAUDE.md, .cursorrules, CONVENTIONS.md, rules file (those are projections or rejected names)
 
 **Learnings**:
-Surprising, durable facts that emerged while building a ticket and that future Workers need to know — e.g., "provider X rate-limits at 5/sec," "Prisma 7 trips on Y." Workers propose them on the PR; the human reviewer ships them by merging. Lives in `.planbooq/learnings.md`. Append-only.
+Surprising, durable facts that emerged while building a ticket and that future Workers need to know — e.g., "provider X rate-limits at 5/sec," "Prisma 7 trips on Y." Workers propose them on the PR; the human reviewer ships them by merging. Lives in `docs/learnings.md`. Append-only.
 _Avoid_: Lessons, notes, postmortem, retro
 
 **Context Commit**:
