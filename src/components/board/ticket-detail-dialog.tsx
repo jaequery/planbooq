@@ -650,7 +650,16 @@ export function TicketDetailDialog({
                     aria-label="Edit description"
                   >
                     {ticket.description ? (
-                      <Markdown className="text-[14px] text-foreground">
+                      <Markdown
+                        className="text-[14px] text-foreground"
+                        onSourceChange={(nextDescription) => {
+                          if (isEditingDescription) return;
+                          const original = ticket.description ?? "";
+                          persist({ description: nextDescription }, () => {
+                            setDescriptionDraft(original);
+                          });
+                        }}
+                      >
                         {ticket.description}
                       </Markdown>
                     ) : (
@@ -738,7 +747,14 @@ export function TicketDetailDialog({
                             className="block w-full text-left"
                           >
                             <div className="relative max-h-[7.5rem] overflow-hidden">
-                              <Markdown className="text-[14px] text-foreground">
+                              <Markdown
+                                className="text-[14px] text-foreground"
+                                onSourceChange={(nextPlan) => {
+                                  if (isEditingPlan) return;
+                                  const original = ticket.plan ?? "";
+                                  persist({ plan: nextPlan }, () => setPlanDraft(original));
+                                }}
+                              >
                                 {ticket.plan}
                               </Markdown>
                               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-muted/90 to-transparent" />
@@ -746,7 +762,14 @@ export function TicketDetailDialog({
                           </button>
                         ) : (
                           <div className="block w-full text-left">
-                            <Markdown className="text-[14px] text-foreground">
+                            <Markdown
+                              className="text-[14px] text-foreground"
+                              onSourceChange={(nextPlan) => {
+                                if (isEditingPlan) return;
+                                const original = ticket.plan ?? "";
+                                persist({ plan: nextPlan }, () => setPlanDraft(original));
+                              }}
+                            >
                               {ticket.plan}
                             </Markdown>
                           </div>
