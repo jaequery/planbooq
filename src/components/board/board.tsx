@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type LiveAgentState, LiveAgentsContext } from "@/lib/live-agents-context";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
+import { playSound } from "@/lib/sounds";
 import { compareTicketsByPosition } from "@/lib/ticket-ordering";
 import type { BoardData, StatusWithTickets, Ticket, TicketWithRelations } from "@/lib/types";
 import { getDesktopBridge } from "@/lib/use-is-desktop";
@@ -112,6 +113,11 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
   // by ticketId with a short TTL so a *later* re-merge of the same ticket
   // still pulls.
   const autoPullDedupeRef = useRef<Map<string, number>>(new Map());
+
+  // Cold-load guard: ignore sound triggers for the first ~500ms after mount
+  // so any replayed events don't audibly fire on page load. Real activity
+  // takes a beat to arrive after the websocket connects.
+  const mountedAtRef = useRef<number>(Date.now());
 
   const handleEvent = useCallback(
     (event: Parameters<Parameters<typeof useBoardChannel>[1]>[0], fromClientId: string | null) => {
@@ -226,8 +232,17 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
         return;
       }
       if (!("projectId" in event) || event.projectId !== currentProjectId) return;
+
+      const canPlaySound = Date.now() - mountedAtRef.current > 500;
+
       if (event.name === "ticket.moved") {
         const destStatus = statusesRef.current.find((s) => s.id === event.toStatusId);
+        if (canPlaySound) {
+          const key = event.toStatusKey ?? destStatus?.key;
+          if (key === "blocked") playSound("waiting");
+          else if (key === "review" || key === "completed") playSound("shipped");
+          else playSound("statusChanged");
+        }
         if (destStatus && (destStatus.key === "completed" || destStatus.key === "review")) {
           setLiveAgents((prev) => {
             if (!prev.has(event.ticketId)) return prev;
@@ -356,6 +371,7 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
           });
         });
       } else if (event.name === "ticket.created") {
+        if (canPlaySound) playSound("ticketCreated");
         setStatuses((prev) => {
           // De-dupe by id against the latest state (closure-captured maps go
           // stale during rapid optimistic + echo races).

@@ -7,6 +7,7 @@ import { ApiKeysClient } from "@/components/settings/api-keys-client";
 import { AppearancePicker } from "@/components/settings/appearance-picker";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { ShortcutsClient } from "@/components/settings/shortcuts-client";
+import { SoundEffectsToggle } from "@/components/settings/sound-effects-toggle";
 import { WorkflowsClient } from "@/components/settings/workflows-client";
 import { extractShortcuts } from "@/lib/shortcuts/defaults";
 import { auth } from "@/server/auth";
@@ -80,14 +81,25 @@ export async function SettingsContent(): Promise<React.ReactElement | null> {
     <Suspense fallback={null}>
       <SettingsTabs
         appearance={
-          <section className="flex flex-col gap-3">
-            <div className="flex flex-col gap-0.5">
-              <h2 className="text-sm font-semibold">Appearance</h2>
-              <p className="text-xs text-muted-foreground">
-                Choose how Planbooq looks. System follows your device setting.
-              </p>
+          <section className="flex flex-col gap-5">
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-0.5">
+                <h2 className="text-sm font-semibold">Appearance</h2>
+                <p className="text-xs text-muted-foreground">
+                  Choose how Planbooq looks. System follows your device setting.
+                </p>
+              </div>
+              <AppearancePicker />
             </div>
-            <AppearancePicker />
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-0.5">
+                <h2 className="text-sm font-semibold">Sound effects</h2>
+                <p className="text-xs text-muted-foreground">
+                  Subtle audio cues for ticket activity. Turn off to silence Planbooq.
+                </p>
+              </div>
+              <SoundEffectsToggle />
+            </div>
           </section>
         }
         shortcuts={<ShortcutsClient initialShortcuts={initialShortcuts} />}
