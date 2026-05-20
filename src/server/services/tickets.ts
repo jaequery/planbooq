@@ -11,6 +11,7 @@ import {
   autoTransitionPlanningToTodo,
   moveTicketToStatusId,
 } from "@/server/services/ticket-status";
+import { hydrateWaitingSince } from "@/server/services/ticket-waiting";
 import { workflowCommander } from "@/server/services/workflow-commander";
 
 const TICKET_RELATIONS_INCLUDE = {
@@ -34,6 +35,36 @@ function safeInngest(name: string, data: Record<string, unknown>) {
       error: error instanceof Error ? error.message : String(error),
     });
   });
+}
+
+async function buildStatusKeyLookup(
+  workspaceId: string,
+  statusIds: ReadonlyArray<string>,
+): Promise<Record<string, string>> {
+  if (statusIds.length === 0) return {};
+  const rows = await prisma.status.findMany({
+    where: { workspaceId, id: { in: Array.from(new Set(statusIds)) } },
+    select: { id: true, key: true },
+  });
+  const out: Record<string, string> = {};
+  for (const r of rows) out[r.id] = r.key;
+  return out;
+}
+
+async function attachWaitingSince<T extends TicketWithRelations>(
+  workspaceId: string,
+  tickets: T[],
+): Promise<T[]> {
+  if (tickets.length === 0) return tickets;
+  const statusKeysById = await buildStatusKeyLookup(
+    workspaceId,
+    tickets.map((t) => t.statusId),
+  );
+  const waitingByTicket = await hydrateWaitingSince(
+    tickets.map((t) => ({ id: t.id, statusId: t.statusId, createdAt: t.createdAt })),
+    statusKeysById,
+  );
+  return tickets.map((t) => ({ ...t, waitingSince: waitingByTicket.get(t.id) ?? null }));
 }
 
 // ---------------- Create ----------------
@@ -420,9 +451,13 @@ export async function getTicketSvc(
       where: { id: ticket.id },
       include: TICKET_RELATIONS_INCLUDE,
     });
-    if (refreshed) return { ok: true, data: refreshed };
+    if (refreshed) {
+      const hydrated = await attachWaitingSince(refreshed.workspaceId, [refreshed]);
+      return { ok: true, data: hydrated[0] ?? refreshed };
+    }
   }
-  return { ok: true, data: ticket };
+  const hydrated = await attachWaitingSince(ticket.workspaceId, [ticket]);
+  return { ok: true, data: hydrated[0] ?? ticket };
 }
 
 export async function listArchivedProjectTicketsSvc(
@@ -447,7 +482,8 @@ export async function listArchivedProjectTicketsSvc(
     orderBy: [{ archivedAt: "desc" }, { id: "desc" }],
     take: limit,
   });
-  return { ok: true, data: { items } };
+  const hydrated = await attachWaitingSince(project.workspaceId, items);
+  return { ok: true, data: { items: hydrated } };
 }
 
 export async function listProjectTicketsSvc(
@@ -485,5 +521,7 @@ export async function listProjectTicketsSvc(
     ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
   });
   const nextCursor = items.length > limit ? (items[limit - 1]?.id ?? null) : null;
-  return { ok: true, data: { items: items.slice(0, limit), nextCursor } };
+  const sliced = items.slice(0, limit);
+  const hydrated = await attachWaitingSince(project.workspaceId, sliced);
+  return { ok: true, data: { items: hydrated, nextCursor } };
 }

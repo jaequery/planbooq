@@ -104,8 +104,10 @@ export function TicketCard({
   };
 
   const openedAt = new Date(ticket.createdAt);
-  const updatedAt = new Date(ticket.updatedAt);
-  const wasEdited = updatedAt.getTime() - openedAt.getTime() > 1000;
+  const waitingSince = ticket.waitingSince ? new Date(ticket.waitingSince) : null;
+  const waitingMs = waitingSince ? Date.now() - waitingSince.getTime() : 0;
+  const waitingTone: "muted" | "amber" | "red" =
+    waitingMs >= 72 * 60 * 60 * 1000 ? "red" : waitingMs >= 24 * 60 * 60 * 1000 ? "amber" : "muted";
 
   const dueDate = ticket.dueDate ? new Date(ticket.dueDate) : null;
   const isCompletedStatus = statusKey ? COMPLETED_STATUS_KEYS.has(statusKey) : false;
@@ -297,10 +299,17 @@ export function TicketCard({
                 <FileText className="h-3 w-3" />
               </span>
             ) : null}
-            {wasEdited ? (
-              <span className="inline-flex items-center gap-1" title="Recently edited">
+            {waitingSince ? (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1",
+                  waitingTone === "amber" && "text-amber-600 dark:text-amber-400",
+                  waitingTone === "red" && "text-red-600 dark:text-red-400",
+                )}
+                title={`Waiting for human input since ${waitingSince.toLocaleString()}`}
+              >
                 <Clock3 className="h-3 w-3" />
-                edited
+                waiting {formatDistanceToNowStrict(waitingSince, { addSuffix: false })}
               </span>
             ) : null}
           </div>
