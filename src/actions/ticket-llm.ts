@@ -98,7 +98,12 @@ const ExecuteDesktopSchema = z.object({ ticketId: z.string().min(1) }).strict();
 export async function executeTicketDesktop(
   input: z.infer<typeof ExecuteDesktopSchema>,
 ): Promise<
-  ServerActionResult<{ prompt: string; title: string; description: string | null; identifier: string }>
+  ServerActionResult<{
+    prompt: string;
+    title: string;
+    description: string | null;
+    identifier: string;
+  }>
 > {
   try {
     const { ticketId } = ExecuteDesktopSchema.parse(input);
@@ -118,9 +123,7 @@ export async function executeTicketDesktop(
     if (!ticket || ticket.archivedAt) return { ok: false, error: "ticket_not_found" };
     await requireMembership(ticket.workspaceId, userId);
 
-    const planSection = ticket.plan
-      ? `\n\n## Implementation plan\n\n${ticket.plan}`
-      : "";
+    const planSection = ticket.plan ? `\n\n## Implementation plan\n\n${ticket.plan}` : "";
     const prompt = `# ${ticket.title}\n\n${ticket.description ?? ""}${planSection}`.trim();
 
     await moveTicketToStatusKey({
@@ -137,8 +140,7 @@ export async function executeTicketDesktop(
       "### 🛠️ Build started",
       "",
       "- **Mode:** Claude Code in an isolated git worktree on the paired desktop",
-      "- **Context:** ticket title + description" +
-        (ticket.plan ? " + implementation plan" : ""),
+      "- **Context:** ticket title + description" + (ticket.plan ? " + implementation plan" : ""),
       "- **Wrapper:** Claude has `./.planbooq/pbq` for ticket reads, comments, ship, and error",
       "",
       "Next: when the build is clean Claude opens a PR via `gh pr create` and ships back via `pbq ship` — status moves to **Review**. On failure, label `error` is added and the ticket stays in **Building**.",
@@ -195,9 +197,7 @@ export async function executeTicket(
     });
     if (!agent) return { ok: false, error: "no_agent_paired" };
 
-    const planSection = ticket.plan
-      ? `\n\n## Implementation plan\n\n${ticket.plan}`
-      : "";
+    const planSection = ticket.plan ? `\n\n## Implementation plan\n\n${ticket.plan}` : "";
     const prompt = `# ${ticket.title}\n\n${ticket.description ?? ""}${planSection}`.trim();
 
     const { jobId } = await createAgentJobForTicket({

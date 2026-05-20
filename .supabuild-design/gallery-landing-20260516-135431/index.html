@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>/supabuild design — landing variants</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --fg: #fafafa;
+    --dim: #71717a;
+    --line: #1f1f1f;
+    --pass: #00d97e;
+    --redo: #f5a524;
+    --kill: #ef4444;
+    --accent: #3DFE6E;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Inter", sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 56px 32px 96px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 56px; padding-bottom: 24px; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  header .meta { color: var(--dim); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .brief { color: var(--dim); margin: -40px 0 56px; font-size: 14px; max-width: 720px; }
+  .brief strong { color: var(--fg); font-weight: 500; }
+
+  .variant {
+    margin-bottom: 96px;
+    padding-bottom: 96px;
+    border-bottom: 1px solid var(--line);
+  }
+  .variant:last-child { border-bottom: none; }
+  .variant.killed { opacity: 0.4; }
+
+  .variant-head {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 24px;
+    align-items: start;
+    margin-bottom: 32px;
+  }
+  .variant-name {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    margin: 0 0 8px;
+  }
+  .variant-num { color: var(--dim); font-weight: 400; margin-right: 12px; }
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .badge.pass { color: var(--pass); }
+  .badge.redo { color: var(--redo); }
+  .badge.kill { color: var(--kill); }
+  .badge.score { color: var(--dim); }
+
+  .thesis {
+    color: #d4d4d8;
+    max-width: 820px;
+    font-size: 15px;
+    line-height: 1.6;
+    margin: 0 0 24px;
+  }
+
+  .scores { display: flex; gap: 32px; margin-bottom: 24px; color: var(--dim); font-size: 12px; font-family: "JetBrains Mono", ui-monospace, monospace; }
+  .scores span strong { color: var(--fg); font-weight: 500; }
+
+  .crit { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 32px; }
+  .crit h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dim); font-weight: 500; }
+  .crit ul { margin: 0; padding-left: 18px; color: #d4d4d8; font-size: 14px; }
+  .crit li { margin-bottom: 6px; }
+
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  .chip {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    background: #18181b;
+    color: #d4d4d8;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    cursor: pointer;
+    user-select: all;
+    transition: background 100ms;
+  }
+  .chip:hover { background: #27272a; }
+  .chip.label { color: var(--dim); background: transparent; cursor: default; }
+
+  .actions { display: flex; gap: 8px; margin-bottom: 32px; flex-wrap: wrap; }
+  .actions button {
+    font: inherit;
+    font-size: 13px;
+    padding: 10px 16px;
+    background: #18181b;
+    color: var(--fg);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background 100ms, color 100ms;
+  }
+  .actions button:hover { background: #27272a; }
+  .actions button.pick { color: var(--accent); border-color: #1f3a25; }
+  .actions button.pick:hover { background: #0c1f10; }
+  .actions button.redo { color: var(--redo); }
+  .actions button.kill { color: var(--kill); }
+
+  .shots { display: flex; gap: 24px; align-items: flex-start; }
+  .shot { background: #050505; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .shot.desktop { flex: 1; }
+  .shot.mobile { flex: 0 0 200px; }
+  .shot.full { flex: 0 0 280px; max-height: 720px; overflow-y: auto; }
+  .shot figcaption { padding: 6px 10px; background: #0e0e0e; color: var(--dim); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; border-bottom: 1px solid var(--line); }
+  .shot img { display: block; width: 100%; height: auto; cursor: zoom-in; }
+
+  /* lightbox */
+  dialog.lightbox {
+    border: none;
+    background: rgba(0,0,0,0.92);
+    padding: 0;
+    max-width: 100vw;
+    max-height: 100vh;
+    width: 100vw;
+    height: 100vh;
+    color: var(--fg);
+  }
+  dialog.lightbox::backdrop { background: rgba(0,0,0,0.8); }
+  dialog.lightbox img { display: block; margin: 0 auto; max-width: 96vw; max-height: 92vh; object-fit: contain; }
+  dialog.lightbox .close {
+    position: fixed; top: 16px; right: 16px;
+    background: transparent; color: #fafafa; border: 1px solid #fafafa44;
+    font: inherit; padding: 6px 12px; cursor: pointer; border-radius: 2px;
+  }
+
+  .status {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    background: #18181b;
+    border: 1px solid var(--line);
+    padding: 8px 12px;
+    border-radius: 2px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--dim);
+    z-index: 100;
+  }
+  .status.show { color: var(--pass); border-color: var(--pass); }
+
+  @media (max-width: 1000px) {
+    .crit { grid-template-columns: 1fr; }
+    .shots { flex-direction: column; }
+    .shot.mobile, .shot.full { flex: 1; max-width: 100%; }
+    .shot.full { max-height: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>/supabuild design &nbsp;&middot;&nbsp; landing-page variations</h1>
+    <div class="meta">2026-05-16 &nbsp;&middot;&nbsp; 4 variants &nbsp;&middot;&nbsp; 4 pass / 0 redo / 0 kill</div>
+  </header>
+
+  <p class="brief">
+    <strong>Task:</strong> Landing page variations for Planbooq — the multiplayer kanban "cockpit" for vibe coders running 10+ AI agent tickets in parallel.
+    <strong>Bar:</strong> Each variant must land at a level a Linear/Resend/Vercel founder would quote-tweet. Side-by-side, the four must argue different theories of what the product <em>is</em>, not merely color-palette one template.
+    <strong>Axes:</strong> register × proof-method. Click <strong>Pick this</strong> to ship that variant; <strong>Redo</strong> to send back; <strong>Kill</strong> to drop. Picks are written to <code>picks.jsonl</code> and shown in your terminal.
+  </p>
+
+  <!-- 1 terminal-utility -->
+  <section class="variant" id="terminal-utility">
+    <div class="variant-head">
+      <div>
+        <h2 class="variant-name"><span class="variant-num">01</span>terminal-utility</h2>
+        <div class="badges">
+          <span class="badge pass">&#x25cf; pass</span>
+          <span class="badge score">fidelity 9.5 / craft 9 / diff 10</span>
+        </div>
+      </div>
+    </div>
+    <p class="thesis">The page refuses to be a marketing page. The hero is rendered as a CLI session: a fake prompt, <code>$ planbooq status</code>, a live-feeling tail of 10 tickets moving through columns as ANSI-color rows. Body is JetBrains Mono throughout. Sections labeled <code>## features</code>, <code>## pricing</code> like a man page. Copy reads like commit messages — declarative, short, no superlatives. The thesis: <em>"you're a developer; we'll talk to you like one."</em></p>
+    <div class="scores">
+      <span><strong>Thesis fidelity:</strong> 9.5</span>
+      <span><strong>Craft:</strong> 9</span>
+      <span><strong>Differentiation:</strong> 10</span>
+    </div>
+    <div class="crit">
+      <div>
+        <h4>What works</h4>
+        <ul>
+          <li>Hero CLI tail with ANSI green/amber row semantics — the most product-honest hero in months.</li>
+          <li><code>## why</code> as a real man-page (NAME / DESCRIPTION / SYNOPSIS with <code>planbooq [--worktrees|--byok] &lt;ticket&gt;</code>).</li>
+          <li><code>## install</code> covers all three deploy modes (DMG / web / CLI) without one foregrounded.</li>
+          <li><code>## see also</code> footer reads exactly like the SEE ALSO section of a man page.</li>
+          <li>Manpage footer <code>planbooq(1)    2026-05-16    Built in San Francisco</code>. Detail-perfect.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>What fails</h4>
+        <ul>
+          <li>Nothing material. The Next dev "N — 2 issues" badge in the corner is a dev artifact, would not ship.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="chips">
+      <span class="chip label">branch:</span>
+      <span class="chip" title="Click to select">supabuild-design/landing-terminal-utility</span>
+      <span class="chip label">worktree:</span>
+      <span class="chip" title="Click to select">~/Sites/planbooq.supabuild-design-landing-terminal-utility-20260516-135431</span>
+    </div>
+    <div class="actions">
+      <button class="pick" data-action="pick" data-variant="terminal-utility">&#x2713; Pick this</button>
+      <button class="redo" data-action="redo" data-variant="terminal-utility">Request redo</button>
+      <button class="kill" data-action="kill" data-variant="terminal-utility">Kill</button>
+    </div>
+    <div class="shots">
+      <figure class="shot desktop">
+        <figcaption>desktop &middot; 1440 &middot; viewport</figcaption>
+        <img src="terminal-utility/01-hero-desktop.png" alt="terminal-utility desktop" loading="lazy" />
+      </figure>
+      <figure class="shot mobile">
+        <figcaption>mobile &middot; 390</figcaption>
+        <img src="terminal-utility/02-hero-mobile.png" alt="terminal-utility mobile" loading="lazy" />
+      </figure>
+      <figure class="shot full">
+        <figcaption>full page (scroll)</figcaption>
+        <img src="terminal-utility/03-full-desktop.png" alt="terminal-utility full" loading="lazy" />
+      </figure>
+    </div>
+  </section>
+
+  <!-- 2 editorial-broadsheet -->
+  <section class="variant" id="editorial-broadsheet">
+    <div class="variant-head">
+      <div>
+        <h2 class="variant-name"><span class="variant-num">02</span>editorial-broadsheet</h2>
+        <div class="badges">
+          <span class="badge pass">&#x25cf; pass</span>
+          <span class="badge score">fidelity 9 / craft 9.5 / diff 10</span>
+        </div>
+      </div>
+    </div>
+    <p class="thesis">A long-form manifesto landing in the lineage of Stripe Press, Read.cv, and Browser Company essays. Hero is a single editorial sentence at clamp-large on cream paper with deep ink. Drop cap on the lead paragraph. Pull quotes mid-page. Body in Spectral 18px/30. The thesis: <em>"vibe coding deserves a manifesto, not a SaaS landing."</em></p>
+    <div class="scores">
+      <span><strong>Thesis fidelity:</strong> 9</span>
+      <span><strong>Craft:</strong> 9.5</span>
+      <span><strong>Differentiation:</strong> 10</span>
+    </div>
+    <div class="crit">
+      <div>
+        <h4>What works</h4>
+        <ul>
+          <li>Hero sentence "<em>You are running ten AI sessions in ten terminals — and you are losing nine of them.</em>" — screenshot-and-quote-tweet material.</li>
+          <li>Real <code>::first-letter</code> drop cap, ~5 lines tall.</li>
+          <li>Pull quote pulled FROM the body, italic, double-ruled.</li>
+          <li>Chapter titles ("The false promise of one ticket at a time", "Attention is the only finite resource") read like a Stripe Press essay.</li>
+          <li>Masthead <code>PLANBOOQ · A KANBAN MANIFESTO · ISSUE 01 · MAY 2026</code> sets the right tone.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>What fails</h4>
+        <ul>
+          <li>The board still-life below "Attention is the only finite resource" is a competent HTML/CSS sketch but lacks the photographic textural quality the brief asked for. Not enough to demote.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="chips">
+      <span class="chip label">branch:</span>
+      <span class="chip">supabuild-design/landing-editorial-broadsheet</span>
+      <span class="chip label">worktree:</span>
+      <span class="chip">~/Sites/planbooq.supabuild-design-landing-editorial-broadsheet-20260516-135431</span>
+    </div>
+    <div class="actions">
+      <button class="pick" data-action="pick" data-variant="editorial-broadsheet">&#x2713; Pick this</button>
+      <button class="redo" data-action="redo" data-variant="editorial-broadsheet">Request redo</button>
+      <button class="kill" data-action="kill" data-variant="editorial-broadsheet">Kill</button>
+    </div>
+    <div class="shots">
+      <figure class="shot desktop">
+        <figcaption>desktop &middot; 1440 &middot; viewport</figcaption>
+        <img src="editorial-broadsheet/01-hero-desktop.png" alt="editorial-broadsheet desktop" loading="lazy" />
+      </figure>
+      <figure class="shot mobile">
+        <figcaption>mobile &middot; 390</figcaption>
+        <img src="editorial-broadsheet/02-hero-mobile.png" alt="editorial-broadsheet mobile" loading="lazy" />
+      </figure>
+      <figure class="shot full">
+        <figcaption>full page (scroll)</figcaption>
+        <img src="editorial-broadsheet/03-full-desktop.png" alt="editorial-broadsheet full" loading="lazy" />
+      </figure>
+    </div>
+  </section>
+
+  <!-- 3 kinetic-board -->
+  <section class="variant" id="kinetic-board">
+    <div class="variant-head">
+      <div>
+        <h2 class="variant-name"><span class="variant-num">03</span>kinetic-board</h2>
+        <div class="badges">
+          <span class="badge pass">&#x25cf; pass (after 2 redos)</span>
+          <span class="badge score">fidelity 8 / craft 8 / diff 10</span>
+        </div>
+      </div>
+    </div>
+    <p class="thesis">The hero IS the product, running. Cards animate through five columns at speed: a fake commit arrives every ~1.2s, a Building card pulses, a Completed card fades. Pure black with a single electric-green accent used like a Bond title sequence. The thesis: <em>"prove parallelism by showing it."</em> Note: in static screenshots motion is implied — the live page shows continuous card flow.</p>
+    <div class="scores">
+      <span><strong>Thesis fidelity:</strong> 8</span>
+      <span><strong>Craft:</strong> 8</span>
+      <span><strong>Differentiation:</strong> 10</span>
+    </div>
+    <div class="crit">
+      <div>
+        <h4>What works</h4>
+        <ul>
+          <li>Hero board with 5 columns and real-feeling cards (avatars + PR numbers). Building column glows green — accent rationed.</li>
+          <li>"The Problem" section: three terminal mocks with spinners + "Run all three. Simultaneously." in accent green. Shows-don't-tells.</li>
+          <li>"Three steps. Everything else is noise." tight and confident.</li>
+          <li>Live Stats counters reserve green for the middle "Live agents" number only — disciplined inside a live-counter feature.</li>
+          <li>Final CTA "Ten tickets. Ten worktrees. One glance." with neon-green Download button — only place green goes large.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>What fails</h4>
+        <ul>
+          <li>Burned 2 redos on plumbing (module-level seq counter caused hydration mismatch; IntersectionObserver re-hide broke headless capture). Final fixes correct but craft fell slightly behind the others.</li>
+          <li>CTA pair "Download for Mac" / "Start in browser" is a soft violation of the no-pair rule, defended only by being real product paths rather than generic.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="chips">
+      <span class="chip label">branch:</span>
+      <span class="chip">supabuild-design/landing-kinetic-board</span>
+      <span class="chip label">worktree:</span>
+      <span class="chip">~/Sites/planbooq.supabuild-design-landing-kinetic-board-20260516-135431</span>
+    </div>
+    <div class="actions">
+      <button class="pick" data-action="pick" data-variant="kinetic-board">&#x2713; Pick this</button>
+      <button class="redo" data-action="redo" data-variant="kinetic-board">Request redo</button>
+      <button class="kill" data-action="kill" data-variant="kinetic-board">Kill</button>
+    </div>
+    <div class="shots">
+      <figure class="shot desktop">
+        <figcaption>desktop &middot; 1440 &middot; viewport</figcaption>
+        <img src="kinetic-board/01-hero-desktop.png" alt="kinetic-board desktop" loading="lazy" />
+      </figure>
+      <figure class="shot mobile">
+        <figcaption>mobile &middot; 390</figcaption>
+        <img src="kinetic-board/02-hero-mobile.png" alt="kinetic-board mobile" loading="lazy" />
+      </figure>
+      <figure class="shot full">
+        <figcaption>full page (scroll)</figcaption>
+        <img src="kinetic-board/03-full-desktop.png" alt="kinetic-board full" loading="lazy" />
+      </figure>
+    </div>
+  </section>
+
+  <!-- 4 swiss-grid-publisher -->
+  <section class="variant" id="swiss-grid-publisher">
+    <div class="variant-head">
+      <div>
+        <h2 class="variant-name"><span class="variant-num">04</span>swiss-grid-publisher</h2>
+        <div class="badges">
+          <span class="badge pass">&#x25cf; pass</span>
+          <span class="badge score">fidelity 9.5 / craft 10 / diff 10</span>
+        </div>
+      </div>
+    </div>
+    <p class="thesis">Strict 12-col Swiss grid, Inter Tight at editorial spacing. White, ink, single rationed oxblood accent reserved for one mark per viewport. Sections numbered <code>01 / Throughput</code>, <code>02 / Worktrees</code>, labeled in tiny tracked caps. Type and grid carry the design — no animation, no flourish, no shadows. A Müller-Brockmann-style poster visualizes the 10 parallel lanes purely with vertical rules and timing marks. The thesis: <em>"restraint as the product's argument."</em></p>
+    <div class="scores">
+      <span><strong>Thesis fidelity:</strong> 9.5</span>
+      <span><strong>Craft:</strong> 10</span>
+      <span><strong>Differentiation:</strong> 10</span>
+    </div>
+    <div class="crit">
+      <div>
+        <h4>What works</h4>
+        <ul>
+          <li>Hero "<em>The cockpit for vibe coders running ten tickets at once.</em>" — Apple-AirPods-page-tier composition.</li>
+          <li>Oxblood underline on "Start building" is the <em>only</em> accent in the hero viewport. Rationed.</li>
+          <li>Numbered sections (01–06) hold discipline top to bottom.</li>
+          <li>The 10-lane Müller-Brockmann poster with one oxblood bar (Lane 03) is the strongest single typographic composition in the lineup.</li>
+          <li>"Reviewing ten tickets is not harder than reviewing one. It is just ten glances instead of one." — a sentence I'd put on a poster.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>What fails</h4>
+        <ul>
+          <li>Lanes poster uses CSS grid bars rather than SVG; trades a touch of typographic precision for resilience. Acceptable.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="chips">
+      <span class="chip label">branch:</span>
+      <span class="chip">supabuild-design/landing-swiss-grid-publisher</span>
+      <span class="chip label">worktree:</span>
+      <span class="chip">~/Sites/planbooq.supabuild-design-landing-swiss-grid-publisher-20260516-135431</span>
+    </div>
+    <div class="actions">
+      <button class="pick" data-action="pick" data-variant="swiss-grid-publisher">&#x2713; Pick this</button>
+      <button class="redo" data-action="redo" data-variant="swiss-grid-publisher">Request redo</button>
+      <button class="kill" data-action="kill" data-variant="swiss-grid-publisher">Kill</button>
+    </div>
+    <div class="shots">
+      <figure class="shot desktop">
+        <figcaption>desktop &middot; 1440 &middot; viewport</figcaption>
+        <img src="swiss-grid-publisher/01-hero-desktop.png" alt="swiss-grid-publisher desktop" loading="lazy" />
+      </figure>
+      <figure class="shot mobile">
+        <figcaption>mobile &middot; 390</figcaption>
+        <img src="swiss-grid-publisher/02-hero-mobile.png" alt="swiss-grid-publisher mobile" loading="lazy" />
+      </figure>
+      <figure class="shot full">
+        <figcaption>full page (scroll)</figcaption>
+        <img src="swiss-grid-publisher/03-full-desktop.png" alt="swiss-grid-publisher full" loading="lazy" />
+      </figure>
+    </div>
+  </section>
+</div>
+
+<dialog class="lightbox" id="lightbox">
+  <button class="close" id="close">Close (Esc)</button>
+  <img id="lightbox-img" alt="" />
+</dialog>
+
+<div class="status" id="status">idle &middot; gallery on 8765</div>
+
+<script>
+  // Lightbox
+  const dlg = document.getElementById('lightbox');
+  const lbImg = document.getElementById('lightbox-img');
+  document.querySelectorAll('.shot img').forEach((img) => {
+    img.addEventListener('click', () => {
+      lbImg.src = img.src;
+      lbImg.alt = img.alt;
+      dlg.showModal();
+    });
+  });
+  document.getElementById('close').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+
+  // Chip copy
+  document.querySelectorAll('.chip:not(.label)').forEach((c) => {
+    c.addEventListener('click', () => {
+      navigator.clipboard.writeText(c.textContent.trim());
+      const old = c.textContent;
+      c.textContent = 'copied ✓';
+      setTimeout(() => { c.textContent = old; }, 900);
+    });
+  });
+
+  // Pick actions
+  const statusEl = document.getElementById('status');
+  function setStatus(msg, good) {
+    statusEl.textContent = msg;
+    statusEl.classList.toggle('show', !!good);
+  }
+  document.querySelectorAll('button[data-action]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const action = btn.dataset.action;
+      const variant = btn.dataset.variant;
+      const payload = { variant, action, ts: new Date().toISOString() };
+      try {
+        const r = await fetch('/pick', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!r.ok) throw new Error('non-200');
+        const j = await r.json();
+        setStatus(`${action} → ${variant} sent · check terminal`, true);
+      } catch (e) {
+        // Fallback: copy the equivalent terminal command
+        const num = { 'terminal-utility': 1, 'editorial-broadsheet': 2, 'kinetic-board': 3, 'swiss-grid-publisher': 4 }[variant];
+        const letter = { pick: 's', redo: 'r', kill: 'k' }[action];
+        const cmd = `${letter} ${num}`;
+        try { await navigator.clipboard.writeText(cmd); } catch {}
+        setStatus(`server offline · "${cmd}" copied to clipboard · paste in terminal`, false);
+      }
+    });
+  });
+</script>
+</body>
+</html>

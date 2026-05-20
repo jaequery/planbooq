@@ -162,61 +162,59 @@ export function TicketPreviewsPanel({ ticketId, workspaceId }: Props): React.Rea
         </div>
       ) : (
         <>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleTakeScreenshots}
-            disabled={capturing}
-            className="rounded-md border border-border bg-background px-2.5 py-1 text-[12px] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {capturing ? "Retaking…" : "Retake"}
-          </button>
-          {capturing && !captureError ? (
-            <span className="text-[12px] text-muted-foreground">
-              {progress
-                ? `Capturing ${progress.done}/${progress.total}${progress.label ? ` — ${progress.label}` : ""}`
-                : "Queued…"}
-            </span>
-          ) : null}
-          {captureError ? (
-            <span className="text-[12px] text-destructive">
-              Retake failed: {captureError}
-            </span>
-          ) : null}
-        </div>
-        <ul className="flex flex-col gap-3">
-          {items.map((p) => (
-            <li key={p.id} className="flex flex-col gap-1">
-              {p.mimeType.startsWith("image/") ? (
-                <button
-                  type="button"
-                  onClick={() => setLightbox({ src: p.url, alt: p.label ?? "" })}
-                  className="block w-full overflow-hidden rounded-md border border-border outline-none transition-colors hover:border-ring focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label={p.label ? `Enlarge ${p.label}` : "Enlarge preview"}
-                >
-                  <img
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleTakeScreenshots}
+              disabled={capturing}
+              className="rounded-md border border-border bg-background px-2.5 py-1 text-[12px] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {capturing ? "Retaking…" : "Retake"}
+            </button>
+            {capturing && !captureError ? (
+              <span className="text-[12px] text-muted-foreground">
+                {progress
+                  ? `Capturing ${progress.done}/${progress.total}${progress.label ? ` — ${progress.label}` : ""}`
+                  : "Queued…"}
+              </span>
+            ) : null}
+            {captureError ? (
+              <span className="text-[12px] text-destructive">Retake failed: {captureError}</span>
+            ) : null}
+          </div>
+          <ul className="flex flex-col gap-3">
+            {items.map((p) => (
+              <li key={p.id} className="flex flex-col gap-1">
+                {p.mimeType.startsWith("image/") ? (
+                  <button
+                    type="button"
+                    onClick={() => setLightbox({ src: p.url, alt: p.label ?? "" })}
+                    className="block w-full overflow-hidden rounded-md border border-border outline-none transition-colors hover:border-ring focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label={p.label ? `Enlarge ${p.label}` : "Enlarge preview"}
+                  >
+                    <img
+                      src={p.url}
+                      alt={p.label ?? ""}
+                      loading="lazy"
+                      className="w-full cursor-zoom-in"
+                    />
+                  </button>
+                ) : p.mimeType.startsWith("video/") ? (
+                  <video
                     src={p.url}
-                    alt={p.label ?? ""}
-                    loading="lazy"
-                    className="w-full cursor-zoom-in"
-                  />
-                </button>
-              ) : p.mimeType.startsWith("video/") ? (
-                <video
-                  src={p.url}
-                  controls
-                  preload="metadata"
-                  className="w-full rounded-md border border-border"
-                >
-                  <track kind="captions" />
-                </video>
-              ) : null}
-              {p.label ? (
-                <span className="text-[12px] text-muted-foreground">{p.label}</span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+                    controls
+                    preload="metadata"
+                    className="w-full rounded-md border border-border"
+                  >
+                    <track kind="captions" />
+                  </video>
+                ) : null}
+                {p.label ? (
+                  <span className="text-[12px] text-muted-foreground">{p.label}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
         </>
       )}
       {lightbox ? (

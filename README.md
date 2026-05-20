@@ -54,6 +54,17 @@ The first sign-in creates a default `Untitled` project. Add more from the sideba
 
 Statuses are customizable per workspace.
 
+### Project Context
+
+Planbooq treats every connected repo's living knowledge as a first-class concern. Four canonical artifacts make up a project's **Project Context** — Workers read them on every ticket, refine them in-PR, and humans ship knowledge alongside code:
+
+- [`CONTEXT.md`](CONTEXT.md) — the project glossary.
+- [`docs/adr/`](docs/adr/) — architecture decision records.
+- [`AGENTS.md`](AGENTS.md) — coding conventions for AI agents (open standard; `CLAUDE.md` symlinks here).
+- `.planbooq/learnings.md` — append-only stream of surprising durable facts surfaced by past tickets.
+
+See [`docs/adr/0001-project-context-files-are-canonical.md`](docs/adr/0001-project-context-files-are-canonical.md) for the design.
+
 ## Tech Stack
 
 - **Frontend:** Next.js 16 (App Router), React 19, TypeScript (strict, `noUncheckedIndexedAccess`)

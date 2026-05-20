@@ -12,9 +12,7 @@ async function requireMembership(workspaceId: string, userId: string) {
 // Upsert keyed on ticketId closes the read-then-write race that two concurrent
 // callers (e.g. user opens ticket while an agent fires a reply) would otherwise
 // hit. ticketId is @unique so the upsert is atomic.
-export async function getOrCreateConversationForTicket(
-  ticketId: string,
-): Promise<Conversation> {
+export async function getOrCreateConversationForTicket(ticketId: string): Promise<Conversation> {
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
     select: { id: true, workspaceId: true },

@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>/supabuild design — SaaS landing variants (round 2)</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --fg: #fafafa;
+    --dim: #71717a;
+    --line: #1f1f1f;
+    --pass: #00d97e;
+    --redo: #f5a524;
+    --kill: #ef4444;
+    --accent: #3DFE6E;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Inter", sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 56px 32px 96px; }
+  header.page { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--line); }
+  header.page h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  header.page .meta { color: var(--dim); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .brief { color: var(--dim); margin: 0 0 56px; font-size: 14px; max-width: 760px; line-height: 1.65; }
+  .brief strong { color: var(--fg); font-weight: 500; }
+  .brief em { color: #fafafa; font-style: normal; background: linear-gradient(180deg, transparent 60%, rgba(245,165,36,0.18) 60%); padding: 0 2px; }
+
+  .variant {
+    margin-bottom: 96px;
+    padding-bottom: 96px;
+    border-bottom: 1px solid var(--line);
+  }
+  .variant:last-child { border-bottom: none; }
+
+  .variant-head {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 24px;
+    align-items: start;
+    margin-bottom: 32px;
+  }
+  .variant-name {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    margin: 0 0 8px;
+  }
+  .variant-num { color: var(--dim); font-weight: 400; margin-right: 12px; }
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border: 1px solid currentColor; border-radius: 2px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .badge.pass { color: var(--pass); }
+  .badge.score { color: var(--dim); }
+
+  .thesis { color: #d4d4d8; max-width: 820px; font-size: 15px; line-height: 1.6; margin: 0 0 24px; }
+  .scores { display: flex; gap: 32px; margin-bottom: 24px; color: var(--dim); font-size: 12px; font-family: "JetBrains Mono", ui-monospace, monospace; }
+  .scores span strong { color: var(--fg); font-weight: 500; }
+
+  .crit { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 32px; }
+  .crit h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dim); font-weight: 500; }
+  .crit ul { margin: 0; padding-left: 18px; color: #d4d4d8; font-size: 14px; }
+  .crit li { margin-bottom: 6px; }
+
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+  .chip {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 11px; background: #18181b; color: #d4d4d8;
+    padding: 6px 10px; border: 1px solid var(--line); border-radius: 2px;
+    cursor: pointer; user-select: all; transition: background 100ms;
+  }
+  .chip:hover { background: #27272a; }
+  .chip.label { color: var(--dim); background: transparent; cursor: default; }
+
+  .actions { display: flex; gap: 8px; margin-bottom: 32px; flex-wrap: wrap; }
+  .actions button {
+    font: inherit; font-size: 13px; padding: 10px 16px;
+    background: #18181b; color: var(--fg); border: 1px solid var(--line); border-radius: 2px;
+    cursor: pointer; transition: background 100ms, color 100ms;
+  }
+  .actions button:hover { background: #27272a; }
+  .actions button.pick { color: var(--accent); border-color: #1f3a25; }
+  .actions button.pick:hover { background: #0c1f10; }
+  .actions button.redo { color: var(--redo); }
+  .actions button.kill { color: var(--kill); }
+
+  .shots { display: flex; gap: 24px; align-items: flex-start; }
+  .shot { background: #050505; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .shot.desktop { flex: 1; }
+  .shot.mobile { flex: 0 0 200px; }
+  .shot.full { flex: 0 0 280px; max-height: 720px; overflow-y: auto; }
+  .shot figcaption { padding: 6px 10px; background: #0e0e0e; color: var(--dim); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; border-bottom: 1px solid var(--line); }
+  .shot img { display: block; width: 100%; height: auto; cursor: zoom-in; }
+
+  dialog.lightbox { border: none; background: rgba(0,0,0,0.92); padding: 0; width: 100vw; height: 100vh; max-width: 100vw; max-height: 100vh; color: var(--fg); }
+  dialog.lightbox::backdrop { background: rgba(0,0,0,0.8); }
+  dialog.lightbox img { display: block; margin: 0 auto; max-width: 96vw; max-height: 92vh; object-fit: contain; }
+  dialog.lightbox .close { position: fixed; top: 16px; right: 16px; background: transparent; color: #fafafa; border: 1px solid #fafafa44; font: inherit; padding: 6px 12px; cursor: pointer; border-radius: 2px; }
+
+  .status { position: fixed; bottom: 16px; right: 16px; background: #18181b; border: 1px solid var(--line); padding: 8px 12px; border-radius: 2px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; color: var(--dim); z-index: 100; }
+  .status.show { color: var(--pass); border-color: var(--pass); }
+
+  .note { background: #18120a; border: 1px solid #3a2a14; color: #f5d29a; padding: 14px 18px; border-radius: 4px; margin-bottom: 56px; font-size: 13px; line-height: 1.55; }
+  .note strong { color: #fff7e1; }
+
+  @media (max-width: 1000px) {
+    .crit { grid-template-columns: 1fr; }
+    .shots { flex-direction: column; }
+    .shot.mobile, .shot.full { flex: 1; max-width: 100%; }
+    .shot.full { max-height: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="page">
+    <h1>/supabuild design &nbsp;&middot;&nbsp; landing-page variations (round 2 &middot; SaaS-shaped)</h1>
+    <div class="meta">2026-05-18 &nbsp;&middot;&nbsp; 4 variants &nbsp;&middot;&nbsp; 4 pass / 0 redo / 0 kill</div>
+  </header>
+
+  <p class="brief">
+    <strong>Round 1 lesson:</strong> the four editorial variants were rejected as "looking like a blog, not a SaaS landing page." This round produces real SaaS landings — proper nav, hero with CTAs, social proof, feature grid, pricing, FAQ, footer — pitched at the <em>indie builder / PM audience</em> that already uses Lovable, v0, Cursor, Bolt.
+    <strong>Axes:</strong> warm-vs-cool register × design-forward-vs-product-forward.
+    Click a button to pick / redo / kill — the choice is logged and shown in your terminal.
+  </p>
+
+  <div class="note">
+    <strong>Round 1 variants still exist</strong> on their own branches (<code>supabuild-design/landing-*</code>) untouched in case you want to revisit. They're just not in this picker.
+  </div>
+
+  <!-- 1 lovable-twin -->
+  <section class="variant" id="lovable-twin">
+    <div class="variant-head">
+      <div>
+        <h2 class="variant-name"><span class="variant-num">01</span>lovable-twin</h2>
+        <div class="badges">
+          <span class="badge pass">&#x25cf; pass</span>
+          <span class="badge score">fidelity 9 / saas-fit 10 / appeal 9</span>
+        </div>
+      </div>
+    </div>
+    <p class="thesis">Direct Lovable/v0 visual idiom. Warm cream, big prompt-style hero input <code>What do you want to ship today?</code> with starter-chip suggestions and a small kanban preview to the right. Big rounded <code>Start free →</code> coral pill, Backlog→Building card animation, before/after of "10 terminal windows" vs "calm kanban", testimonial cards with letter-initial avatars, 3-tier pricing with "Most loved" pill, FAQ accordion. The thesis: <em>warmth and approachability — looks like the product loves you.</em></p>
+    <div class="scores">
+      <span><strong>Thesis fidelity:</strong> 9</span>
+      <span><strong>SaaS fit:</strong> 10</span>
+      <span><strong>Audience appeal:</strong> 9</span>
+    </div>
+    <div class="crit">
+      <div>
+        <h4>What works</h4>
+        <ul>
+          <li>Hero prompt input is a real interactive field — chip buttons fill it. "I could start now" affordance without a router commitment.</li>
+          <li>Kanban preview cards have visible <code>running</code> state with a pulse — concrete proof, not a generic graphic.</li>
+          <li>Coral accent (#ff7849) is reserved for the primary CTA, the chip dot, and the "running" pulse — disciplined, not painted.</li>
+          <li>"Most loved" pill instead of "Most Popular" — small thing, much more on-tone for the audience.</li>
+          <li>Letter-initial avatars in colored circles avoid the stock-headshot smell completely.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>What fails</h4>
+        <ul>
+          <li>The kanban mini-preview is CSS-only — perfectly fine but could feel more "live" with one more subtle motion beat (a Todo card glow, say). Not enough to demote.</li>
+          <li>Footer links all point to <code>/learn</code> as placeholder — wire real routes when they exist.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="chips">
+      <span class="chip label">branch:</span>
+      <span class="chip">supabuild-design/landing-saas-lovable-twin</span>
+      <span class="chip label">worktree:</span>
+      <span class="chip">~/Sites/planbooq.supabuild-design-landing-saas-lovable-twin-20260518-073615</span>
+    </div>
+    <div class="actions">
+      <button class="pick" data-action="pick" data-variant="lovable-twin">&#x2713; Pick this</button>
+      <button class="redo" data-action="redo" data-variant="lovable-twin">Request redo</button>
+      <button class="kill" data-action="kill" data-variant="lovable-twin">Kill</button>
+    </div>
+    <div class="shots">
+      <figure class="shot desktop">
+        <figcaption>desktop &middot; 1440 &middot; viewport</figcaption>
+        <img src="lovable-twin/01-hero-desktop.png" alt="lovable-twin desktop" loading="lazy" />
+      </figure>
+      <figure class="shot mobile">
+        <figcaption>mobile &middot; 390</figcaption>
+        <img src="lovable-twin/02-hero-mobile.png" alt="lovable-twin mobile" loading="lazy" />
+      </figure>
+      <figure class="shot full">
+        <figcaption>full page (scroll)</figcaption>
+        <img src="lovable-twin/03-full-desktop.png" alt="lovable-twin full" loading="lazy" />
+      </figure>
+    </div>
+  </section>
+
+  <!-- 2 linear-vercel-confident -->
+  <section class="variant" id="linear-vercel-confident">
+    <div class="variant-head">
+      <div>
+        <h2 class="variant-name"><span class="variant-num">02</span>linear-vercel-confident</h2>
+        <div class="badges">
+          <span class="badge pass">&#x25cf; pass</span>
+          <span class="badge score">fidelity 9 / saas-fit 10 / appeal 9</span>
+        </div>
+      </div>
+    </div>
+    <p class="thesis">Dark, expensive, restrained. Black <code>#0a0a0a</code> background, tight headline "Ship ten tickets in parallel.", real product screenshot framed in mac-window chrome with URL bar <code>planbooq.app/p/acme</code>, 5 visible columns (BACKLOG 4 / TODO 8 / BUILDING 2 / REVIEW 3 / COMPLETED 5), PR tags, completed strikethroughs. Restrained zinc-blue accent. Integration logo strip, pricing table, FAQ, dark footer. The thesis: <em>earned confidence — looks like Linear / Resend / Vercel; gives the visitor permission to take it seriously.</em></p>
+    <div class="scores">
+      <span><strong>Thesis fidelity:</strong> 9</span>
+      <span><strong>SaaS fit:</strong> 10</span>
+      <span><strong>Audience appeal:</strong> 9</span>
+    </div>
+    <div class="crit">
+      <div>
+        <h4>What works</h4>
+        <ul>
+          <li>The hero screenshot is the most "real product photo"-feeling of the four — proper sidebar, URL bar, lock icon, PR tags, status dots. Reads like a Linear screenshot.</li>
+          <li>Stillness is doing real work — no animation noise, page feels expensive.</li>
+          <li>Zinc-blue accent (#5b8def) used like Linear/Resend: only on PR tags + hero glow + pricing border emphasis. Never as a background fill.</li>
+          <li>"Now in beta" eyebrow is a confident signal — small claim, not "Trusted by 10,000+".</li>
+          <li>Pricing highlight is a 1px border, not a sticker. Confidence is in the numbers.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>What fails</h4>
+        <ul>
+          <li>For an indie-builder/PM audience this skews slightly cool. Builders who like cursor.com will love this; PMs from Notion may need more warmth.</li>
+          <li>Hero is one screenshot then text — could benefit from a second supporting visual (e.g. parallel-lanes still). Lives in section 6 which is fine; just below-the-fold.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="chips">
+      <span class="chip label">branch:</span>
+      <span class="chip">supabuild-design/landing-saas-linear-vercel-confident</span>
+      <span class="chip label">worktree:</span>
+      <span class="chip">~/Sites/planbooq.supabuild-design-landing-saas-linear-vercel-confident-20260518-073615</span>
+    </div>
+    <div class="actions">
+      <button class="pick" data-action="pick" data-variant="linear-vercel-confident">&#x2713; Pick this</button>
+      <button class="redo" data-action="redo" data-variant="linear-vercel-confident">Request redo</button>
+      <button class="kill" data-action="kill" data-variant="linear-vercel-confident">Kill</button>
+    </div>
+    <div class="shots">
+      <figure class="shot desktop">
+        <figcaption>desktop &middot; 1440 &middot; viewport</figcaption>
+        <img src="linear-vercel-confident/01-hero-desktop.png" alt="linear-vercel-confident desktop" loading="lazy" />
+      </figure>
+      <figure class="shot mobile">
+        <figcaption>mobile &middot; 390</figcaption>
+        <img src="linear-vercel-confident/02-hero-mobile.png" alt="linear-vercel-confident mobile" loading="lazy" />
+      </figure>
+      <figure class="shot full">
+        <figcaption>full page (scroll)</figcaption>
+        <img src="linear-vercel-confident/03-full-desktop.png" alt="linear-vercel-confident full" loading="lazy" />
+      </figure>
+    </div>
+  </section>
+
+  <!-- 3 notion-warm-illustrative -->
+  <section class="variant" id="notion-warm-illustrative">
+    <div class="variant-head">
+      <div>
+        <h2 class="variant-name"><span class="variant-num">03</span>notion-warm-illustrative</h2>
+        <div class="badges">
+          <span class="badge pass">&#x25cf; pass</span>
+          <span class="badge score">fidelity 9 / saas-fit 9 / appeal 10</span>
+        </div>
+      </div>
+    </div>
+    <p class="thesis">Light, friendly, illustrative — Notion / Things / Height / Cal.com tonal range. Warm cream background, two-column hero with "A calmer way to ship ten tickets at once." on the left and a soft dotted-grid illustrated kanban on the right. Peach <code>Try Planbooq free</code> CTA, micro-trust line <code>Free to start. Bring your own Anthropic key.</code> Integration strip "Works happily with". Three alternating feature rows with sage/peach single-color line illustrations. Letter-initial testimonials. Transparent pricing. FAQ. "Made with care" footer. The thesis: <em>friendliness — for PMs and designers who chose Notion over Jira on purpose.</em></p>
+    <div class="scores">
+      <span><strong>Thesis fidelity:</strong> 9</span>
+      <span><strong>SaaS fit:</strong> 9</span>
+      <span><strong>Audience appeal:</strong> 10</span>
+    </div>
+    <div class="crit">
+      <div>
+        <h4>What works</h4>
+        <ul>
+          <li>"A calmer way to ship ten tickets at once" is the warmest, most PM-readable headline of the four. Names the emotional benefit (calm) before the mechanical one.</li>
+          <li>Single integration-strip detail — "Anthropic" is the only word colored peach — is the kind of typographic micro-decision Notion does well.</li>
+          <li>Sage/peach palette + dotted-grid background sells warmth without being saccharine.</li>
+          <li>Inline-SVG single-color illustrations (workshop, flock, merge) are real custom art, not stock vector.</li>
+          <li>Micro-trust line under the CTA ("Free to start. Bring your own Anthropic key.") does the legwork that "Trusted by 10,000+" usually does — concrete, honest.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>What fails</h4>
+        <ul>
+          <li>The hero kanban is an SVG illustration, not a real product screenshot. If a visitor is evaluating fit-to-developer (the "this is a real product" check), this variant relies on the screenshots farther down the page.</li>
+          <li>No mobile hamburger — center nav links hide below 768px. Polish gap before production.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="chips">
+      <span class="chip label">branch:</span>
+      <span class="chip">supabuild-design/landing-saas-notion-warm-illustrative</span>
+      <span class="chip label">worktree:</span>
+      <span class="chip">~/Sites/planbooq.supabuild-design-landing-saas-notion-warm-illustrative-20260518-073615</span>
+    </div>
+    <div class="actions">
+      <button class="pick" data-action="pick" data-variant="notion-warm-illustrative">&#x2713; Pick this</button>
+      <button class="redo" data-action="redo" data-variant="notion-warm-illustrative">Request redo</button>
+      <button class="kill" data-action="kill" data-variant="notion-warm-illustrative">Kill</button>
+    </div>
+    <div class="shots">
+      <figure class="shot desktop">
+        <figcaption>desktop &middot; 1440 &middot; viewport</figcaption>
+        <img src="notion-warm-illustrative/01-hero-desktop.png" alt="notion-warm-illustrative desktop" loading="lazy" />
+      </figure>
+      <figure class="shot mobile">
+        <figcaption>mobile &middot; 390</figcaption>
+        <img src="notion-warm-illustrative/02-hero-mobile.png" alt="notion-warm-illustrative mobile" loading="lazy" />
+      </figure>
+      <figure class="shot full">
+        <figcaption>full page (scroll)</figcaption>
+        <img src="notion-warm-illustrative/03-full-desktop.png" alt="notion-warm-illustrative full" loading="lazy" />
+      </figure>
+    </div>
+  </section>
+
+  <!-- 4 cursor-product-led -->
+  <section class="variant" id="cursor-product-led">
+    <div class="variant-head">
+      <div>
+        <h2 class="variant-name"><span class="variant-num">04</span>cursor-product-led</h2>
+        <div class="badges">
+          <span class="badge pass">&#x25cf; pass</span>
+          <span class="badge score">fidelity 10 / saas-fit 10 / appeal 9</span>
+        </div>
+      </div>
+    </div>
+    <p class="thesis">The product IS the marketing — cursor.com / arc.net / framer.com lineage. Light, neutral. Eyebrow "MULTIPLAYER KANBAN FOR AI BUILDERS", headline "Ten tickets. Ten worktrees. One screen." (three stacked lines), one primary <code>Try Planbooq free</code> + tertiary <code>View live demo →</code>. Below the fold: a large, tilted, photorealistic-quality kanban screenshot with mac-chrome, sidebar with P logomark, URL bar, 5 columns, real card anatomy (priority dot, ticket ID, title, branch tag, PR tag, label chip, avatar initial). Subsequent sections are each one product screenshot + one caption — cmd-K palette open, worktree being created, merge-completes-ticket, multiplayer cursors. Pricing, FAQ, footer. The thesis: <em>the product speaks — design recedes; visitors evaluate the actual UI.</em></p>
+    <div class="scores">
+      <span><strong>Thesis fidelity:</strong> 10</span>
+      <span><strong>SaaS fit:</strong> 10</span>
+      <span><strong>Audience appeal:</strong> 9</span>
+    </div>
+    <div class="crit">
+      <div>
+        <h4>What works</h4>
+        <ul>
+          <li>"Ten tickets. Ten worktrees. One screen." is the tightest, most quotable headline of the four. Three short phrases. Same shape as Linear's "The issue tracker you'll enjoy using." or Cursor's "Built to make you extraordinarily productive."</li>
+          <li>The hero kanban screenshot is genuinely the strongest visual in the entire round — full mac-chrome, sidebar, URL bar, 5 columns, real card anatomy, perspective tilt, ambient glow. Looks like a real product photograph.</li>
+          <li>"Show, don't tell" structure means the page has very little copy — every section is "look at the product." Hard for an AI page-builder to do this well; this variant pulled it off.</li>
+          <li>One dark section (cmd-K palette) breaks up the light register cleanly without making the page feel dark.</li>
+          <li>No "Most Popular" sticker on pricing — confidence in the numbers.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>What fails</h4>
+        <ul>
+          <li>Hero kanban renders cards at ~9-11px font size on desktop — realistic at scale but not zoomable. Intentional choice; visitors don't read it, they see the shape.</li>
+          <li>cmd-K mock uses simulated <code>backdrop-filter: blur(6px)</code>, not over a live kanban. Hard to tell at hero size — fine.</li>
+          <li>For PMs/designers who want emotional warmth (the notion-warm audience), this skews slightly clinical. The product is the star; design is restrained.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="chips">
+      <span class="chip label">branch:</span>
+      <span class="chip">supabuild-design/landing-saas-cursor-product-led</span>
+      <span class="chip label">worktree:</span>
+      <span class="chip">~/Sites/planbooq.supabuild-design-landing-saas-cursor-product-led-20260518-073615</span>
+    </div>
+    <div class="actions">
+      <button class="pick" data-action="pick" data-variant="cursor-product-led">&#x2713; Pick this</button>
+      <button class="redo" data-action="redo" data-variant="cursor-product-led">Request redo</button>
+      <button class="kill" data-action="kill" data-variant="cursor-product-led">Kill</button>
+    </div>
+    <div class="shots">
+      <figure class="shot desktop">
+        <figcaption>desktop &middot; 1440 &middot; viewport</figcaption>
+        <img src="cursor-product-led/01-hero-desktop.png" alt="cursor-product-led desktop" loading="lazy" />
+      </figure>
+      <figure class="shot mobile">
+        <figcaption>mobile &middot; 390</figcaption>
+        <img src="cursor-product-led/02-hero-mobile.png" alt="cursor-product-led mobile" loading="lazy" />
+      </figure>
+      <figure class="shot full">
+        <figcaption>full page (scroll)</figcaption>
+        <img src="cursor-product-led/03-full-desktop.png" alt="cursor-product-led full" loading="lazy" />
+      </figure>
+    </div>
+  </section>
+</div>
+
+<dialog class="lightbox" id="lightbox">
+  <button class="close" id="close">Close (Esc)</button>
+  <img id="lightbox-img" alt="" />
+</dialog>
+
+<div class="status" id="status">idle &middot; gallery on 8765</div>
+
+<script>
+  const dlg = document.getElementById('lightbox');
+  const lbImg = document.getElementById('lightbox-img');
+  document.querySelectorAll('.shot img').forEach((img) => {
+    img.addEventListener('click', () => { lbImg.src = img.src; lbImg.alt = img.alt; dlg.showModal(); });
+  });
+  document.getElementById('close').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+
+  document.querySelectorAll('.chip:not(.label)').forEach((c) => {
+    c.addEventListener('click', () => {
+      navigator.clipboard.writeText(c.textContent.trim());
+      const old = c.textContent;
+      c.textContent = 'copied ✓';
+      setTimeout(() => { c.textContent = old; }, 900);
+    });
+  });
+
+  const statusEl = document.getElementById('status');
+  function setStatus(msg, good) { statusEl.textContent = msg; statusEl.classList.toggle('show', !!good); }
+  document.querySelectorAll('button[data-action]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const action = btn.dataset.action;
+      const variant = btn.dataset.variant;
+      const payload = { variant, action, ts: new Date().toISOString() };
+      try {
+        const r = await fetch('/pick', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!r.ok) throw new Error('non-200');
+        setStatus(`${action} → ${variant} sent · check terminal`, true);
+      } catch (e) {
+        const num = { 'lovable-twin': 1, 'linear-vercel-confident': 2, 'notion-warm-illustrative': 3, 'cursor-product-led': 4 }[variant];
+        const letter = { pick: 's', redo: 'r', kill: 'k' }[action];
+        const cmd = `${letter} ${num}`;
+        try { await navigator.clipboard.writeText(cmd); } catch {}
+        setStatus(`server offline · "${cmd}" copied to clipboard · paste in terminal`, false);
+      }
+    });
+  });
+</script>
+</body>
+</html>

@@ -52,7 +52,11 @@ if (/\bgit\s+push\b/.test(cmd)) {
 }
 
 // test runs (npm test, pnpm test, jest, vitest, pytest, go test, cargo test)
-if (/\b(npm|pnpm|yarn)\s+(run\s+)?(test|typecheck)\b|\bvitest\b|\bjest\b|\bpytest\b|\bgo\s+test\b|\bcargo\s+test\b/.test(cmd)) {
+if (
+  /\b(npm|pnpm|yarn)\s+(run\s+)?(test|typecheck)\b|\bvitest\b|\bjest\b|\bpytest\b|\bgo\s+test\b|\bcargo\s+test\b/.test(
+    cmd,
+  )
+) {
   events.push({
     kind: "TEST_RUN",
     payload: {

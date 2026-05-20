@@ -24,13 +24,10 @@ export async function POST(req: Request, ctx: Ctx) {
   const { ticketId } = await ctx.params;
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") return jsonErr("validation_error", 400);
-  const r = await createMessageSvc(
-    { trust: "user_session", actorUserId: caller.userId },
-    {
-      ...(body as Record<string, unknown>),
-      ticketId,
-      role: "USER",
-    } as Parameters<typeof createMessageSvc>[1],
-  );
+  const r = await createMessageSvc({ trust: "user_session", actorUserId: caller.userId }, {
+    ...(body as Record<string, unknown>),
+    ticketId,
+    role: "USER",
+  } as Parameters<typeof createMessageSvc>[1]);
   return r.ok ? jsonOk(r.data, { status: 201 }) : jsonErr(r.error, mapErrorToStatus(r.error));
 }

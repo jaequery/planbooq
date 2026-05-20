@@ -32,9 +32,7 @@ function nodeRequire<T = unknown>(name: string): T | null {
   // eval expression returns null and we fall through.
   try {
     // eslint-disable-next-line no-eval
-    const req = (0, eval)("typeof require === 'function' ? require : null") as
-      | NodeRequire
-      | null;
+    const req = (0, eval)("typeof require === 'function' ? require : null") as NodeRequire | null;
     return req ? (req(name) as T) : null;
   } catch {
     return null;

@@ -17,26 +17,26 @@ function safeJoin(root: string, rel: string): string | null {
 }
 
 export function registerFilesIpc(): void {
-  ipcMain.handle(
-    "planbooq:files:read",
-    async (_, input: { repoPath: string; relPath: string }) => {
-      const target = safeJoin(input?.repoPath ?? "", input?.relPath ?? "");
-      if (!target) return { ok: false, error: "invalid_path" };
-      try {
-        const content = await fs.readFile(target, "utf8");
-        return { ok: true, content, exists: true };
-      } catch (err: unknown) {
-        const code = (err as { code?: string }).code;
-        if (code === "ENOENT") return { ok: true, content: "", exists: false };
-        return { ok: false, error: code ?? "read_failed" };
-      }
-    },
-  );
+  ipcMain.handle("planbooq:files:read", async (_, input: { repoPath: string; relPath: string }) => {
+    const target = safeJoin(input?.repoPath ?? "", input?.relPath ?? "");
+    if (!target) return { ok: false, error: "invalid_path" };
+    try {
+      const content = await fs.readFile(target, "utf8");
+      return { ok: true, content, exists: true };
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code;
+      if (code === "ENOENT") return { ok: true, content: "", exists: false };
+      return { ok: false, error: code ?? "read_failed" };
+    }
+  });
 
   ipcMain.handle(
     "planbooq:files:saveClipboardImage",
     async (_, input: { dataBase64: string; ext: string }) => {
-      const ext = (input?.ext ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 5);
+      const ext = (input?.ext ?? "")
+        .replace(/[^a-z0-9]/gi, "")
+        .toLowerCase()
+        .slice(0, 5);
       if (!ext) return { ok: false, error: "invalid_ext" };
       if (typeof input?.dataBase64 !== "string" || input.dataBase64.length === 0) {
         return { ok: false, error: "invalid_data" };
@@ -82,10 +82,7 @@ export function registerFilesIpc(): void {
         items: Array<{ id: string; ext: string; base64: string }>;
       },
     ) => {
-      const r = await writeAttachmentsToWorktree(
-        input?.worktreePath ?? "",
-        input?.items ?? [],
-      );
+      const r = await writeAttachmentsToWorktree(input?.worktreePath ?? "", input?.items ?? []);
       return r;
     },
   );
@@ -99,7 +96,9 @@ export function registerFilesIpc(): void {
 export async function writeAttachmentsToWorktree(
   worktreePath: string,
   items: Array<{ id: string; ext: string; base64: string }>,
-): Promise<{ ok: true; items: Array<{ id: string; relPath: string }> } | { ok: false; error: string }> {
+): Promise<
+  { ok: true; items: Array<{ id: string; relPath: string }> } | { ok: false; error: string }
+> {
   if (!worktreePath || !path.isAbsolute(worktreePath)) {
     return { ok: false, error: "invalid_path" };
   }
@@ -113,10 +112,11 @@ export async function writeAttachmentsToWorktree(
     for (const item of items) {
       if (!item || typeof item.id !== "string" || typeof item.base64 !== "string") continue;
       const safeId = item.id.replace(/[^a-z0-9_-]/gi, "");
-      const safeExt = (item.ext ?? "")
-        .replace(/[^a-z0-9]/gi, "")
-        .toLowerCase()
-        .slice(0, 5) || "bin";
+      const safeExt =
+        (item.ext ?? "")
+          .replace(/[^a-z0-9]/gi, "")
+          .toLowerCase()
+          .slice(0, 5) || "bin";
       if (!safeId) continue;
       const filename = `${safeId}.${safeExt}`;
       const full = path.join(dir, filename);

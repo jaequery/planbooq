@@ -17,7 +17,10 @@ export type GithubRepo = {
 
 type ListResult =
   | { ok: true; repos: GithubRepo[] }
-  | { ok: false; error: "unauthorized" | "no_github" | "missing_scope" | "rate_limited" | "github_error" };
+  | {
+      ok: false;
+      error: "unauthorized" | "no_github" | "missing_scope" | "rate_limited" | "github_error";
+    };
 
 function scopeHasRepo(scope: string | null | undefined): boolean {
   if (!scope) return true;
@@ -58,7 +61,10 @@ export async function listGithubRepos(): Promise<ListResult> {
       { headers: ghHeaders(token.token), cache: "no-store" },
     );
     if (!res.ok) {
-      if (res.status === 429 || (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0")) {
+      if (
+        res.status === 429 ||
+        (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0")
+      ) {
         return { ok: false, error: "rate_limited" };
       }
       return { ok: false, error: "github_error" };

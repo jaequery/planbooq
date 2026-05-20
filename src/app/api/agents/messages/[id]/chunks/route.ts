@@ -44,11 +44,7 @@ export async function POST(
   });
   if (!result.ok) {
     const status =
-      result.error === "message_not_found"
-        ? 404
-        : result.error === "agent_mismatch"
-          ? 403
-          : 400;
+      result.error === "message_not_found" ? 404 : result.error === "agent_mismatch" ? 403 : 400;
     return NextResponse.json(result, { status });
   }
   return NextResponse.json(result);

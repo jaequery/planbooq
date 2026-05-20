@@ -12,11 +12,7 @@ type SidebarState = {
 
 const SidebarContext = createContext<SidebarState | null>(null);
 
-export function SidebarProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}): React.ReactElement {
+export function SidebarProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const [collapsed, setCollapsedState] = useState(false);
 
   useEffect(() => {

@@ -2,23 +2,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { APP_HREF, serifClassName } from "./landing-parts";
+import { APP_HREF } from "./landing-parts";
 
 const NAV_ITEMS = [
   { id: "product", label: "Product", href: "/#product" },
-  { id: "learn", label: "Learn", href: "/learn" },
+  { id: "platform", label: "Platform", href: "/#platform" },
+  { id: "developers", label: "Developers", href: "/#api" },
+  { id: "research", label: "Research", href: "/#research" },
   { id: "pricing", label: "Pricing", href: "/pricing" },
-  { id: "help", label: "Help", href: "https://github.com/planbooq" },
 ] as const;
 
-function LogoMark(): React.ReactElement {
+function Logo(): React.ReactElement {
   return (
-    <Link href="/" className="justify-self-start outline-none">
+    <Link href="/" className="flex items-center gap-2 outline-none">
       <span
-        className={serifClassName(
-          "text-[20px] font-semibold tracking-[0.06em] text-[var(--mk-ink)] uppercase sm:text-[22px]",
-        )}
-      >
+        aria-hidden
+        className="inline-block size-4 rounded-[3px] bg-[var(--mk-ink)] [clip-path:polygon(0_0,100%_0,100%_60%,60%_60%,60%_100%,0_100%)]"
+      />
+      <span className="text-[15px] font-semibold tracking-tight text-[var(--mk-ink)]">
         Planbooq
       </span>
     </Link>
@@ -27,59 +28,44 @@ function LogoMark(): React.ReactElement {
 
 export function Header(): React.ReactElement {
   const pathname = usePathname();
-
-  const activeId =
-    pathname === "/pricing"
-      ? "pricing"
-      : pathname === "/learn"
-        ? "learn"
-        : pathname === "/"
-          ? "product"
-          : null;
+  const activeId = pathname === "/pricing" ? "pricing" : pathname === "/" ? "product" : null;
 
   return (
-    <header className="sticky top-0 z-40 border-b border-[var(--mk-hairline)] bg-[var(--mk-bg)]/90 backdrop-blur-md">
-      <div className="mx-auto grid min-h-[3.5rem] max-w-6xl grid-cols-[1fr_auto] grid-rows-[auto_auto] gap-x-4 gap-y-3 px-5 py-3 sm:px-6 md:h-[4.25rem] md:grid-cols-[1fr_auto_1fr] md:grid-rows-1 md:items-center md:gap-y-0 md:px-6 md:py-0 lg:px-8">
-        <LogoMark />
+    <header className="sticky top-0 z-40 border-b border-[var(--mk-hairline)] bg-[var(--mk-bg)]/85 backdrop-blur-md">
+      <div className="mx-auto grid h-14 max-w-7xl grid-cols-[auto_1fr_auto] items-center gap-6 px-6 lg:px-10">
+        <Logo />
 
-        <nav
-          className="col-span-2 row-start-2 flex w-full justify-center justify-self-center md:col-span-1 md:row-start-1 md:col-start-2 md:w-auto"
-          aria-label="Primary"
-        >
-          <div className="inline-flex rounded-full border border-[var(--mk-hairline)] bg-[var(--mk-surface-2)] p-1">
-            <div className="flex items-center gap-0.5">
-              {NAV_ITEMS.map((item) => {
-                const isActive = activeId === item.id;
-                return (
-                  <a
-                    key={item.id}
-                    href={item.href}
-                    className={`whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-medium transition ${
-                      isActive
-                        ? "bg-[var(--mk-bg)] text-[var(--mk-ink)] shadow-[0_1px_2px_rgba(0,0,0,0.06)]"
-                        : "text-[var(--mk-muted)] hover:bg-[var(--mk-bg)]/60 hover:text-[var(--mk-ink)]"
-                    }`}
-                  >
-                    {item.label}
-                  </a>
-                );
-              })}
-            </div>
-          </div>
+        <nav aria-label="Primary" className="hidden items-center justify-center gap-1 md:flex">
+          {NAV_ITEMS.map((item) => {
+            const isActive = activeId === item.id;
+            return (
+              <a
+                key={item.id}
+                href={item.href}
+                className={`whitespace-nowrap rounded-md px-3 py-1.5 text-[13.5px] font-medium transition ${
+                  isActive
+                    ? "text-[var(--mk-ink)]"
+                    : "text-[var(--mk-muted)] hover:text-[var(--mk-ink)]"
+                }`}
+              >
+                {item.label}
+              </a>
+            );
+          })}
         </nav>
 
-        <div className="col-start-2 row-start-1 flex shrink-0 items-center justify-self-end gap-5 sm:gap-6 md:col-start-3">
+        <div className="flex items-center gap-2">
           <Link
-            href={APP_HREF}
-            className="hidden text-[14px] font-medium text-[var(--mk-ink)] opacity-80 transition hover:opacity-100 sm:inline"
+            href="mailto:hello@planbooq.app"
+            className="hidden h-9 items-center rounded-full px-3 text-[13.5px] font-medium text-[var(--mk-ink)] transition hover:bg-[var(--mk-surface)] sm:inline-flex"
           >
-            Log in
+            Contact sales
           </Link>
           <Link
             href={APP_HREF}
-            className="inline-flex items-center rounded-full bg-[var(--mk-surface-2)] px-5 py-2.5 text-[14px] font-semibold text-[var(--mk-ink)] transition hover:bg-[var(--mk-surface)] sm:px-6"
+            className="inline-flex h-9 items-center rounded-full bg-[var(--mk-ink)] px-4 text-[13.5px] font-semibold text-[var(--mk-bg)] transition hover:opacity-90"
           >
-            Start building
+            Sign up
           </Link>
         </div>
       </div>

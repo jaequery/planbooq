@@ -84,8 +84,7 @@ export function NewProjectDialog({ open, onOpenChange }: Props): React.ReactElem
           if (!query.trim()) return true;
           const q = query.toLowerCase();
           return (
-            r.fullName.toLowerCase().includes(q) ||
-            (r.description ?? "").toLowerCase().includes(q)
+            r.fullName.toLowerCase().includes(q) || (r.description ?? "").toLowerCase().includes(q)
           );
         })
       : [];
@@ -276,11 +275,7 @@ export function NewProjectDialog({ open, onOpenChange }: Props): React.ReactElem
         <DialogFooter>
           {state.kind === "needs_folder" ? (
             <>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => goToProject(state.project.slug)}
-              >
+              <Button type="button" variant="ghost" onClick={() => goToProject(state.project.slug)}>
                 Skip
               </Button>
               <Button type="button" onClick={() => handleSaveFolder(state.project)}>

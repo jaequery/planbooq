@@ -92,10 +92,7 @@ export async function recordTicketPullRequest(
  * UI's PR history list isn't empty. We don't know the original status, so
  * mark it OPEN — a subsequent webhook (or manual fix) will correct it.
  */
-export async function ensureLegacyPrRecorded(
-  ticketId: string,
-  prUrl: string,
-): Promise<void> {
+export async function ensureLegacyPrRecorded(ticketId: string, prUrl: string): Promise<void> {
   await prisma.ticketPullRequest.upsert({
     where: { ticketId_url: { ticketId, url: prUrl } },
     create: { ticketId, url: prUrl, status: "OPEN" },

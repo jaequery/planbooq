@@ -190,7 +190,9 @@ export async function shipTicketSvc(
       lines.push(
         `- **Superseded prior open PR${supersededUrls.length === 1 ? "" : "s"}:** ${supersededUrls
           .map((u) => u)
-          .join(", ")} — close on GitHub manually if you want this branch to fully replace ${supersededUrls.length === 1 ? "it" : "them"}.`,
+          .join(
+            ", ",
+          )} — close on GitHub manually if you want this branch to fully replace ${supersededUrls.length === 1 ? "it" : "them"}.`,
       );
     }
     lines.push("");

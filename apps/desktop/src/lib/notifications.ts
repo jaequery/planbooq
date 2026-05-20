@@ -65,16 +65,19 @@ async function disconnect() {
 
 export function startNotificationBridge(activate: (url: string) => void): void {
   onActivate = activate;
-  ipcMain.handle("planbooq:notifications:setToken", async (_, args: { token: string; channel: string }) => {
-    if (!args?.token || !args?.channel) return { ok: false, error: "missing token or channel" };
-    try {
-      await connect(args.token, args.channel);
-      return { ok: true };
-    } catch (err) {
-      log.error("ably connect failed", err);
-      return { ok: false, error: (err as Error).message };
-    }
-  });
+  ipcMain.handle(
+    "planbooq:notifications:setToken",
+    async (_, args: { token: string; channel: string }) => {
+      if (!args?.token || !args?.channel) return { ok: false, error: "missing token or channel" };
+      try {
+        await connect(args.token, args.channel);
+        return { ok: true };
+      } catch (err) {
+        log.error("ably connect failed", err);
+        return { ok: false, error: (err as Error).message };
+      }
+    },
+  );
 }
 
 export function stopNotificationBridge(): void {

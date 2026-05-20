@@ -60,7 +60,6 @@ type CommentItem = {
   author: CommentWithAuthor["author"] | null;
 };
 
-
 type Props = {
   ticketId: string;
   workspaceId: string;
