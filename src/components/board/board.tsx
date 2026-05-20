@@ -55,6 +55,22 @@ function extractTail(kind: "PLAN" | "EXECUTE" | "CHAT", text: string): string | 
   return null;
 }
 
+const LIVE_LINE_MAX = 200;
+
+// Collapse whitespace, drop the formatToolUse arrow prefix for compactness on
+// the card (the kind label `executing`/`running` already conveys "tool ran"
+// context), and cap length so the in-memory string and the title-tooltip
+// remain bounded. Returns null for empty input so callers can fall through
+// to the existing `…` placeholder.
+function normalizeLiveLine(text: string): string | null {
+  const collapsed = text.replace(/\s+/gu, " ").trim();
+  if (!collapsed) return null;
+  const unprefixed = collapsed.replace(/^→\s*/u, "");
+  return unprefixed.length > LIVE_LINE_MAX
+    ? `${unprefixed.slice(0, LIVE_LINE_MAX - 1)}…`
+    : unprefixed;
+}
+
 type Props = { initialData: BoardData; currentUserId: string };
 
 function reorderInsert(list: Ticket[], inserted: Ticket, beforeTicketId: string | null): Ticket[] {
@@ -142,6 +158,44 @@ export function Board({ initialData, currentUserId }: Props): React.ReactElement
             status,
             lastLine: tail ?? cur?.lastLine ?? null,
           });
+          return next;
+        });
+        return;
+      }
+      // EXECUTE/CHAT wire mirroring fans out parsed tool calls and thinking
+      // blocks as `agent.action` (text already formatted by the server: e.g.
+      // `→ Bash: pnpm dev`). Use these to surface the current action on the
+      // card so executing tickets no longer show a bare "running …". Guard
+      // on an existing liveAgents entry so cross-project events (these are
+      // workspace-scoped, no projectId on the wire) don't leak into our map.
+      if (event.name === "agent.action" && event.ticketId) {
+        const ticketId = event.ticketId;
+        const lastLine = normalizeLiveLine(event.text);
+        if (!lastLine) return;
+        setLiveAgents((prev) => {
+          const cur = prev.get(ticketId);
+          if (!cur) return prev;
+          if (cur.lastLine === lastLine) return prev;
+          const next = new Map(prev);
+          next.set(ticketId, { ...cur, lastLine });
+          return next;
+        });
+        return;
+      }
+      // Streaming AGENT message body — the agent's prose between tool calls.
+      // Mirror produces plain text in Message.body, so a trimmed tail is safe
+      // without the markdown-stripping `extractTail` does for PLAN.
+      if (event.name === "message.updated" && event.ticketId && event.body) {
+        const ticketId = event.ticketId;
+        const tail = event.body.slice(-LIVE_LINE_MAX);
+        const lastLine = normalizeLiveLine(tail);
+        if (!lastLine) return;
+        setLiveAgents((prev) => {
+          const cur = prev.get(ticketId);
+          if (!cur) return prev;
+          if (cur.lastLine === lastLine) return prev;
+          const next = new Map(prev);
+          next.set(ticketId, { ...cur, lastLine });
           return next;
         });
         return;
