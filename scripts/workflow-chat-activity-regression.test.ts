@@ -386,9 +386,174 @@ async function assertWarmSendCancelDoesNotMisCreditNextStep(): Promise<void> {
   }
 }
 
+// PLAN-QYP3IU: ship-decision stuck-at-RUNNING. When the agent emits `pbq
+// workflow finish '{"next":"ship"}'` (or "block") the WorkflowStepRun gets
+// `decision` written, but the actual RUNNING → SUCCEEDED transition still
+// depends on the Claude wire stream emitting a `result` event so that
+// persistTurnEnd can fire. If the agent stops mid-output, the bridge drops
+// the final frame, or the CLI is warm-stopped between turns, the step is
+// left RUNNING forever even though the job goes terminal SUCCEEDED — the
+// ticket stays at Running and the workflow doesn't progress. The fix in
+// mirrorJobTerminal force-closes the step on terminal SUCCEEDED when the
+// step is still RUNNING AND has `decision` set (the agent's explicit
+// "this step is done" signal). The guard avoids over-firing into warm-send:
+// the freshly-warm-sent next step has no decision yet.
+async function assertTerminalSucceededClosesStuckShipStep(): Promise<void> {
+  process.env.ABLY_API_KEY = "";
+  const { workflowCommander } = await import("../src/server/services/workflow-commander");
+  const { mirrorJobTerminal } = await import("../src/server/services/mirror-agent-job");
+  const prisma = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+  });
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const email = `ship-stuck-${suffix}@example.test`;
+  const workspaceSlug = `ship-stuck-${suffix}`.slice(0, 60);
+  let workspaceId: string | null = null;
+
+  try {
+    const user = await prisma.user.create({ data: { email } });
+    const workspace = await prisma.workspace.create({
+      data: {
+        slug: workspaceSlug,
+        name: "Ship stuck regression",
+        members: { create: { userId: user.id, role: "OWNER" } },
+      },
+    });
+    workspaceId = workspace.id;
+    const project = await prisma.project.create({
+      data: {
+        workspaceId: workspace.id,
+        slug: `project-${suffix}`.slice(0, 60),
+        name: "Ship stuck regression",
+        color: "#0f172a",
+        position: 1,
+      },
+    });
+    const status = await prisma.status.create({
+      data: {
+        workspaceId: workspace.id,
+        key: "backlog",
+        name: "Backlog",
+        color: "#64748b",
+        position: 1,
+      },
+    });
+
+    const makeScenario = async (
+      label: string,
+      decision: "SHIP" | "BLOCK" | "AUTO" | null,
+    ): Promise<{ ticketId: string; jobId: string; stepRunId: string; runId: string }> => {
+      const ticket = await prisma.ticket.create({
+        data: {
+          workspaceId: workspace.id,
+          projectId: project.id,
+          statusId: status.id,
+          title: `Ship stuck: ${label}`,
+          position: 1,
+          createdById: user.id,
+        },
+      });
+      const run = await workflowCommander.startRun({
+        ticketId: ticket.id,
+        workspaceId: workspace.id,
+        templateId: null,
+        steps: [{ name: "Build", prompt: "[Workflow 1/1: Build]\nBuild it." }],
+      });
+      const [stepRunId] = run.stepRunIds;
+      assert.ok(stepRunId);
+      // Promote to RUNNING — what dispatchNextStep would do after the user
+      // clicked Run. We do it directly to keep the scenario focused on the
+      // terminal-SUCCEEDED-without-result path.
+      await prisma.workflowStepRun.update({
+        where: { id: stepRunId },
+        data: { status: "RUNNING", startedAt: new Date() },
+      });
+      if (decision) {
+        await prisma.workflowStepRun.update({
+          where: { id: stepRunId },
+          data: { decision },
+        });
+      }
+      const job = await prisma.agentJob.create({
+        data: {
+          ticketId: ticket.id,
+          workspaceId: workspace.id,
+          userId: user.id,
+          source: "PAIRED",
+          kind: "CHAT",
+          prompt: "[Workflow 1/1: Build]\nBuild it.",
+          status: "SUCCEEDED",
+          finishedAt: new Date(),
+          workflowStepRunId: stepRunId,
+        },
+      });
+      return { ticketId: ticket.id, jobId: job.id, stepRunId, runId: run.runId };
+    };
+
+    // --- Case A: decision=SHIP, step still RUNNING, job terminal SUCCEEDED
+    //     without ever firing `result`. The backstop should close the step.
+    const a = await makeScenario("ship-no-result", "SHIP");
+    const aJob = await prisma.agentJob.findUniqueOrThrow({ where: { id: a.jobId } });
+    await mirrorJobTerminal({ job: aJob, status: "SUCCEEDED", finalOutput: "", mode: "wire" });
+    const aStep = await prisma.workflowStepRun.findUniqueOrThrow({ where: { id: a.stepRunId } });
+    assert.equal(
+      aStep.status,
+      "SUCCEEDED",
+      "terminal SUCCEEDED with decision=SHIP must force-close the still-RUNNING step",
+    );
+    const aActivity = await prisma.ticketActivity.count({
+      where: { workflowStepRunId: a.stepRunId, kind: "STEP_COMPLETED" },
+    });
+    assert.equal(aActivity, 1, "STEP_COMPLETED activity logged exactly once");
+
+    // --- Case B: decision=BLOCK behaves the same — the gate is "decision is
+    //     set", not "decision is SHIP". Both halt the auto-chain identically.
+    const b = await makeScenario("block-no-result", "BLOCK");
+    const bJob = await prisma.agentJob.findUniqueOrThrow({ where: { id: b.jobId } });
+    await mirrorJobTerminal({ job: bJob, status: "SUCCEEDED", finalOutput: "", mode: "wire" });
+    const bStep = await prisma.workflowStepRun.findUniqueOrThrow({ where: { id: b.stepRunId } });
+    assert.equal(
+      bStep.status,
+      "SUCCEEDED",
+      "BLOCK decision also force-closes on terminal SUCCEEDED",
+    );
+
+    // --- Case C: decision IS NULL. This is the warm-send / "agent didn't
+    //     declare intent" path — we MUST NOT close the step here, because the
+    //     job might still legitimately span more turns via warm-send. The
+    //     guard's whole job is to keep this case PENDING/RUNNING.
+    const c = await makeScenario("no-decision", null);
+    const cJob = await prisma.agentJob.findUniqueOrThrow({ where: { id: c.jobId } });
+    await mirrorJobTerminal({ job: cJob, status: "SUCCEEDED", finalOutput: "", mode: "wire" });
+    const cStep = await prisma.workflowStepRun.findUniqueOrThrow({ where: { id: c.stepRunId } });
+    assert.equal(
+      cStep.status,
+      "RUNNING",
+      "terminal SUCCEEDED without decision must NOT force-close (warm-send safety)",
+    );
+
+    // --- Case D: idempotency. Re-applying the terminal after a step already
+    //     SUCCEEDED is a no-op — completeStep's CAS short-circuits.
+    const d = await makeScenario("idempotent", "SHIP");
+    const dJob = await prisma.agentJob.findUniqueOrThrow({ where: { id: d.jobId } });
+    await mirrorJobTerminal({ job: dJob, status: "SUCCEEDED", finalOutput: "", mode: "wire" });
+    await mirrorJobTerminal({ job: dJob, status: "SUCCEEDED", finalOutput: "", mode: "wire" });
+    const dStep = await prisma.workflowStepRun.findUniqueOrThrow({ where: { id: d.stepRunId } });
+    assert.equal(dStep.status, "SUCCEEDED", "double terminal SUCCEEDED stays SUCCEEDED");
+    const dActivity = await prisma.ticketActivity.count({
+      where: { workflowStepRunId: d.stepRunId, kind: "STEP_COMPLETED" },
+    });
+    assert.equal(dActivity, 1, "STEP_COMPLETED activity stays singular under double-fire");
+  } finally {
+    if (workspaceId) await prisma.workspace.delete({ where: { id: workspaceId } }).catch(() => {});
+    await prisma.$disconnect();
+  }
+}
+
 async function main(): Promise<void> {
   await assertWorkflowCommanderPersistsStepActivity();
   await assertWarmSendCancelDoesNotMisCreditNextStep();
+  await assertTerminalSucceededClosesStuckShipStep();
   console.log("workflow/chat/activity regression checks passed");
 }
 
