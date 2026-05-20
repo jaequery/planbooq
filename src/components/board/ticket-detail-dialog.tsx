@@ -524,8 +524,6 @@ export function TicketDetailDialog({
   })();
 
   const createdAt = new Date(ticket.createdAt);
-  const updatedAt = new Date(ticket.updatedAt);
-  const wasEdited = updatedAt.getTime() - createdAt.getTime() > 1000;
   const ticketIdLabel = formatTicketIdentifier(projectSlug, ticket.id);
 
   return (
@@ -1027,8 +1025,6 @@ export function TicketDetailDialog({
                   workspaceId={ticket.workspaceId}
                   currentUserId={currentUserId}
                   createdAt={createdAt}
-                  updatedAt={updatedAt}
-                  wasEdited={wasEdited}
                 />
               </div>
             </div>

@@ -4,6 +4,7 @@ import { TICKET_PAGE_SIZE } from "@/lib/pagination";
 import type { BoardData, StatusWithTickets, TicketWithRelations } from "@/lib/types";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
+import { hydrateWaitingSince } from "@/server/services/ticket-waiting";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -70,12 +71,24 @@ export default async function ProjectPage({ params }: Props): Promise<React.Reac
     }),
   ]);
 
-  const statusesWithImagePreviews: StatusWithTickets[] = statuses.map((s) => {
+  const statusKeysById: Record<string, string> = {};
+  for (const s of statuses) statusKeysById[s.id] = s.key;
+
+  const trimmedByStatus = statuses.map((s) => {
     const hasMore = s.tickets.length > TICKET_PAGE_SIZE;
     const trimmed = hasMore ? s.tickets.slice(0, TICKET_PAGE_SIZE) : s.tickets;
     const nextCursor = hasMore ? (trimmed[trimmed.length - 1]?.id ?? null) : null;
-    return {
-      ...s,
+    return { status: s, trimmed, nextCursor };
+  });
+
+  const allTickets = trimmedByStatus.flatMap(({ trimmed }) =>
+    trimmed.map((t) => ({ id: t.id, statusId: t.statusId, createdAt: t.createdAt })),
+  );
+  const waitingByTicket = await hydrateWaitingSince(allTickets, statusKeysById);
+
+  const statusesWithImagePreviews: StatusWithTickets[] = trimmedByStatus.map(
+    ({ status, trimmed, nextCursor }) => ({
+      ...status,
       nextCursor,
       tickets: trimmed.map((t): TicketWithRelations => {
         const { previews, ...rest } = t;
@@ -86,10 +99,11 @@ export default async function ProjectPage({ params }: Props): Promise<React.Reac
             attachmentId: p.attachmentId,
             mimeType: p.attachment.mimeType,
           })),
+          waitingSince: waitingByTicket.get(t.id) ?? null,
         };
       }),
-    };
-  });
+    }),
+  );
 
   const boardData: BoardData = {
     project,

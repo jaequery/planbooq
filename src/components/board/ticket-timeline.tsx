@@ -65,8 +65,6 @@ type Props = {
   workspaceId: string;
   currentUserId: string | null;
   createdAt: Date;
-  updatedAt: Date;
-  wasEdited: boolean;
 };
 
 function ActivityAvatar(): React.ReactElement {
@@ -214,8 +212,6 @@ export function TicketTimeline({
   workspaceId,
   currentUserId,
   createdAt,
-  updatedAt,
-  wasEdited,
 }: Props): React.ReactElement {
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [serverActivities, setServerActivities] = useState<ServerActivity[]>([]);
@@ -304,14 +300,6 @@ export function TicketTimeline({
     const activity: ActivityItem[] = [
       { kind: "activity", id: "created", text: "You created the issue", createdAt },
     ];
-    if (wasEdited) {
-      activity.push({
-        kind: "activity",
-        id: "edited",
-        text: "You edited the issue",
-        createdAt: updatedAt,
-      });
-    }
     const fromServer: ActivityItem[] = serverActivities.map((a) => ({
       kind: "activity" as const,
       id: `srv:${a.id}`,
@@ -321,7 +309,7 @@ export function TicketTimeline({
     return [...activity, ...fromServer, ...comments].sort(
       (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
     );
-  }, [comments, serverActivities, createdAt, updatedAt, wasEdited]);
+  }, [comments, serverActivities, createdAt]);
 
   const submit = (): void => {
     const body = draft.trim();

@@ -39,6 +39,11 @@ export type TicketWithRelations = Ticket & {
   project?: Pick<Project, "slug"> | null;
   imagePreviews?: TicketImagePreview[];
   pullRequests?: TicketPullRequest[];
+  // ISO timestamp of when the ticket entered its current human-blocking
+  // status (blocked/review). Populated server-side from the latest
+  // STATUS_CHANGED activity; falls back to createdAt. Null/undefined when
+  // the ticket is not in a human-blocking status.
+  waitingSince?: string | null;
 };
 
 export type StatusWithTickets = Status & {
