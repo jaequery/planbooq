@@ -17,6 +17,7 @@ import {
   resumeCompletedTicket,
 } from "@/actions/workflow";
 import { TicketWorkflowPanel } from "@/components/board/ticket-workflow-panel";
+import { SuggestedReplies } from "@/components/conversation/suggested-replies";
 import { WorkflowBoundaryRow } from "@/components/conversation/workflow-boundary-row";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
@@ -29,6 +30,7 @@ import {
   unregisterAgentSession,
 } from "@/lib/agent-session-manager";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
+import { suggestedRepliesFor } from "@/lib/suggested-replies";
 import { isWorkflowBoundaryMessage } from "@/lib/system-chat";
 import type { AblyChannelEvent, MessageEventPayload } from "@/lib/types";
 import { type AgentEvent, getDesktopBridge, useIsDesktop } from "@/lib/use-is-desktop";
@@ -1836,6 +1838,20 @@ function DesktopPanel({
   })();
   const visibleMessages = messages.filter((m, i) => !isActionMessage(m) || i === lastActionIdx);
 
+  // Suggested-reply chips for Claude's last message. Strict heuristics in
+  // suggestedRepliesFor() return [] when not confident, so this degrades to
+  // the existing text composer without further gating. Hidden while busy
+  // (the message is still streaming) and while the user is mid-typing.
+  const latestAssistantText = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]!;
+      if (m.role === "assistant") return m.text;
+    }
+    return "";
+  })();
+  const suggestedReplies =
+    !busy && input.trim() === "" ? suggestedRepliesFor(latestAssistantText) : [];
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       {visibleMessages.length > 0 && (
@@ -1916,65 +1932,72 @@ function DesktopPanel({
         </div>
       )}
 
-      <div className="mt-auto flex items-end gap-2">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void send();
-            }
-          }}
-          onPaste={(e) => {
-            const bridge = getDesktopBridge();
-            if (!bridge?.saveClipboardImage) return;
-            const items = Array.from(e.clipboardData?.items ?? []);
-            const imageItem = items.find(
-              (it) => it.kind === "file" && it.type.startsWith("image/"),
-            );
-            if (!imageItem) return;
-            const file = imageItem.getAsFile();
-            if (!file) return;
-            e.preventDefault();
-            const ext = (file.type.split("/")[1] ?? "png").split("+")[0]!;
-            void (async () => {
-              try {
-                const buf = new Uint8Array(await file.arrayBuffer());
-                let bin = "";
-                for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]!);
-                const dataBase64 = btoa(bin);
-                const r = await bridge.saveClipboardImage!({ dataBase64, ext });
-                if (!r.ok || !r.path) {
-                  toast.error(r.error ?? "Could not save image");
-                  return;
-                }
-                const md = `![pasted](${r.path})`;
-                setInput((prev) => (prev ? `${prev.replace(/\s*$/, "")}\n${md}` : md));
-              } catch (err) {
-                toast.error(err instanceof Error ? err.message : "Paste failed");
-              }
-            })();
-          }}
-          placeholder={
-            sessionId
-              ? "Reply to Claude…"
-              : `Start a session — first message will include "${title}"`
-          }
-          rows={2}
-          className="min-h-[60px] flex-1 resize-y rounded-lg bg-muted/40 px-3 py-2 text-[13px] outline-none focus:bg-muted/60"
+      <div className="mt-auto flex flex-col gap-2">
+        <SuggestedReplies
+          replies={suggestedReplies}
+          onPick={(value) => void send(value)}
+          disabled={busy}
         />
-        {busy ? (
-          <Button size="sm" variant="outline" onClick={stop}>
-            <Square className="size-4" />
-            Stop
-          </Button>
-        ) : (
-          <Button size="sm" onClick={() => send()} disabled={!input.trim()}>
-            {sessionId ? <Send className="size-4" /> : <Play className="size-4" />}
-            {sessionId ? "Send" : "Start"}
-          </Button>
-        )}
+        <div className="flex items-end gap-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+            onPaste={(e) => {
+              const bridge = getDesktopBridge();
+              if (!bridge?.saveClipboardImage) return;
+              const items = Array.from(e.clipboardData?.items ?? []);
+              const imageItem = items.find(
+                (it) => it.kind === "file" && it.type.startsWith("image/"),
+              );
+              if (!imageItem) return;
+              const file = imageItem.getAsFile();
+              if (!file) return;
+              e.preventDefault();
+              const ext = (file.type.split("/")[1] ?? "png").split("+")[0]!;
+              void (async () => {
+                try {
+                  const buf = new Uint8Array(await file.arrayBuffer());
+                  let bin = "";
+                  for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]!);
+                  const dataBase64 = btoa(bin);
+                  const r = await bridge.saveClipboardImage!({ dataBase64, ext });
+                  if (!r.ok || !r.path) {
+                    toast.error(r.error ?? "Could not save image");
+                    return;
+                  }
+                  const md = `![pasted](${r.path})`;
+                  setInput((prev) => (prev ? `${prev.replace(/\s*$/, "")}\n${md}` : md));
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Paste failed");
+                }
+              })();
+            }}
+            placeholder={
+              sessionId
+                ? "Reply to Claude…"
+                : `Start a session — first message will include "${title}"`
+            }
+            rows={2}
+            className="min-h-[60px] flex-1 resize-y rounded-lg bg-muted/40 px-3 py-2 text-[13px] outline-none focus:bg-muted/60"
+          />
+          {busy ? (
+            <Button size="sm" variant="outline" onClick={stop}>
+              <Square className="size-4" />
+              Stop
+            </Button>
+          ) : (
+            <Button size="sm" onClick={() => send()} disabled={!input.trim()}>
+              {sessionId ? <Send className="size-4" /> : <Play className="size-4" />}
+              {sessionId ? "Send" : "Start"}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
