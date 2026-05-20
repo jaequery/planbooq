@@ -1025,7 +1025,7 @@ export function TicketDetailDialog({
             </div>
           </div>
 
-          <aside className="flex w-[440px] shrink-0 flex-col overflow-y-auto border-l border-border px-4 py-6">
+          <aside className="flex min-h-0 w-[440px] shrink-0 flex-col overflow-hidden border-l border-border px-4 py-6">
             <TicketAgentPanel
               key={ticket.id}
               ticketId={ticket.id}

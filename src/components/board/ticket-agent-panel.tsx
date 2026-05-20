@@ -60,14 +60,14 @@ export function TicketAgentPanel(props: Props): React.ReactElement {
   const [panelReady, setPanelReady] = useState(false);
   const ready = workflowReady && panelReady;
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex h-full min-h-0 flex-col gap-2">
       {!ready && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-3.5 animate-spin" aria-hidden />
           <span>Loading…</span>
         </div>
       )}
-      <div className={ready ? "flex flex-col gap-2" : "hidden"}>
+      <div className={ready ? "flex min-h-0 flex-1 flex-col gap-2" : "hidden"}>
         <TicketWorkflowPanel
           ticketId={props.ticketId}
           workspaceId={props.workspaceId}
@@ -1850,13 +1850,10 @@ function DesktopPanel({
   const visibleMessages = messages.filter((m, i) => !isActionMessage(m) || i === lastActionIdx);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       {visibleMessages.length > 0 && (
-        <div className="relative">
-          <div
-            ref={scrollerRef}
-            className="max-h-[420px] overflow-y-auto rounded-lg bg-muted/20 p-3"
-          >
+        <div className="relative min-h-0 flex-1">
+          <div ref={scrollerRef} className="h-full overflow-y-auto rounded-lg bg-muted/20 p-3">
             <div className="flex flex-col gap-3">
               {visibleMessages.map((m, i) => {
                 const isStreaming =
@@ -1929,7 +1926,7 @@ function DesktopPanel({
         </div>
       )}
 
-      <div className="flex items-end gap-2">
+      <div className="mt-auto flex items-end gap-2">
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
