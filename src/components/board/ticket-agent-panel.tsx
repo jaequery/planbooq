@@ -17,6 +17,7 @@ import {
   resumeCompletedTicket,
 } from "@/actions/workflow";
 import { TicketWorkflowPanel } from "@/components/board/ticket-workflow-panel";
+import { WorkflowBoundaryRow } from "@/components/conversation/workflow-boundary-row";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
 import {
@@ -28,6 +29,7 @@ import {
   unregisterAgentSession,
 } from "@/lib/agent-session-manager";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
+import { isWorkflowBoundaryMessage } from "@/lib/system-chat";
 import type { AblyChannelEvent, MessageEventPayload } from "@/lib/types";
 import { type AgentEvent, getDesktopBridge, useIsDesktop } from "@/lib/use-is-desktop";
 
@@ -1849,6 +1851,9 @@ function DesktopPanel({
                   m.role === "user" ? "You" : m.role === "assistant" ? "Claude" : "System";
                 const align = m.role === "user" ? "self-end items-end" : "self-start items-start";
                 const time = formatDistanceToNowStrict(new Date(m.createdAt), { addSuffix: true });
+                if (m.role === "user" && isWorkflowBoundaryMessage(m.text)) {
+                  return <WorkflowBoundaryRow key={m.id} body={m.text} align="self-end" />;
+                }
                 return (
                   <div key={m.id} className={`flex max-w-[85%] flex-col gap-1 ${align}`}>
                     <div className="flex items-center gap-2 text-[11px] text-muted-foreground">

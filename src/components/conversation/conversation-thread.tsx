@@ -16,8 +16,10 @@ import {
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { WorkflowBoundaryRow } from "@/components/conversation/workflow-boundary-row";
 import { Button } from "@/components/ui/button";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
+import { isWorkflowBoundaryMessage } from "@/lib/system-chat";
 import type { AblyChannelEvent, MessageEventPayload } from "@/lib/types";
 
 type ServerActivity = {
@@ -566,6 +568,14 @@ function MessageRow({ message }: { message: ClientMessage }): React.ReactElement
         : (message.authorUser?.name ?? message.authorUser?.email ?? "User");
 
   const isStreaming = message.status === "STREAMING" || message.status === "PENDING";
+
+  if (message.role === "USER" && isWorkflowBoundaryMessage(body)) {
+    return (
+      <div className="px-1">
+        <WorkflowBoundaryRow body={body} align="self-start" />
+      </div>
+    );
+  }
 
   return (
     <div className="px-1">
