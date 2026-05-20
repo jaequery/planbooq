@@ -334,12 +334,12 @@ const SYSTEM_DEFAULT_WORKFLOW_STEPS: Array<{ name: string; prompt: string }> = [
   {
     name: "Plan",
     prompt:
-      "Read the ticket title and description carefully. Outline a concrete implementation plan before touching code: list the files you expect to change, the approach, and any risks or open questions.",
+      "Read the ticket title and description carefully. Outline a concrete implementation plan before touching code: list the files you expect to change, the approach, and any risks or open questions. End the plan with an `## Action items` section containing a markdown checklist (`- [ ]` lines) of the concrete steps you will take during Build — one item per logical change. Keep items short, verb-first, and independently checkable. The human can toggle these in the UI and you should flip them as you complete each step.",
   },
   {
     name: "Build",
     prompt:
-      "Implement the plan. Make the smallest set of changes needed to satisfy the ticket. Run typecheck/lint and fix any regressions.",
+      'Implement the plan. Make the smallest set of changes needed to satisfy the ticket. As you complete each action item in the plan\'s `## Action items` checklist, flip its `- [ ]` to `- [x]` by calling `./.planbooq/pbq update \'{"plan":"..."}\'` with the updated plan text. Run typecheck/lint and fix any regressions.',
   },
   {
     name: "Issue PR",
