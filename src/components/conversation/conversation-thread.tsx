@@ -16,9 +16,11 @@ import {
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SuggestedReplies } from "@/components/conversation/suggested-replies";
 import { WorkflowBoundaryRow } from "@/components/conversation/workflow-boundary-row";
 import { Button } from "@/components/ui/button";
 import { useBoardChannel } from "@/lib/realtime/use-board-channel";
+import { suggestedRepliesFor } from "@/lib/suggested-replies";
 import { isWorkflowBoundaryMessage } from "@/lib/system-chat";
 import type { AblyChannelEvent, MessageEventPayload } from "@/lib/types";
 
@@ -297,30 +299,53 @@ export function ConversationThread({
     });
   }, []);
 
-  const send = useCallback(async () => {
-    const body = composerBody.trim();
-    if (!body || sending) return;
-    setSending(true);
-    const idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    try {
-      await fetch(`/api/v1/tickets/${ticketId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          body,
-          idempotencyKey,
-          mentions: composerMentions.map(({ targetType, targetId }) => ({
-            targetType,
-            targetId,
-          })),
-        }),
-      });
-      setComposerBody("");
-      setComposerMentions([]);
-    } finally {
-      setSending(false);
+  const send = useCallback(
+    async (override?: string) => {
+      const body = (override ?? composerBody).trim();
+      if (!body || sending) return;
+      setSending(true);
+      const idempotencyKey = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      try {
+        await fetch(`/api/v1/tickets/${ticketId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            body,
+            idempotencyKey,
+            mentions: composerMentions.map(({ targetType, targetId }) => ({
+              targetType,
+              targetId,
+            })),
+          }),
+        });
+        setComposerBody("");
+        setComposerMentions([]);
+      } finally {
+        setSending(false);
+      }
+    },
+    [composerBody, composerMentions, sending, ticketId],
+  );
+
+  // Suggested-reply chips for the most recent agent message. Hidden while
+  // sending and while the user is mid-typing; suggestedRepliesFor() returns
+  // [] when not confident, so unconditional render is safe.
+  const latestAgentBody = useMemo(() => {
+    for (let i = order.length - 1; i >= 0; i--) {
+      const m = messages.get(order[i]!);
+      if (!m) continue;
+      if (m.role !== "AGENT") continue;
+      // Skip messages that are still streaming — their text might still
+      // change, which would shuffle the chip set under the user.
+      if (m.status === "STREAMING" || m.status === "PENDING") continue;
+      return typeof m.body === "string" ? m.body : "";
     }
-  }, [composerBody, composerMentions, sending, ticketId]);
+    return "";
+  }, [order, messages]);
+  const suggestedReplies = useMemo(
+    () => (sending || composerBody.trim() !== "" ? [] : suggestedRepliesFor(latestAgentBody)),
+    [sending, composerBody, latestAgentBody],
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -355,6 +380,15 @@ export function ConversationThread({
         )}
       </div>
       <div className="pt-3">
+        {suggestedReplies.length > 0 && (
+          <div className="mb-2">
+            <SuggestedReplies
+              replies={suggestedReplies}
+              onPick={(value) => void send(value)}
+              disabled={sending}
+            />
+          </div>
+        )}
         {composerMentions.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {composerMentions.map((m) => (
