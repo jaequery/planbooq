@@ -1,33 +1,26 @@
 import { notFound, redirect } from "next/navigation";
 import { AgentSessionGlobalListener } from "@/components/agent-session-global-listener";
 import { AgentSessionManagerMount } from "@/components/agent-session-manager-mount";
-import { ProjectHeaderMenu } from "@/components/board/project-header-menu";
-import { PillarNav } from "@/components/pillars/pillar-nav";
 import { SettingsContent } from "@/components/settings/settings-content";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { SidebarProvider } from "@/components/sidebar/sidebar-state";
 import { SidebarToggle } from "@/components/sidebar/sidebar-toggle";
 import { UserMenu } from "@/components/user-menu";
-import { extractShortcuts } from "@/lib/shortcuts/defaults";
+import { extractShortcuts, extractSidebarSectionState } from "@/lib/shortcuts/defaults";
 import { ShortcutsProvider } from "@/lib/shortcuts/provider";
+import type { AgentProfileSummary, ProjectSummary, SkillSummary } from "@/lib/types";
 import { auth } from "@/server/auth";
 import { prisma } from "@/server/db";
 
-type Props = {
-  children: React.ReactNode;
-  params: Promise<{ slug: string }>;
-};
-
-export default async function ProjectLayout({
+export default async function AppLayout({
   children,
-  params,
-}: Props): Promise<React.ReactElement> {
+}: {
+  children: React.ReactNode;
+}): Promise<React.ReactElement> {
   const session = await auth();
   if (!session?.user?.id || !session.user.email) {
     redirect("/welcome");
   }
-
-  const { slug } = await params;
 
   const [membership, currentUser] = await Promise.all([
     prisma.member.findFirst({
@@ -41,11 +34,9 @@ export default async function ProjectLayout({
   ]);
   if (!membership) notFound();
   const shortcuts = extractShortcuts(currentUser?.preferences);
+  const sectionState = extractSidebarSectionState(currentUser?.preferences);
 
-  const [project, projectRows, statusRows] = await Promise.all([
-    prisma.project.findUnique({
-      where: { workspaceId_slug: { workspaceId: membership.workspaceId, slug } },
-    }),
+  const [projectRows, statusRows, agentRows, skillRows] = await Promise.all([
     prisma.project.findMany({
       where: { workspaceId: membership.workspaceId },
       orderBy: { position: "asc" },
@@ -65,8 +56,36 @@ export default async function ProjectLayout({
       },
       select: { id: true, key: true },
     }),
+    prisma.agentProfile.findMany({
+      where: { workspaceId: membership.workspaceId, isActive: true, archivedAt: null },
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        workspaceId: true,
+        name: true,
+        slug: true,
+        description: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        archivedAt: true,
+      },
+    }),
+    prisma.skill.findMany({
+      where: { workspaceId: membership.workspaceId },
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        workspaceId: true,
+        name: true,
+        slug: true,
+        description: true,
+        color: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
   ]);
-  if (!project) notFound();
 
   const trackedStatusIds = statusRows.map((s) => s.id);
   const ticketCounts = trackedStatusIds.length
@@ -81,7 +100,7 @@ export default async function ProjectLayout({
       })
     : [];
   const statusKeyById = new Map(statusRows.map((s) => [s.id, s.key]));
-  const allProjects = projectRows.map((p) => {
+  const allProjects: ProjectSummary[] = projectRows.map((p) => {
     let reviewCount = 0;
     let buildingCount = 0;
     let blockedCount = 0;
@@ -95,29 +114,27 @@ export default async function ProjectLayout({
     return { ...p, reviewCount, buildingCount, blockedCount };
   });
 
+  const agents: AgentProfileSummary[] = agentRows;
+  const skills: SkillSummary[] = skillRows;
+
   return (
     <SidebarProvider>
       <ShortcutsProvider shortcuts={shortcuts}>
         <div className="flex h-screen min-h-0 bg-background">
           <AgentSessionManagerMount />
           <AgentSessionGlobalListener workspaceId={membership.workspaceId} />
-          <Sidebar projects={allProjects} workspaceId={membership.workspaceId} />
+          <Sidebar
+            projects={allProjects}
+            agents={agents}
+            skills={skills}
+            workspaceId={membership.workspaceId}
+            sectionState={sectionState}
+          />
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-2 pr-4">
               <div className="flex items-center gap-1.5 text-[13px]">
                 <SidebarToggle />
                 <span className="ml-1 text-muted-foreground/60">{membership.workspace.name}</span>
-                <span className="text-muted-foreground/40">/</span>
-                <ProjectHeaderMenu
-                  workspaceId={membership.workspaceId}
-                  projectId={project.id}
-                  projectName={project.name}
-                  projectColor={project.color}
-                  projectDescription={project.description}
-                  projectLocalPath={project.localPath}
-                />
-                <span className="mx-2 h-4 w-px bg-border/60" aria-hidden="true" />
-                <PillarNav slug={slug} />
               </div>
               <div className="flex items-center gap-1">
                 <UserMenu

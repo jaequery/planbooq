@@ -45,3 +45,45 @@ export function extractShortcuts(preferences: unknown): ProjectShortcuts {
 export function formatChord(key: string): string {
   return `⌘${key.length === 1 ? key.toUpperCase() : key}`;
 }
+
+// -------------------------
+// Sidebar section accordion state
+// -------------------------
+
+export type SidebarSectionName = "PROJECTS" | "AGENTS" | "SKILLS";
+
+export type SidebarSectionState = Record<SidebarSectionName, { expanded: boolean }>;
+
+export const DEFAULT_SIDEBAR_SECTION_STATE: SidebarSectionState = {
+  PROJECTS: { expanded: true },
+  AGENTS: { expanded: false },
+  SKILLS: { expanded: false },
+};
+
+export function extractSidebarSectionState(preferences: unknown): SidebarSectionState {
+  if (!preferences || typeof preferences !== "object") return DEFAULT_SIDEBAR_SECTION_STATE;
+  const prefs = preferences as { sidebarSectionState?: unknown };
+  const raw = prefs.sidebarSectionState;
+  if (!raw || typeof raw !== "object") return DEFAULT_SIDEBAR_SECTION_STATE;
+  const r = raw as Partial<Record<SidebarSectionName, { expanded?: unknown }>>;
+  return {
+    PROJECTS: {
+      expanded:
+        typeof r.PROJECTS?.expanded === "boolean"
+          ? r.PROJECTS.expanded
+          : DEFAULT_SIDEBAR_SECTION_STATE.PROJECTS.expanded,
+    },
+    AGENTS: {
+      expanded:
+        typeof r.AGENTS?.expanded === "boolean"
+          ? r.AGENTS.expanded
+          : DEFAULT_SIDEBAR_SECTION_STATE.AGENTS.expanded,
+    },
+    SKILLS: {
+      expanded:
+        typeof r.SKILLS?.expanded === "boolean"
+          ? r.SKILLS.expanded
+          : DEFAULT_SIDEBAR_SECTION_STATE.SKILLS.expanded,
+    },
+  };
+}

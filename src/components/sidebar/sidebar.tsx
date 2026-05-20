@@ -1,74 +1,31 @@
 "use client";
 
-import { Plus } from "lucide-react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { NewProjectDialog } from "@/components/sidebar/new-project-dialog";
-import { ProjectActionsMenu } from "@/components/sidebar/project-actions-menu";
 import { ProjectHotkeys } from "@/components/sidebar/project-hotkeys";
+import { SidebarAgentsSection } from "@/components/sidebar/sidebar-agents-section";
+import { SidebarProjectsSection } from "@/components/sidebar/sidebar-projects-section";
+import { SidebarSkillsSection } from "@/components/sidebar/sidebar-skills-section";
 import { useSidebarState } from "@/components/sidebar/sidebar-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useBoardChannel } from "@/lib/realtime/use-board-channel";
-import type { AblyChannelEvent, ProjectSummary } from "@/lib/types";
+import type { SidebarSectionState } from "@/lib/shortcuts/defaults";
+import type { AgentProfileSummary, ProjectSummary, SkillSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
   projects: ReadonlyArray<ProjectSummary>;
+  agents: ReadonlyArray<AgentProfileSummary>;
+  skills: ReadonlyArray<SkillSummary>;
   workspaceId: string;
+  sectionState: SidebarSectionState;
 };
 
-const COUNT_AFFECTING_EVENTS: ReadonlySet<AblyChannelEvent["name"]> = new Set([
-  "ticket.created",
-  "ticket.moved",
-  "ticket.deleted",
-  "ticket.archived",
-  "ticket.unarchived",
-]);
-
-export function Sidebar({ projects, workspaceId }: Props): React.ReactElement {
-  const [dialogOpen, setDialogOpen] = useState(false);
+export function Sidebar({
+  projects,
+  agents,
+  skills,
+  workspaceId,
+  sectionState,
+}: Props): React.ReactElement {
   const { collapsed } = useSidebarState();
-  const pathname = usePathname();
-  const router = useRouter();
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleEvent = useCallback(
-    (event: AblyChannelEvent) => {
-      if (!COUNT_AFFECTING_EVENTS.has(event.name)) return;
-      if (refreshTimerRef.current) return;
-      refreshTimerRef.current = setTimeout(() => {
-        refreshTimerRef.current = null;
-        router.refresh();
-      }, 150);
-    },
-    [router],
-  );
-
-  useBoardChannel(workspaceId, handleEvent);
-
-  useEffect(
-    () => () => {
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-    },
-    [],
-  );
-
-  const handleProjectDeleted = (deletedSlug: string): void => {
-    const viewing = pathname === `/p/${deletedSlug}` || pathname.startsWith(`/p/${deletedSlug}/`);
-    if (!viewing) {
-      router.refresh();
-      return;
-    }
-    const idx = projects.findIndex((p) => p.slug === deletedSlug);
-    if (idx === -1) {
-      router.refresh();
-      return;
-    }
-    // Prefer the next sibling, then the previous, then home.
-    const target = projects[idx + 1] ?? projects[idx - 1] ?? null;
-    router.replace(target ? `/p/${target.slug}` : "/");
-  };
 
   return (
     <aside
@@ -80,90 +37,18 @@ export function Sidebar({ projects, workspaceId }: Props): React.ReactElement {
       )}
     >
       <div className="flex min-h-0 w-60 flex-1 flex-col pt-12">
-        <div className="px-3 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
-          Projects
-        </div>
         <ScrollArea className="min-h-0 flex-1">
-          <ul className="flex flex-col gap-px px-2 pb-2">
-            {projects.map((project) => {
-              const href = `/p/${project.slug}`;
-              const active = pathname === href || pathname.startsWith(`${href}/`);
-              return (
-                <li key={project.id} className="group/row relative">
-                  <Link
-                    href={href}
-                    className={cn(
-                      "group flex h-8 items-center gap-2.5 rounded-md pr-8 pl-3 text-[13px] transition-colors duration-[120ms] ease-out",
-                      active
-                        ? "bg-foreground/[0.06] text-foreground"
-                        : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground",
-                    )}
-                  >
-                    <span
-                      aria-hidden
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: project.color }}
-                    />
-                    <span className="truncate">{project.name}</span>
-                    {(project.reviewCount ?? 0) > 0 ||
-                    (project.buildingCount ?? 0) > 0 ||
-                    (project.blockedCount ?? 0) > 0 ? (
-                      <span className="ml-auto flex shrink-0 items-center gap-1">
-                        {(project.buildingCount ?? 0) > 0 ? (
-                          <span
-                            title={`${project.buildingCount} in progress`}
-                            className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500/15 px-1.5 text-[10.5px] font-medium tabular-nums text-amber-600 dark:text-amber-400"
-                          >
-                            {project.buildingCount}
-                          </span>
-                        ) : null}
-                        {(project.blockedCount ?? 0) > 0 ? (
-                          <span
-                            title={`${project.blockedCount} blocked`}
-                            className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500/15 px-1.5 text-[10.5px] font-medium tabular-nums text-red-600 dark:text-red-400"
-                          >
-                            {project.blockedCount}
-                          </span>
-                        ) : null}
-                        {(project.reviewCount ?? 0) > 0 ? (
-                          <span
-                            title={`${project.reviewCount} awaiting review`}
-                            className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-blue-500/15 px-1.5 text-[10.5px] font-medium tabular-nums text-blue-600 dark:text-blue-400"
-                          >
-                            {project.reviewCount}
-                          </span>
-                        ) : null}
-                      </span>
-                    ) : null}
-                  </Link>
-                  <div className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity duration-[120ms] ease-out group-hover/row:opacity-100 [&:has([data-state=open])]:opacity-100">
-                    <ProjectActionsMenu
-                      workspaceId={workspaceId}
-                      projectId={project.id}
-                      projectName={project.name}
-                      projectDescription={project.description ?? null}
-                      projectLocalPath={project.localPath ?? null}
-                      onRenamed={() => router.refresh()}
-                      onDeleted={() => handleProjectDeleted(project.slug)}
-                    />
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="flex flex-col gap-2 px-1 py-2">
+            <SidebarProjectsSection
+              projects={projects}
+              workspaceId={workspaceId}
+              initialExpanded={sectionState.PROJECTS.expanded}
+            />
+            <SidebarAgentsSection agents={agents} initialExpanded={sectionState.AGENTS.expanded} />
+            <SidebarSkillsSection skills={skills} initialExpanded={sectionState.SKILLS.expanded} />
+          </div>
         </ScrollArea>
-        <div className="border-t border-border/60 p-2">
-          <button
-            type="button"
-            onClick={() => setDialogOpen(true)}
-            className="flex h-8 w-full items-center gap-2 rounded-md px-3 text-[13px] text-muted-foreground transition-colors duration-[120ms] ease-out hover:bg-foreground/[0.04] hover:text-foreground"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New project
-          </button>
-        </div>
       </div>
-      <NewProjectDialog open={dialogOpen} onOpenChange={setDialogOpen} />
       <ProjectHotkeys projects={projects} />
     </aside>
   );

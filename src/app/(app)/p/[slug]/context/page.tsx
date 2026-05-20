@@ -26,7 +26,7 @@ export default async function ContextPage({ params }: Props): Promise<React.Reac
   const rows = await prisma.contextDoc.findMany({
     where: {
       workspaceId: membership.workspaceId,
-      OR: [{ projectId: project.id }, { projectId: null }],
+      projectId: project.id,
       archivedAt: null,
     },
     orderBy: [{ position: "asc" }, { createdAt: "asc" }],
