@@ -470,6 +470,20 @@ export type AblyChannelEvent =
       status?: "PENDING" | "STREAMING" | "COMPLETE" | "ERROR";
       chunks?: { sequence: number; delta: string }[];
       latestSequence?: number;
+    }
+  | {
+      // Ephemeral intermediate-step event (tool call, thinking). Not persisted
+      // to the Message table; rendered inline in the chat panel while the
+      // agent is mid-turn and dropped on the next user turn.
+      name: "agent.action";
+      workspaceId: string;
+      conversationId: string;
+      ticketId: string | null;
+      agentJobId: string;
+      actionId: string;
+      kind: "tool" | "thinking";
+      text: string;
+      at?: number;
     };
 
 export type MessageEventPayload = {
