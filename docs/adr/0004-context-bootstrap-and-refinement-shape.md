@@ -5,7 +5,7 @@ When a user first connects a repository, Planbooq runs a single AI extraction pa
 ## Bootstrap pass
 
 - **Inputs (curated, not the whole repo):** `README`, top-level `docs/`, any existing instruction files (`CLAUDE.md`, `AGENT.md` / `AGENTS.md`, `.cursorrules`, `.cursor/rules/*`), `package.json` and lockfile (for stack signal only), `prisma/schema.prisma` or equivalent, the top two levels of the file tree. Source code, lockfile internals, and `node_modules` are skipped.
-- **Outputs:** Proposed `CONTEXT.md`, `AGENTS.md`, and starter ADRs in `proposed` status surfaced as a PR. Initial `.planbooq/learnings.md` is empty by design — learnings must be grounded in real Worker tickets.
+- **Outputs:** Proposed `CONTEXT.md`, `AGENTS.md`, and starter ADRs in `proposed` status surfaced as a PR. Initial `docs/learnings.md` is empty by design — learnings must be grounded in real Worker tickets.
 - **The activation moment:** when the user has multiple disagreeing instruction files (the common case), bootstrap detects the conflict, surfaces the points of disagreement in the wizard, asks the user to pick the truth, and consolidates into AGENTS.md with projection shims (e.g., `CLAUDE.md` → AGENTS.md symlink).
 - **Re-bootstrap** is a button, not a background process. Users can re-run after major refactors. Never automatic.
 

@@ -8,7 +8,7 @@ This file alone is not the full Project Context. Before writing code or proposin
 
 1. **`CONTEXT.md`** — the project glossary. Use the exact terms defined there; do not invent synonyms.
 2. **The latest five ADRs in `docs/adr/`** by modification time — load-bearing decisions you must not silently re-litigate.
-3. **`.planbooq/learnings.md`** — surprising durable facts surfaced by past tickets.
+3. **`docs/learnings.md`** — surprising durable facts surfaced by past tickets.
 4. **`.planbooq/codebase-snapshot.md`** (if present) — disposable, regenerated at worktree creation; gives you a "where things live" map.
 
 If any of these files is missing, proceed but note the gap in your final summary.
@@ -63,7 +63,7 @@ See `README.md` for the full pitch and the default workflow (`backlog` → `todo
 When you have insights worth promoting into Project Context, edit the canonical files directly as additional commits on this ticket's branch, **prefixed `context:`** so the reviewer (and Planbooq's merge UI) can ship code and context independently. See [ADR-0003](docs/adr/0003-workers-refine-context-in-pr.md).
 
 - New glossary terms → append to `CONTEXT.md`.
-- New decisions → add a new file under `docs/adr/` in `proposed` status. **Do not** promote your own ADRs to `accepted` — that is a human act.
+- New decisions → add a new file under `docs/adr/` in `proposed` status. **Do not** promote your own ADRs to `accepted` — that is a human act. **Filename:** use a UTC date prefix, `YYYY-MM-DD-slug.md` (extend with `-HHmm` if a same-day collision is likely). Do not use an incrementing counter — concurrent tickets racing on the same integer cause merge collisions. Legacy ADRs (`0001-`...`0008-`) keep their existing names. See [`docs/adr/2026-05-20-adr-files-use-date-prefix.md`](docs/adr/2026-05-20-adr-files-use-date-prefix.md).
 - Convention or anti-pattern → edit `AGENTS.md`.
-- Surprising durable facts (rate limits, library quirks, gotchas) → append to `.planbooq/learnings.md`. This file is **append-only**; do not rewrite prior entries.
+- Surprising durable facts (rate limits, library quirks, gotchas) → append to `docs/learnings.md`. This file is **append-only**; do not rewrite prior entries.
 - Never edit `.planbooq/codebase-snapshot.md` — it is regenerated at worktree creation and never committed.
