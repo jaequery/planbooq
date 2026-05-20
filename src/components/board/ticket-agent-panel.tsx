@@ -157,6 +157,16 @@ function formatToolUse(name: string, input: Record<string, unknown> | undefined)
   return clipped ? `→ ${name}: ${clipped}` : `→ ${name}`;
 }
 
+// Action messages = transient "what the agent is doing right now" rows:
+// tool calls (`→ Read: …`, `→ Edit: …`) and thinking lines (`… …`). Other
+// system rows (Session ended, stderr errors, Agent error: …, idle notice)
+// are NOT prefixed and continue to render as durable history. We collapse
+// the visible action messages to the latest one so the chat shows a live
+// activity indicator instead of an accumulating log.
+function isActionMessage(m: ChatMsg): boolean {
+  return m.role === "system" && (m.text.startsWith("→ ") || m.text.startsWith("… "));
+}
+
 /**
  * Applies a single wire-format event to a message list, mutating
  * currentAssistantIdRef to track which assistant bubble is being streamed
@@ -1807,17 +1817,30 @@ function DesktopPanel({
     );
   }
 
+  // Show only the latest action message (`→ …` tool calls, `… …` thinking)
+  // and hide earlier ones. `messages` itself remains the full transcript so
+  // downstream logic (setBlockedIfAwaiting, decideEndOfRun) still scans
+  // everything; this is purely a render-time projection.
+  const lastActionIdx = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (isActionMessage(messages[i]!)) return i;
+    }
+    return -1;
+  })();
+  const visibleMessages = messages.filter((m, i) => !isActionMessage(m) || i === lastActionIdx);
+
   return (
     <div className="flex flex-col gap-3">
-      {messages.length > 0 && (
+      {visibleMessages.length > 0 && (
         <div className="relative">
           <div
             ref={scrollerRef}
             className="max-h-[420px] overflow-y-auto rounded-lg bg-muted/20 p-3"
           >
             <div className="flex flex-col gap-3">
-              {messages.map((m, i) => {
-                const isStreaming = busy && m.role === "assistant" && i === messages.length - 1;
+              {visibleMessages.map((m, i) => {
+                const isStreaming =
+                  busy && m.role === "assistant" && i === visibleMessages.length - 1;
                 const isAssistant = m.role === "assistant";
                 const displayText = m.text;
                 const author =
@@ -1854,7 +1877,8 @@ function DesktopPanel({
                 );
               })}
               {busy &&
-                (messages.length === 0 || messages[messages.length - 1]!.role !== "assistant") && (
+                (visibleMessages.length === 0 ||
+                  visibleMessages[visibleMessages.length - 1]!.role !== "assistant") && (
                   <div className="self-start text-[12px] text-muted-foreground">
                     <Loader2 className="inline size-3 animate-spin" /> thinking…
                   </div>
