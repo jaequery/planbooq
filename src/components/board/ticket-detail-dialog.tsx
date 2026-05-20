@@ -532,7 +532,7 @@ export function TicketDetailDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="flex h-[85vh] max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[960px]"
+        className="flex h-[85vh] max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[1100px]"
       >
         <DialogTitle className="sr-only">{ticket.title}</DialogTitle>
         <DialogDescription className="sr-only">Ticket detail for {ticket.title}</DialogDescription>
@@ -792,239 +792,251 @@ export function TicketDetailDialog({
               </div>
             </div>
 
-            <div className="mt-6 border-t border-border/60 bg-muted/30 px-8 py-6">
-              <TicketAgentPanel
-                key={ticket.id}
-                ticketId={ticket.id}
-                workspaceId={ticket.workspaceId}
-                projectId={ticket.projectId}
-                title={ticket.title}
-                description={ticket.description ?? null}
-                identifier={ticketIdLabel}
-                statusKey={statuses.find((s) => s.id === ticket.statusId)?.key}
-                autoRunAction={autoRunAction}
-              />
+            <div className="mt-6 flex flex-col gap-1 border-t border-border/60 bg-muted/30 px-8 py-6">
+              <div className="flex items-center gap-2">
+                <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Status</span>
+                <StatusPicker
+                  ticketId={ticket.id}
+                  value={ticket.statusId}
+                  options={statuses}
+                  onChange={(next) => onUpdated({ ...ticket, statusId: next.id })}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">
+                  Priority
+                </span>
+                <PriorityPicker ticketId={ticket.id} value={priority} onChange={setPriority} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">
+                  Assignee
+                </span>
+                <AssigneePicker
+                  ticketId={ticket.id}
+                  workspaceId={ticket.workspaceId}
+                  assignee={assignee}
+                  onChange={setAssignee}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Labels</span>
+                <LabelPicker
+                  ticketId={ticket.id}
+                  workspaceId={ticket.workspaceId}
+                  value={labels}
+                  onChange={setLabels}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Agents</span>
+                <AgentProfilesPicker ticketId={ticket.id} workspaceId={ticket.workspaceId} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Skills</span>
+                <TicketSkillsPicker ticketId={ticket.id} workspaceId={ticket.workspaceId} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Context</span>
+                <TicketContextPicker
+                  ticketId={ticket.id}
+                  workspaceId={ticket.workspaceId}
+                  projectId={ticket.projectId}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Project</span>
+                <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[13px]">
+                  <span
+                    aria-hidden
+                    className="h-3 w-3 rounded-sm"
+                    style={{ backgroundColor: projectColor }}
+                  />
+                  <span className="truncate text-foreground">{projectName}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">
+                  Due date
+                </span>
+                <DueDatePicker
+                  ticketId={ticket.id}
+                  value={dueDate}
+                  onChange={setDueDate}
+                  overdue={isOverdue}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                {ticket.prUrl ? (
+                  <>
+                    {showPrStatus && prStatus ? (
+                      (() => {
+                        const badge = describeStatusBadge(prStatus);
+                        const disabledReason = describeMergeDisabledReason(prStatus);
+                        const conflict = hasMergeConflict(prStatus);
+                        const fixActive =
+                          fixState.phase === "dispatching" ||
+                          fixState.phase === "resolving" ||
+                          fixState.phase === "retrying";
+                        const showFixButton = (conflict || fixActive) && !prStatus.merged;
+                        const showMergeButton = !prStatus.merged;
+                        const disabled =
+                          isFetchingStatus || mergePending || disabledReason !== null;
+                        const badgeClass =
+                          badge.tone === "warn"
+                            ? "bg-destructive/10 text-destructive"
+                            : badge.tone === "merged"
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                              : "bg-muted text-muted-foreground";
+                        return (
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[12px] text-muted-foreground">PR status</span>
+                              <span
+                                className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${badgeClass}`}
+                                title={disabledReason ?? undefined}
+                              >
+                                {badge.label}
+                              </span>
+                            </div>
+                            <div
+                              className={
+                                showMergeButton
+                                  ? "grid grid-cols-2 gap-2"
+                                  : "grid grid-cols-1 gap-2"
+                              }
+                            >
+                              <Button
+                                type="button"
+                                variant="outline"
+                                asChild
+                                className="h-9 justify-center text-[13px] font-medium"
+                              >
+                                <a
+                                  href={ticket.prUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title={ticket.prUrl}
+                                >
+                                  <GitPullRequest className="mr-1.5 h-4 w-4" aria-hidden />
+                                  View PR
+                                </a>
+                              </Button>
+                              {!showMergeButton ? null : showFixButton ? (
+                                <Button
+                                  type="button"
+                                  onClick={handleFixMerge}
+                                  disabled={fixActive || mergePending}
+                                  title={
+                                    fixActive
+                                      ? "Claude is resolving merge conflicts"
+                                      : "Ask Claude to resolve merge conflicts and retry"
+                                  }
+                                  className="h-9 justify-center text-[13px] font-medium"
+                                >
+                                  <Wand2 className="mr-1.5 h-4 w-4" aria-hidden />
+                                  {fixState.phase === "dispatching"
+                                    ? "Dispatching…"
+                                    : fixState.phase === "resolving"
+                                      ? "Resolving…"
+                                      : fixState.phase === "retrying"
+                                        ? "Retrying merge…"
+                                        : "Fix Merge"}
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  onClick={handleMerge}
+                                  disabled={disabled}
+                                  title={
+                                    mergePending ? "Merging…" : (disabledReason ?? "Merge this PR")
+                                  }
+                                  className="h-9 justify-center text-[13px] font-medium"
+                                >
+                                  <GitMerge className="mr-1.5 h-4 w-4" aria-hidden />
+                                  {mergePending ? "Merging…" : "Merge"}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        asChild
+                        className="h-9 w-full justify-center text-[13px] font-medium"
+                      >
+                        <a
+                          href={ticket.prUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={ticket.prUrl}
+                        >
+                          <GitPullRequest className="mr-1.5 h-4 w-4" aria-hidden />
+                          View PR
+                          {showPrStatus && prStatusReason ? (
+                            <span className="ml-2 text-[11px] text-muted-foreground">
+                              {describeReasonBadge(prStatusReason)}
+                            </span>
+                          ) : null}
+                        </a>
+                      </Button>
+                    )}
+                  </>
+                ) : null}
+                {mergeError ? (
+                  <div className="text-[12px] text-red-600 dark:text-red-400">{mergeError}</div>
+                ) : null}
+                {fixState.phase === "dispatching" ||
+                fixState.phase === "resolving" ||
+                fixState.phase === "retrying" ? (
+                  <div className="text-[12px] text-muted-foreground">
+                    {fixState.phase === "dispatching"
+                      ? "Dispatching Claude…"
+                      : fixState.phase === "resolving"
+                        ? "Claude is resolving conflicts. The PR will retry automatically once the branch is mergeable."
+                        : "Branch is mergeable — retrying merge…"}
+                  </div>
+                ) : null}
+                {fixState.phase === "failed" ? (
+                  <div className="text-[12px] text-red-600 dark:text-red-400">
+                    Fix Merge failed: {fixState.reason}
+                  </div>
+                ) : null}
+                <PullRequestHistory
+                  pullRequests={ticket.pullRequests}
+                  currentPrUrl={ticket.prUrl}
+                />
+              </div>
+              <TicketPreviewsPanel ticketId={ticket.id} workspaceId={ticket.workspaceId} />
+
+              <div className="mt-4 pt-4">
+                <TicketTimeline
+                  ticketId={ticket.id}
+                  workspaceId={ticket.workspaceId}
+                  currentUserId={currentUserId}
+                  createdAt={createdAt}
+                  updatedAt={updatedAt}
+                  wasEdited={wasEdited}
+                />
+              </div>
             </div>
           </div>
 
-          <aside className="flex w-[360px] shrink-0 flex-col gap-1 overflow-y-auto border-l border-border px-4 py-6">
-            <div className="flex items-center gap-2">
-              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Status</span>
-              <StatusPicker
-                ticketId={ticket.id}
-                value={ticket.statusId}
-                options={statuses}
-                onChange={(next) => onUpdated({ ...ticket, statusId: next.id })}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Priority</span>
-              <PriorityPicker ticketId={ticket.id} value={priority} onChange={setPriority} />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Assignee</span>
-              <AssigneePicker
-                ticketId={ticket.id}
-                workspaceId={ticket.workspaceId}
-                assignee={assignee}
-                onChange={setAssignee}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Labels</span>
-              <LabelPicker
-                ticketId={ticket.id}
-                workspaceId={ticket.workspaceId}
-                value={labels}
-                onChange={setLabels}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Agents</span>
-              <AgentProfilesPicker ticketId={ticket.id} workspaceId={ticket.workspaceId} />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Skills</span>
-              <TicketSkillsPicker ticketId={ticket.id} workspaceId={ticket.workspaceId} />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Context</span>
-              <TicketContextPicker
-                ticketId={ticket.id}
-                workspaceId={ticket.workspaceId}
-                projectId={ticket.projectId}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Project</span>
-              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[13px]">
-                <span
-                  aria-hidden
-                  className="h-3 w-3 rounded-sm"
-                  style={{ backgroundColor: projectColor }}
-                />
-                <span className="truncate text-foreground">{projectName}</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-[80px] shrink-0 text-[12px] text-muted-foreground">Due date</span>
-              <DueDatePicker
-                ticketId={ticket.id}
-                value={dueDate}
-                onChange={setDueDate}
-                overdue={isOverdue}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              {ticket.prUrl ? (
-                <>
-                  {showPrStatus && prStatus ? (
-                    (() => {
-                      const badge = describeStatusBadge(prStatus);
-                      const disabledReason = describeMergeDisabledReason(prStatus);
-                      const conflict = hasMergeConflict(prStatus);
-                      const fixActive =
-                        fixState.phase === "dispatching" ||
-                        fixState.phase === "resolving" ||
-                        fixState.phase === "retrying";
-                      const showFixButton = (conflict || fixActive) && !prStatus.merged;
-                      const showMergeButton = !prStatus.merged;
-                      const disabled = isFetchingStatus || mergePending || disabledReason !== null;
-                      const badgeClass =
-                        badge.tone === "warn"
-                          ? "bg-destructive/10 text-destructive"
-                          : badge.tone === "merged"
-                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                            : "bg-muted text-muted-foreground";
-                      return (
-                        <div className="flex flex-col gap-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[12px] text-muted-foreground">PR status</span>
-                            <span
-                              className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${badgeClass}`}
-                              title={disabledReason ?? undefined}
-                            >
-                              {badge.label}
-                            </span>
-                          </div>
-                          <div
-                            className={
-                              showMergeButton ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 gap-2"
-                            }
-                          >
-                            <Button
-                              type="button"
-                              variant="outline"
-                              asChild
-                              className="h-9 justify-center text-[13px] font-medium"
-                            >
-                              <a
-                                href={ticket.prUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title={ticket.prUrl}
-                              >
-                                <GitPullRequest className="mr-1.5 h-4 w-4" aria-hidden />
-                                View PR
-                              </a>
-                            </Button>
-                            {!showMergeButton ? null : showFixButton ? (
-                              <Button
-                                type="button"
-                                onClick={handleFixMerge}
-                                disabled={fixActive || mergePending}
-                                title={
-                                  fixActive
-                                    ? "Claude is resolving merge conflicts"
-                                    : "Ask Claude to resolve merge conflicts and retry"
-                                }
-                                className="h-9 justify-center text-[13px] font-medium"
-                              >
-                                <Wand2 className="mr-1.5 h-4 w-4" aria-hidden />
-                                {fixState.phase === "dispatching"
-                                  ? "Dispatching…"
-                                  : fixState.phase === "resolving"
-                                    ? "Resolving…"
-                                    : fixState.phase === "retrying"
-                                      ? "Retrying merge…"
-                                      : "Fix Merge"}
-                              </Button>
-                            ) : (
-                              <Button
-                                type="button"
-                                onClick={handleMerge}
-                                disabled={disabled}
-                                title={
-                                  mergePending ? "Merging…" : (disabledReason ?? "Merge this PR")
-                                }
-                                className="h-9 justify-center text-[13px] font-medium"
-                              >
-                                <GitMerge className="mr-1.5 h-4 w-4" aria-hidden />
-                                {mergePending ? "Merging…" : "Merge"}
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      asChild
-                      className="h-9 w-full justify-center text-[13px] font-medium"
-                    >
-                      <a
-                        href={ticket.prUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={ticket.prUrl}
-                      >
-                        <GitPullRequest className="mr-1.5 h-4 w-4" aria-hidden />
-                        View PR
-                        {showPrStatus && prStatusReason ? (
-                          <span className="ml-2 text-[11px] text-muted-foreground">
-                            {describeReasonBadge(prStatusReason)}
-                          </span>
-                        ) : null}
-                      </a>
-                    </Button>
-                  )}
-                </>
-              ) : null}
-              {mergeError ? (
-                <div className="text-[12px] text-red-600 dark:text-red-400">{mergeError}</div>
-              ) : null}
-              {fixState.phase === "dispatching" ||
-              fixState.phase === "resolving" ||
-              fixState.phase === "retrying" ? (
-                <div className="text-[12px] text-muted-foreground">
-                  {fixState.phase === "dispatching"
-                    ? "Dispatching Claude…"
-                    : fixState.phase === "resolving"
-                      ? "Claude is resolving conflicts. The PR will retry automatically once the branch is mergeable."
-                      : "Branch is mergeable — retrying merge…"}
-                </div>
-              ) : null}
-              {fixState.phase === "failed" ? (
-                <div className="text-[12px] text-red-600 dark:text-red-400">
-                  Fix Merge failed: {fixState.reason}
-                </div>
-              ) : null}
-              <PullRequestHistory pullRequests={ticket.pullRequests} currentPrUrl={ticket.prUrl} />
-            </div>
-            <TicketPreviewsPanel ticketId={ticket.id} workspaceId={ticket.workspaceId} />
-
-            <div className="mt-4 pt-4">
-              <TicketTimeline
-                ticketId={ticket.id}
-                workspaceId={ticket.workspaceId}
-                currentUserId={currentUserId}
-                createdAt={createdAt}
-                updatedAt={updatedAt}
-                wasEdited={wasEdited}
-              />
-            </div>
+          <aside className="flex w-[440px] shrink-0 flex-col overflow-y-auto border-l border-border px-4 py-6">
+            <TicketAgentPanel
+              key={ticket.id}
+              ticketId={ticket.id}
+              workspaceId={ticket.workspaceId}
+              projectId={ticket.projectId}
+              title={ticket.title}
+              description={ticket.description ?? null}
+              identifier={ticketIdLabel}
+              statusKey={statuses.find((s) => s.id === ticket.statusId)?.key}
+              autoRunAction={autoRunAction}
+            />
           </aside>
         </div>
       </DialogContent>
