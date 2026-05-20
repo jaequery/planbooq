@@ -232,20 +232,18 @@ export function TicketCard({
           ) : null}
         </div>
         {!isOverlay && isLive ? (
-          <div className="mt-2 flex items-center gap-1.5 text-[13px] text-muted-foreground">
-            <span className="relative inline-flex h-2 w-2 shrink-0">
+          <div className="mt-2 flex items-center gap-1.5 font-mono text-[11px] leading-snug text-muted-foreground/80">
+            <span className="relative inline-flex h-1.5 w-1.5 shrink-0">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
             </span>
-            <span className="font-medium text-emerald-600 dark:text-emerald-400">
-              {liveKindLabel}
-            </span>
+            <span className="text-emerald-600 dark:text-emerald-400">{liveKindLabel}</span>
             {liveAgent?.lastLine ? (
               <span className="min-w-0 flex-1 truncate" title={liveAgent.lastLine}>
-                · {liveAgent.lastLine}
+                <span className="text-muted-foreground/50">›</span> {liveAgent.lastLine}
               </span>
             ) : (
-              <span className="text-muted-foreground/70">…</span>
+              <span className="text-muted-foreground/50">…</span>
             )}
           </div>
         ) : null}
