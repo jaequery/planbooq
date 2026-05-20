@@ -1169,19 +1169,55 @@ export async function mirrorJobTerminal(args: {
   }
 
   // Fail/cancel the linked WorkflowStepRun so the panel stops showing the
-  // step as in-progress when the underlying job died. SUCCEEDED is handled
-  // per-turn by persistTurnEnd — a single AgentJob can span multiple
-  // workflow steps (warm-send), so we don't close stepRun=SUCCEEDED here.
-  if (args.status !== "SUCCEEDED") {
+  // step as in-progress when the underlying job died. SUCCEEDED is normally
+  // handled per-turn by persistTurnEnd — a single AgentJob can span multiple
+  // workflow steps (warm-send), so we can't blindly close stepRun=SUCCEEDED
+  // here. But there's a real stuck state when the agent emitted `pbq
+  // workflow finish` (writing `decision`) and then the Claude session
+  // terminated cleanly without ever emitting a `result` event — common when
+  // the agent stopped mid-output, the CLI was warm-stopped between turns,
+  // or the bridge dropped the final wire frame. In that case persistTurnEnd
+  // never fired, the step is left RUNNING forever, and the ticket sits at
+  // Running with `decision` set but no progression. Use the agent's
+  // explicit decision as the safe gate: only force-close when the latest
+  // step the job was credited to is still RUNNING AND has a decision —
+  // warm-send won't satisfy that because the new step has no decision yet.
+  // Idempotent: completeStep's PENDING/RUNNING-only CAS protects against
+  // double-firing with a late `result` event.
+  if (args.status === "SUCCEEDED") {
     const stepRunId = await resolveTerminalStepRunId(args.job);
     if (!stepRunId) return;
-    await workflowCommander
-      .completeStep({
-        stepRunId,
-        jobId: args.job.id,
-        result: "failure",
-        error: args.status === "CANCELED" ? "Agent job canceled" : "Agent job failed",
+    const stepRun = await prisma.workflowStepRun
+      .findUnique({
+        where: { id: stepRunId },
+        select: { status: true, decision: true },
       })
-      .catch(() => undefined);
+      .catch(() => null);
+    if (stepRun?.status === "RUNNING" && stepRun.decision !== null) {
+      logger.info("mirror.terminal.force-close-stuck-step", {
+        jobId: args.job.id,
+        stepRunId,
+        decision: stepRun.decision,
+      });
+      await persistTurnEnd(args.job, { kind: "success" }).catch((err: unknown) => {
+        logger.warn("mirror.terminal.force-close.failed", {
+          jobId: args.job.id,
+          stepRunId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
+    return;
   }
+
+  const stepRunId = await resolveTerminalStepRunId(args.job);
+  if (!stepRunId) return;
+  await workflowCommander
+    .completeStep({
+      stepRunId,
+      jobId: args.job.id,
+      result: "failure",
+      error: args.status === "CANCELED" ? "Agent job canceled" : "Agent job failed",
+    })
+    .catch(() => undefined);
 }
